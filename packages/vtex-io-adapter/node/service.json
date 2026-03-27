@@ -1,0 +1,49 @@
+{
+  "memory": 256,
+  "timeout": 10,
+  "minReplicas": 2,
+  "maxReplicas": 10,
+  "workers": 4,
+  "routes": {
+    "search": {
+      "path": "/_v/acg/search",
+      "public": true
+    },
+    "productDetail": {
+      "path": "/_v/acg/product/:sku",
+      "public": true
+    },
+    "getCart": {
+      "path": "/_v/acg/cart",
+      "public": true
+    },
+    "addToCart": {
+      "path": "/_v/acg/cart/items",
+      "public": true
+    },
+    "removeFromCart": {
+      "path": "/_v/acg/cart/items/:sku",
+      "public": true
+    },
+    "proposeDeal": {
+      "path": "/_v/acg/intelligence/propose-deal",
+      "public": true
+    },
+    "initiateCheckout": {
+      "path": "/_v/acg/checkout/initiate",
+      "public": true
+    },
+    "paymentPage": {
+      "path": "/_v/acg/checkout/pay/:sessionId",
+      "public": true
+    },
+    "executeCheckout": {
+      "path": "/_v/acg/checkout/execute/:sessionId",
+      "public": true
+    },
+    "orderStatus": {
+      "path": "/_v/acg/orders/:orderId",
+      "public": true
+    }
+  }
+}

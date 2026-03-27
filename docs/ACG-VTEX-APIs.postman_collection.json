@@ -1,0 +1,1278 @@
+{
+  "info": {
+    "name": "ACG - VTEX APIs",
+    "description": "All VTEX APIs used by the Agent Commerce Gateway (ACG) adapter.\n\nSet the following variables:\n- {{account}}: Your VTEX account name (e.g., vtexeurope)\n- {{vtexAppKey}}: Your VTEX App Key\n- {{vtexAppToken}}: Your VTEX App Token\n- {{vtexIdClientAutCookie}}: VtexIdclientAutCookie value (for authenticated requests)\n- {{orderFormId}}: OrderForm ID (cart ID) - obtained from Create OrderForm\n- {{transactionId}}: Transaction ID - obtained from Place Order",
+    "_postman_id": "acg-vtex-apis-collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-VTEX-API-AppKey",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{vtexAppKey}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "account",
+      "value": "vtexeurope",
+      "type": "string"
+    },
+    {
+      "key": "vtexAppKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vtexAppToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vtexIdClientAutCookie",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderFormId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transactionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Search / Catalog",
+      "description": "Product search and catalog APIs",
+      "item": [
+        {
+          "name": "Search Products (by keyword)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/catalog_system/pub/products/search/rochita?_from=0&_to=4",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "catalog_system",
+                "pub",
+                "products",
+                "search",
+                "rochita"
+              ],
+              "query": [
+                {
+                  "key": "_from",
+                  "value": "0",
+                  "description": "Start index (0-based)"
+                },
+                {
+                  "key": "_to",
+                  "value": "4",
+                  "description": "End index (0-based, inclusive)"
+                }
+              ]
+            },
+            "description": "Search products by keyword. Replace 'rochita' with your search term.\n\nReturns array of VTEXProduct objects with full product and SKU details."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product by SKU",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/catalog_system/pub/products/search?fq=skuId:123456",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "catalog_system",
+                "pub",
+                "products",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "fq",
+                  "value": "skuId:123456",
+                  "description": "Filter by SKU ID"
+                }
+              ]
+            },
+            "description": "Get product details by SKU ID. Replace '123456' with actual SKU.\n\nReturns array with single VTEXProduct."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Products (with filters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/catalog_system/pub/products/search?fq=C:/1/&fq=P:[100 TO 500]&_from=0&_to=9",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "catalog_system",
+                "pub",
+                "products",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "fq",
+                  "value": "C:/1/",
+                  "description": "Filter by category ID"
+                },
+                {
+                  "key": "fq",
+                  "value": "P:[100 TO 500]",
+                  "description": "Filter by price range (in cents)"
+                },
+                {
+                  "key": "_from",
+                  "value": "0"
+                },
+                {
+                  "key": "_to",
+                  "value": "9"
+                }
+              ]
+            },
+            "description": "Search with filters: category, price range, etc."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cart (OrderForm)",
+      "description": "Cart/OrderForm management APIs",
+      "item": [
+        {
+          "name": "Create OrderForm (New Cart)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.orderFormId) {",
+                  "    pm.collectionVariables.set('orderFormId', jsonData.orderFormId);",
+                  "    console.log('Set orderFormId:', jsonData.orderFormId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm"
+              ]
+            },
+            "description": "Create a new empty orderForm (cart).\n\nAutomatically saves the orderFormId to collection variables."
+          },
+          "response": []
+        },
+        {
+          "name": "Get OrderForm",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}"
+              ]
+            },
+            "description": "Get existing orderForm by ID.\n\nThis is the main cart object with items, totals, shipping, payment data."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Items to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderItems\": [\n    {\n      \"id\": \"123456\",\n      \"quantity\": 1,\n      \"seller\": \"1\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/items",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "items"
+              ]
+            },
+            "description": "Add items to the cart.\n\nBody:\n- id: SKU ID\n- quantity: Number of items\n- seller: Seller ID (usually \"1\")"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Item Quantity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderItems\": [\n    {\n      \"index\": 0,\n      \"quantity\": 2\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/items/update",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "items",
+                "update"
+              ]
+            },
+            "description": "Update item quantity.\n\nBody:\n- index: Item index in the cart (0-based)\n- quantity: New quantity (set to 0 to remove)"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Item (set qty=0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderItems\": [\n    {\n      \"index\": 0,\n      \"quantity\": 0\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/items/update",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "items",
+                "update"
+              ]
+            },
+            "description": "Remove item from cart by setting quantity to 0.\n\nBody:\n- index: Item index to remove"
+          },
+          "response": []
+        },
+        {
+          "name": "Simulate OrderForm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/simulation",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "simulation"
+              ]
+            },
+            "description": "Simulate orderForm to get updated prices and shipping options.\n\nUseful before checkout to ensure prices are current."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Checkout Flow",
+      "description": "Headless checkout flow steps (3-6)",
+      "item": [
+        {
+          "name": "Step 3: Add Client Profile Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"documentType\": \"cpf\",\n  \"document\": \"12345678900\",\n  \"phone\": \"+5511999999999\",\n  \"isCorporate\": false\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/attachments/clientProfileData",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "attachments",
+                "clientProfileData"
+              ]
+            },
+            "description": "Add customer profile data to the order.\n\nRequired fields:\n- email\n- firstName\n- lastName\n\nOptional:\n- documentType (cpf, cnpj, etc.)\n- document\n- phone\n- isCorporate"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 4: Add Shipping Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clearAddressIfPostalCodeNotFound\": false,\n  \"selectedAddresses\": [\n    {\n      \"addressType\": \"residential\",\n      \"receiverName\": \"John Doe\",\n      \"postalCode\": \"01310-100\",\n      \"city\": \"São Paulo\",\n      \"state\": \"SP\",\n      \"country\": \"BRA\",\n      \"street\": \"Av. Paulista\",\n      \"number\": \"1000\",\n      \"neighborhood\": \"Bela Vista\",\n      \"complement\": \"Apt 101\"\n    }\n  ],\n  \"logisticsInfo\": [\n    {\n      \"itemIndex\": 0,\n      \"selectedSla\": \"Normal\",\n      \"selectedDeliveryChannel\": \"delivery\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/attachments/shippingData",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "attachments",
+                "shippingData"
+              ]
+            },
+            "description": "Add shipping address and logistics info.\n\nRequired in selectedAddresses:\n- addressType (residential, commercial, etc.)\n- receiverName\n- postalCode, city, state, country\n- street, number, neighborhood\n\nlogisticsInfo must have one entry per cart item:\n- itemIndex: 0-based index\n- selectedSla: Shipping option (from orderForm.shippingData.logisticsInfo[].slas)"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 5: Add Payment Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payments\": [\n    {\n      \"paymentSystem\": 2,\n      \"installments\": 1,\n      \"referenceValue\": 10000,\n      \"value\": 10000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/attachments/paymentData",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "attachments",
+                "paymentData"
+              ]
+            },
+            "description": "Add payment configuration.\n\nCommon paymentSystem values:\n- 1: Promissory (Boleto)\n- 2: Visa\n- 4: Mastercard\n- 6: American Express\n\nNote: Card details are NOT sent here - they go to the payments gateway."
+          },
+          "response": []
+        },
+        {
+          "name": "Step 6: Place Order (Create Transaction)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.transactionData && jsonData.transactionData.merchantTransactions) {",
+                  "    var transactionId = jsonData.transactionData.merchantTransactions[0].transactionId;",
+                  "    pm.collectionVariables.set('transactionId', transactionId);",
+                  "    console.log('Set transactionId:', transactionId);",
+                  "}",
+                  "if (jsonData.orders && jsonData.orders[0]) {",
+                  "    pm.collectionVariables.set('orderId', jsonData.orders[0].orderId);",
+                  "    console.log('Set orderId:', jsonData.orders[0].orderId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"referenceId\": \"ACG-ORDER-001\",\n  \"savePersonalData\": false\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexcommercestable.com.br/api/checkout/pub/orderForm/{{orderFormId}}/transaction",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexcommercestable",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "pub",
+                "orderForm",
+                "{{orderFormId}}",
+                "transaction"
+              ]
+            },
+            "description": "Place the order and create a payment transaction.\n\nReturns:\n- orderGroup: Order group ID\n- orders[]: Array of created orders\n- transactionData: Contains transactionId for payment\n\nAutomatically saves transactionId and orderId to collection variables."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payment Gateway",
+      "description": "Payment gateway APIs (vtexpayments.com.br)",
+      "item": [
+        {
+          "name": "Step 7: Send Payment Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"paymentSystem\": 2,\n    \"paymentSystemName\": \"Visa\",\n    \"group\": \"creditCard\",\n    \"installments\": 1,\n    \"installmentsInterestRate\": 0,\n    \"installmentsValue\": 10000,\n    \"value\": 10000,\n    \"referenceValue\": 10000,\n    \"fields\": {\n      \"holderName\": \"JOHN DOE\",\n      \"cardNumber\": \"4111111111111111\",\n      \"validationCode\": \"123\",\n      \"dueDate\": \"12/28\"\n    },\n    \"transaction\": {\n      \"id\": \"{{transactionId}}\",\n      \"merchantName\": \"{{account}}\"\n    }\n  }\n]"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexpayments.com.br/api/pub/transactions/{{transactionId}}/payments",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexpayments",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "pub",
+                "transactions",
+                "{{transactionId}}",
+                "payments"
+              ]
+            },
+            "description": "Send credit card details to the payment gateway.\n\nIMPORTANT: This is where actual card data goes, NOT in the checkout API.\n\nfields:\n- holderName: Name on card (uppercase)\n- cardNumber: Full card number\n- validationCode: CVV\n- dueDate: MM/YY format"
+          },
+          "response": []
+        },
+        {
+          "name": "Step 8: Authorize Transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-VTEX-API-AppKey",
+                "value": "{{vtexAppKey}}",
+                "type": "text"
+              },
+              {
+                "key": "X-VTEX-API-AppToken",
+                "value": "{{vtexAppToken}}",
+                "type": "text"
+              },
+              {
+                "key": "VtexIdclientAutCookie",
+                "value": "{{vtexIdClientAutCookie}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{transactionId}}\",\n  \"softDescriptor\": \"ACG Purchase\",\n  \"prepareForRecurrency\": false,\n  \"split\": [],\n  \"callbackUrl\": \"\",\n  \"orderId\": \"{{orderId}}\"\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.vtexpayments.com.br/api/pvt/transactions/{{transactionId}}/authorization-request",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "vtexpayments",
+                "com",
+                "br"
+              ],
+              "path": [
+                "api",
+                "pvt",
+                "transactions",
+                "{{transactionId}}",
+                "authorization-request"
+              ]
+            },
+            "description": "Authorize the payment transaction.\n\nThis is the FINAL step that actually processes the payment.\n\nNote: This endpoint is /pvt/ (private) and requires app credentials."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "ACG Adapter Endpoints",
+      "description": "Our custom ACG endpoints exposed by the VTEX IO app",
+      "item": [
+        {
+          "name": "Search Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/search?q=rochita&limit=5",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "rochita",
+                  "description": "Search query"
+                },
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "Max results"
+                },
+                {
+                  "key": "category",
+                  "value": "dresses",
+                  "description": "Category filter",
+                  "disabled": true
+                },
+                {
+                  "key": "minPrice",
+                  "value": "10",
+                  "description": "Min price filter",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "100",
+                  "description": "Max price filter",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "ACG simplified search endpoint.\n\nReturns simplified product data for AI agents."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product by SKU",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/product/123456",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "product",
+                "123456"
+              ]
+            },
+            "description": "Get simplified product details by SKU."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/cart",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "cart"
+              ]
+            },
+            "description": "Get current cart in simplified format.\n\nCreates new orderForm if none exists (via cookie)."
+          },
+          "response": []
+        },
+        {
+          "name": "Add to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"123456\",\n  \"quantity\": 1,\n  \"seller\": \"1\"\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/cart/items",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "cart",
+                "items"
+              ]
+            },
+            "description": "Add item to cart."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove from Cart",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/cart/items/123456",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "cart",
+                "items",
+                "123456"
+              ]
+            },
+            "description": "Remove item from cart by SKU."
+          },
+          "response": []
+        },
+        {
+          "name": "Initiate Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/checkout/initiate",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "checkout",
+                "initiate"
+              ]
+            },
+            "description": "Start checkout process.\n\nReturns payment URL and session ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Execute Checkout (Demo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/checkout/execute/:sessionId",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "checkout",
+                "execute",
+                ":sessionId"
+              ],
+              "variable": [
+                {
+                  "key": "sessionId",
+                  "value": "your-session-id"
+                }
+              ]
+            },
+            "description": "Execute checkout in demo mode (no payment data)."
+          },
+          "response": []
+        },
+        {
+          "name": "Execute Checkout (Full)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerData\": {\n    \"email\": \"test@example.com\",\n    \"firstName\": \"John\",\n    \"lastName\": \"Doe\",\n    \"documentType\": \"cpf\",\n    \"document\": \"12345678900\",\n    \"phone\": \"+5511999999999\"\n  },\n  \"shippingAddress\": {\n    \"receiverName\": \"John Doe\",\n    \"postalCode\": \"01310-100\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\",\n    \"country\": \"BRA\",\n    \"street\": \"Av. Paulista\",\n    \"number\": \"1000\",\n    \"neighborhood\": \"Bela Vista\",\n    \"complement\": \"Apt 101\",\n    \"selectedSla\": \"Normal\"\n  },\n  \"paymentData\": {\n    \"paymentSystem\": 2,\n    \"installments\": 1,\n    \"cardNumber\": \"4111111111111111\",\n    \"cardHolder\": \"JOHN DOE\",\n    \"cardExpiration\": \"12/28\",\n    \"cardCvv\": \"123\"\n  }\n}"
+            },
+            "url": {
+              "raw": "https://{{account}}.myvtex.com/_v/acg/checkout/execute/:sessionId",
+              "protocol": "https",
+              "host": [
+                "{{account}}",
+                "myvtex",
+                "com"
+              ],
+              "path": [
+                "_v",
+                "acg",
+                "checkout",
+                "execute",
+                ":sessionId"
+              ],
+              "variable": [
+                {
+                  "key": "sessionId",
+                  "value": "your-session-id"
+                }
+              ]
+            },
+            "description": "Execute checkout with full customer and payment data.\n\nThis performs the complete VTEX headless checkout flow."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

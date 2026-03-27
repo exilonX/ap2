@@ -1,0 +1,14 @@
+{
+  "name": "@acg/shared",
+  "version": "0.0.1",
+  "description": "Shared types for Agent Commerce Gateway",
+  "main": "dist/types/index.js",
+  "types": "dist/types/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
