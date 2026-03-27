@@ -5,20 +5,9 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod/v4'
+import { z } from 'zod'
 import { VtexClient } from '../client'
-
-interface CheckoutInitiation {
-  sessionId: string
-  paymentUrl: string
-  expiresAt: string
-  cart: {
-    total: number
-    currency: string
-    itemCount: number
-  }
-  message: string
-}
+import type { CheckoutInitiation } from '@acg/shared/checkout'
 
 export function registerCheckoutTools(server: McpServer, client: VtexClient) {
   /**

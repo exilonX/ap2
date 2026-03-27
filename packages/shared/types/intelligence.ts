@@ -8,6 +8,7 @@ export type DealType =
   | 'free_shipping'        // Spend X to get free shipping
   | 'bundle'               // Add complementary product
   | 'vip_discount'         // Loyalty-based discount
+  | 'tier_discount'        // Cart total based discount tier
   | 'flash_sale'           // Time-limited offer
   | 'clearance';           // End of stock deal
 
@@ -22,7 +23,7 @@ export interface DealSuggestion {
   code?: string;           // Promo code to apply (if any)
 
   // What the user should do
-  action?: 'increase_quantity' | 'add_product' | 'apply_code' | 'confirm';
+  action?: 'increase_quantity' | 'add_product' | 'add_more' | 'apply_code' | 'view_suggestions' | 'confirm';
   suggestedSku?: string;   // For bundle deals: product to add
   suggestedQuantity?: number;
 

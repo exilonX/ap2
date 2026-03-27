@@ -6,23 +6,7 @@
  */
 
 import type { VTEXProduct } from '../clients/search';
-
-export interface SimpleProduct {
-  sku: string;
-  name: string;
-  price: number;
-  originalPrice?: number;
-  image?: string;
-  available: boolean;
-  category?: string;
-  brand?: string;
-}
-
-export interface ProductDetail extends SimpleProduct {
-  description?: string;
-  images: string[];
-  specifications?: Record<string, string>;
-}
+import type { SimpleProduct, ProductDetail } from '../types/shared';
 
 /**
  * Map VTEX Product to SimpleProduct

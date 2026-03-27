@@ -5,46 +5,10 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod/v4'
+import { z } from 'zod'
 import { VtexClient } from '../client'
-
-// Types (will import from @acg/shared once built)
-interface SimpleCart {
-  id: string
-  items: Array<{
-    sku: string
-    name: string
-    quantity: number
-    unitPrice: number
-    totalPrice: number
-  }>
-  subtotal: number
-  shipping?: number
-  discount?: number
-  total: number
-  currency: string
-  itemCount: number
-}
-
-interface IntelligenceResponse {
-  currentCart: {
-    total: number
-    itemCount: number
-  }
-  deals: Array<{
-    type: string
-    message: string
-    discount?: number
-    savings?: number
-    code?: string
-  }>
-  bestDeal?: {
-    type: string
-    message: string
-    discount?: number
-    savings?: number
-  }
-}
+import type { SimpleCart, AddToCartResponse } from '@acg/shared/cart'
+import type { IntelligenceResponse } from '@acg/shared/intelligence'
 
 export function registerCartTools(server: McpServer, client: VtexClient) {
   /**
@@ -58,7 +22,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
     },
     async (params) => {
       try {
-        const result = await client.post<{ success: boolean; cart: SimpleCart; error?: string }>(
+        const result = await client.post<AddToCartResponse>(
           '/cart/items',
           {
             sku: params.sku,

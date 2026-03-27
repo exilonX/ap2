@@ -23,7 +23,6 @@ export interface ProductSearchResult {
 
 export interface ProductDetail extends SimpleProduct {
   images: string[];        // All product images
-  fullDescription?: string;
   specifications?: Record<string, string>;
   variants?: ProductVariant[];
 }

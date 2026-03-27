@@ -1,0 +1,10 @@
+{
+  "name": "acg-monorepo",
+  "private": true,
+  "scripts": {
+    "sync-types": "bash scripts/sync-types.sh",
+    "build:shared": "cd packages/shared && npx tsc",
+    "build:mcp": "npm run build:shared && cd packages/mcp-server && npx tsc",
+    "prelink": "npm run sync-types"
+  }
+}

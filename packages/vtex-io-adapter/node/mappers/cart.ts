@@ -6,29 +6,7 @@
  */
 
 import type { VTEXOrderForm, VTEXOrderFormItem } from '../clients/checkout';
-
-export interface SimpleCartItem {
-  sku: string;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  image?: string;
-  available: boolean;
-}
-
-export interface SimpleCart {
-  id: string;
-  items: SimpleCartItem[];
-  subtotal: number;
-  shipping?: number;
-  discount?: number;
-  total: number;
-  currency: string;
-  itemCount: number;
-  hasShippingAddress: boolean;
-  isReadyForCheckout: boolean;
-}
+import type { SimpleCartItem, SimpleCart } from '../types/shared';
 
 /**
  * Map VTEX OrderForm to SimpleCart

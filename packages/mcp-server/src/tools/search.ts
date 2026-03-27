@@ -5,24 +5,9 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod/v4'
+import { z } from 'zod'
 import { VtexClient } from '../client'
-
-// Types (will import from @acg/shared once built)
-interface ProductSearchResult {
-  products: Array<{
-    sku: string
-    name: string
-    price: number
-    originalPrice?: number
-    image?: string
-    available: boolean
-    category?: string
-    brand?: string
-  }>
-  total: number
-  query: string
-}
+import type { ProductSearchResult, ProductDetail } from '@acg/shared/product'
 
 export function registerSearchTools(server: McpServer, client: VtexClient) {
   /**
@@ -117,15 +102,7 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
     },
     async (params) => {
       try {
-        const product = await client.get<{
-          sku: string
-          name: string
-          price: number
-          description?: string
-          available: boolean
-          images: string[]
-          specifications?: Record<string, string>
-        }>(`/product/${params.sku}`)
+        const product = await client.get<ProductDetail>(`/product/${params.sku}`)
 
         let details = `**${product.name}**\n`
         details += `Price: $${product.price.toFixed(2)}\n`

@@ -6,19 +6,10 @@
  */
 
 import { mapOrderFormToCart } from '../mappers/cart';
+import type { DealSuggestion } from '../types/shared';
 
 // Cookie name for orderForm ID
 const ORDER_FORM_COOKIE = 'checkout.vtex.com';
-
-interface DealSuggestion {
-  type: string;
-  message: string;
-  discount?: number;
-  savings?: number;
-  threshold?: number;
-  code?: string;
-  action?: string;
-}
 
 /**
  * GET /_v/acg/intelligence/propose-deal
