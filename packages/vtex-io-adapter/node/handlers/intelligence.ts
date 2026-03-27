@@ -6,10 +6,8 @@
  */
 
 import { mapOrderFormToCart } from '../mappers/cart';
+import { getOrderFormIdFromRequest } from '../utils/session';
 import type { DealSuggestion } from '../types/shared';
-
-// Cookie name for orderForm ID
-const ORDER_FORM_COOKIE = 'checkout.vtex.com';
 
 /**
  * GET /_v/acg/intelligence/propose-deal
@@ -17,16 +15,7 @@ const ORDER_FORM_COOKIE = 'checkout.vtex.com';
  */
 export async function proposeDeal(ctx: Context) {
   try {
-    // Get orderFormId from cookie
-    const existingCookie = ctx.cookies.get(ORDER_FORM_COOKIE);
-    let orderFormId: string | null = null;
-
-    if (existingCookie) {
-      const match = existingCookie.match(/__ofid=([^;]+)/);
-      if (match) {
-        orderFormId = match[1];
-      }
-    }
+    const orderFormId = getOrderFormIdFromRequest(ctx);
 
     if (!orderFormId) {
       ctx.body = {

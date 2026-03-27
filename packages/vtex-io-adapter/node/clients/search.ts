@@ -1,8 +1,7 @@
 /**
  * Search Client
  *
- * Wraps VTEX Intelligent Search API.
- * TODO: Implement actual VTEX Search API calls
+ * Wraps VTEX Catalog Search API for product discovery.
  */
 
 import { ExternalClient, InstanceOptions, IOContext } from '@vtex/api';

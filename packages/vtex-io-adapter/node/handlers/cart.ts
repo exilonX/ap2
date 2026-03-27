@@ -6,38 +6,7 @@
 
 import { json } from 'co-body';
 import { mapOrderFormToCart } from '../mappers/cart';
-
-// Cookie name for orderForm ID
-const ORDER_FORM_COOKIE = 'checkout.vtex.com';
-
-/**
- * Get orderFormId from cookies or create new one
- */
-async function getOrCreateOrderForm(ctx: Context): Promise<string> {
-  const { cookies, clients } = ctx;
-
-  // Try to get existing orderFormId from cookie
-  const existingCookie = cookies.get(ORDER_FORM_COOKIE);
-  if (existingCookie) {
-    // Cookie format is __ofid=orderFormId
-    const match = existingCookie.match(/__ofid=([^;]+)/);
-    if (match) {
-      return match[1];
-    }
-  }
-
-  // Create new orderForm
-  const orderForm = await clients.checkout.createOrderForm();
-
-  // Set cookie
-  cookies.set(ORDER_FORM_COOKIE, `__ofid=${orderForm.orderFormId}`, {
-    httpOnly: false,
-    secure: true,
-    path: '/',
-  });
-
-  return orderForm.orderFormId;
-}
+import { getOrCreateOrderForm } from '../utils/session';
 
 /**
  * GET /_v/acg/cart

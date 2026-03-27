@@ -6,21 +6,10 @@
 
 import { json } from 'co-body';
 import { mapOrderFormToCart } from '../mappers/cart';
-import { v4 as uuid } from 'uuid';
+import { getOrderFormIdFromRequest, generateSessionId } from '../utils/session';
+import type { CheckoutSession } from '../types/shared';
 
-// Cookie name for orderForm ID
-const ORDER_FORM_COOKIE = 'checkout.vtex.com';
 const VBASE_BUCKET = 'acg-sessions';
-
-interface CheckoutSession {
-  id: string;
-  orderFormId: string;
-  createdAt: number;
-  expiresAt: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'expired';
-  orderId?: string;
-  error?: string;
-}
 
 interface CheckoutExecuteRequest {
   customerData?: {
@@ -54,13 +43,6 @@ interface CheckoutExecuteRequest {
 }
 
 /**
- * Generate a simple unique ID
- */
-function generateSessionId(): string {
-  return uuid();
-}
-
-/**
  * POST /_v/acg/checkout/initiate
  * Start checkout and return payment page URL
  */
@@ -68,16 +50,7 @@ export async function initiateCheckout(ctx: Context) {
   try {
     console.log('[ACG Checkout] INITIATE request');
 
-    // Get orderFormId from cookie
-    const existingCookie = ctx.cookies.get(ORDER_FORM_COOKIE);
-    let orderFormId: string | null = null;
-
-    if (existingCookie) {
-      const match = existingCookie.match(/__ofid=([^;]+)/);
-      if (match) {
-        orderFormId = match[1];
-      }
-    }
+    const orderFormId = getOrderFormIdFromRequest(ctx);
 
     if (!orderFormId) {
       ctx.status = 400;

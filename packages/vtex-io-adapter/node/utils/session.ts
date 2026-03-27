@@ -1,48 +1,80 @@
 /**
  * Session Utilities
  *
- * Helpers for managing checkout sessions and orderForm cookies.
+ * Helpers for managing orderForm sessions across MCP and browser clients.
  */
+
+import { v4 as uuid } from 'uuid';
+
+// Header used by the MCP server to pass orderFormId
+const ORDER_FORM_HEADER = 'x-acg-order-form-id';
+
+// Cookie used by browser-based clients
+const ORDER_FORM_COOKIE = 'checkout.vtex.com';
 
 /**
- * Extract orderFormId from VTEX cookie
+ * Get orderFormId from request context.
+ * Checks header first (MCP server), then cookie (browser).
+ * Returns null if neither is present.
  */
-export function extractOrderFormId(cookieValue: string | undefined): string | null {
-  if (!cookieValue) return null;
+export function getOrderFormIdFromRequest(ctx: Context): string | null {
+  // 1. Check header (from MCP server)
+  const headerValue = ctx.get(ORDER_FORM_HEADER);
+  if (headerValue) {
+    return headerValue;
+  }
 
-  // Cookie format: __ofid=orderFormId
-  const match = cookieValue.match(/__ofid=([^;]+)/);
-  return match ? match[1] : null;
+  // 2. Check cookie (from browser)
+  const cookieValue = ctx.cookies.get(ORDER_FORM_COOKIE);
+  if (cookieValue) {
+    const match = cookieValue.match(/__ofid=([^;]+)/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return null;
 }
 
 /**
- * Format orderFormId for cookie
+ * Get orderFormId from request or create a new orderForm.
+ * Sets cookie for browser clients.
  */
-export function formatOrderFormCookie(orderFormId: string): string {
-  return `__ofid=${orderFormId}`;
+export async function getOrCreateOrderForm(ctx: Context): Promise<string> {
+  const existing = getOrderFormIdFromRequest(ctx);
+  if (existing) {
+    return existing;
+  }
+
+  // Create new orderForm
+  const orderForm = await ctx.clients.checkout.createOrderForm();
+
+  // Set cookie for browser clients
+  ctx.cookies.set(ORDER_FORM_COOKIE, `__ofid=${orderForm.orderFormId}`, {
+    httpOnly: false,
+    secure: true,
+    path: '/',
+  });
+
+  return orderForm.orderFormId;
 }
 
 /**
- * Generate a unique session ID
+ * Generate a unique session ID for checkout sessions.
  */
 export function generateSessionId(): string {
-  // Simple UUID-like generation
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  return uuid();
 }
 
 /**
- * Check if a session is expired
+ * Check if a session is expired.
  */
 export function isSessionExpired(expiresAt: number): boolean {
   return Date.now() > expiresAt;
 }
 
 /**
- * Get remaining time in human-readable format
+ * Get remaining time in human-readable format.
  */
 export function getRemainingTime(expiresAt: number): string {
   const remaining = expiresAt - Date.now();
