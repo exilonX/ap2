@@ -7,6 +7,7 @@ import { getCart, addToCart, removeFromCart } from './handlers/cart'
 import { proposeDeal } from './handlers/intelligence'
 import {
   initiateCheckout,
+  redirectToCheckout,
   renderPaymentPage,
   executeCheckout,
   getOrderStatus,
@@ -72,6 +73,9 @@ export default new Service({
     // Checkout routes
     initiateCheckout: method({
       POST: [initiateCheckout],
+    }),
+    checkoutRedirect: method({
+      GET: [redirectToCheckout],
     }),
     paymentPage: method({
       GET: [renderPaymentPage],

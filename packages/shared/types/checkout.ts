@@ -6,14 +6,15 @@
 
 export interface CheckoutInitiation {
   sessionId: string;       // Unique checkout session
-  paymentUrl: string;      // URL to the payment page
+  checkoutUrl: string;     // URL that sets cookie + redirects to VTEX native checkout
+  directCheckoutUrl: string; // Direct VTEX checkout URL with orderFormId query param
   expiresAt: string;       // ISO timestamp - session expiry
   cart: {
     total: number;
     currency: string;
     itemCount: number;
   };
-  message: string;         // "Click here to complete your purchase"
+  message: string;         // "Click the checkout link to complete your purchase"
 }
 
 export interface CheckoutSession {

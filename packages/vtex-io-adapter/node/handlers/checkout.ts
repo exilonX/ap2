@@ -83,18 +83,28 @@ export async function initiateCheckout(ctx: Context) {
     await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
 
     const cart = mapOrderFormToCart(orderForm);
-    const paymentUrl = `https://${ctx.vtex.account}.myvtex.com/_v/acg/checkout/pay/${sessionId}`;
+    const workspace = ctx.vtex.workspace || 'master';
+    const host = workspace === 'master'
+      ? `${ctx.vtex.account}.myvtex.com`
+      : `${workspace}--${ctx.vtex.account}.myvtex.com`;
+
+    // Redirect URL: sets cookie + redirects to VTEX native checkout
+    const checkoutRedirectUrl = `https://${host}/_v/acg/checkout/redirect/${sessionId}`;
+
+    // Direct VTEX checkout URL (fallback if redirect doesn't work)
+    const checkoutDirectUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`;
 
     const response = {
       sessionId,
-      paymentUrl,
+      checkoutUrl: checkoutRedirectUrl,
+      directCheckoutUrl: checkoutDirectUrl,
       expiresAt: new Date(session.expiresAt).toISOString(),
       cart: {
         total: cart.total,
         currency: cart.currency,
         itemCount: cart.itemCount,
       },
-      message: 'Click the payment link to complete your purchase.',
+      message: 'Click the checkout link to complete your purchase.',
     };
 
     console.log('[ACG Checkout] INITIATE Response:', JSON.stringify(response, null, 2));
@@ -110,12 +120,76 @@ export async function initiateCheckout(ctx: Context) {
 }
 
 /**
+ * GET /_v/acg/checkout/redirect/:sessionId
+ * Set the checkout.vtex.com cookie and redirect to VTEX native checkout.
+ * This is the recommended way to hand off from agent to human checkout.
+ */
+export async function redirectToCheckout(ctx: Context) {
+  try {
+    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId;
+
+    if (!sessionId) {
+      ctx.status = 400;
+      ctx.body = 'Missing session ID.';
+      return;
+    }
+
+    // Get session from VBase
+    let session: CheckoutSession;
+    try {
+      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true);
+    } catch {
+      ctx.status = 404;
+      ctx.body = 'Checkout session not found or expired.';
+      return;
+    }
+
+    // Check expiration
+    if (Date.now() > session.expiresAt) {
+      ctx.status = 410;
+      ctx.body = 'This checkout session has expired. Please start a new checkout.';
+      return;
+    }
+
+    const { orderFormId } = session;
+
+    // Set the checkout.vtex.com cookie so VTEX native checkout loads this cart
+    ctx.cookies.set('checkout.vtex.com', `__ofid=${orderFormId}`, {
+      httpOnly: false,
+      secure: true,
+      path: '/',
+    });
+
+    console.log(`[ACG Checkout] Redirecting to VTEX checkout with orderFormId: ${orderFormId}`);
+
+    // Redirect to VTEX native checkout with orderFormId as query param (belt-and-suspenders)
+    const workspace = ctx.vtex.workspace || 'master';
+    const host = workspace === 'master'
+      ? `${ctx.vtex.account}.myvtex.com`
+      : `${workspace}--${ctx.vtex.account}.myvtex.com`;
+
+    ctx.redirect(`https://${host}/checkout/?orderFormId=${orderFormId}#/cart`);
+    ctx.status = 302;
+  } catch (error) {
+    console.error('Checkout redirect error:', error);
+    ctx.status = 500;
+    ctx.body = 'An error occurred redirecting to checkout.';
+  }
+}
+
+/**
  * GET /_v/acg/checkout/pay/:sessionId
- * Render the payment page HTML
+ * Render the payment page HTML (legacy — kept as fallback)
  */
 export async function renderPaymentPage(ctx: Context) {
   try {
-    const { sessionId } = ctx.params;
+    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId;
+
+    if (!sessionId) {
+      ctx.status = 400;
+      ctx.body = 'Missing session ID.';
+      return;
+    }
 
     // Get session from VBase
     let session: CheckoutSession;
@@ -166,7 +240,7 @@ export async function renderPaymentPage(ctx: Context) {
  */
 export async function executeCheckout(ctx: Context) {
   try {
-    const { sessionId } = ctx.params;
+    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId;
     let body: CheckoutExecuteRequest | undefined;
     try {
       body = await json(ctx.req);
@@ -362,7 +436,7 @@ export async function executeCheckout(ctx: Context) {
  */
 export async function getOrderStatus(ctx: Context) {
   try {
-    const { orderId } = ctx.params;
+    const orderId = ctx.vtex.route?.params?.orderId ?? ctx.params?.orderId;
 
     // TODO: Implement actual VTEX OMS lookup
     // For demo, return mock data

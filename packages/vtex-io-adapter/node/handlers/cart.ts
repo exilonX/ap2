@@ -95,7 +95,7 @@ export async function addToCart(ctx: Context) {
  */
 export async function removeFromCart(ctx: Context) {
   try {
-    const { sku } = ctx.params;
+    const sku = ctx.vtex.route?.params?.sku ?? ctx.params?.sku;
 
     console.log('[ACG Cart] REMOVE request:', { sku });
 

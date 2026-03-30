@@ -168,6 +168,44 @@ The ACG project is a middleware connecting AI agents (Claude, GPT, Gemini) to VT
 
 ---
 
+## Phase 7: RAG & Intelligent Commerce (Future — Customer-Facing)
+
+Target: post-demo, sellable to VTEX customers as a value-add.
+
+### 7.1 Product Knowledge RAG
+- Embed product catalog (descriptions, specs, materials, care instructions, reviews)
+- Vector store (Pinecone / Weaviate / VTEX Intelligent Search)
+- Embedding sync pipeline (keep vectors up-to-date with catalog changes)
+- **Use case:** Conversational discovery — "I need something for a beach wedding in August, budget 200 RON"
+- **Use case:** Product Q&A — "Does this run large?" / "Is this machine washable?"
+- **ROI:** Reduces cart abandonment (unanswered questions) and returns (15-30% of revenue)
+
+### 7.2 Personalized Cross-Sell / Upsell
+- RAG over purchase history, frequently-bought-together, styling guides
+- Replace hardcoded `proposeDeal` rules with intelligent recommendations
+- **Use case:** "What goes well with this tricou?"
+
+### 7.3 Post-Purchase Agent
+- Order tracking — "Where's my package?" (RAG over OMS + logistics)
+- Returns/exchanges — agent initiates flow, links to return portal
+- Reordering — "Order my usual coffee again" (RAG over customer history)
+- **ROI:** Deflects 60-80% of customer support tickets
+
+### 7.4 Omnichannel Intelligence
+- Store availability — "Is this in stock at the Bucharest store?" (inventory by location)
+- Loyalty/points — "How many points do I have? What can I get?"
+- Price alerts — "Tell me when this drops below 100 RON" (monitoring intents)
+- Gift recommendations — "Birthday gift for my wife" (catalog + history)
+
+### Technical Requirements
+- Embedding pipeline (product catalog → vectors, triggered on catalog changes)
+- Vector store with metadata filtering (price, category, availability)
+- Chunking strategy for product data (description vs specs vs reviews)
+- Customer context injection (order history, preferences, segment)
+- New MCP tools: `askAboutProduct`, `getRecommendations`, `trackOrder`, `initiateReturn`
+
+---
+
 ## Verification Checklist
 
 - [ ] `cd packages/shared && npm run build` succeeds

@@ -21,8 +21,9 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
         `Ready to complete your purchase!\n\n` +
         `**Order Summary:**\n` +
         `- Items: ${result.cart.itemCount}\n` +
-        `- Total: $${result.cart.total.toFixed(2)} ${result.cart.currency}\n\n` +
-        `**Click here to pay:** ${result.paymentUrl}\n\n` +
+        `- Total: ${result.cart.total.toFixed(2)} ${result.cart.currency}\n\n` +
+        `**Complete checkout:** ${result.checkoutUrl}\n\n` +
+        `Direct link: ${result.directCheckoutUrl}\n\n` +
         `This link expires in 10 minutes.`
 
       return {
@@ -61,7 +62,7 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
         const response =
           `**Order ${result.orderId}**\n` +
           `Status: ${result.status}\n` +
-          `Total: $${result.total.toFixed(2)}\n` +
+          `Total: ${result.total.toFixed(2)}\n` +
           `Created: ${new Date(result.createdAt).toLocaleString()}`
 
         return {

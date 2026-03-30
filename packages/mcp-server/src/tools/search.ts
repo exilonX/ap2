@@ -41,7 +41,6 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
 
         const result = await client.get<ProductSearchResult>('/search', searchParams)
 
-        // Format for Claude
         if (result.products.length === 0) {
           return {
             content: [
@@ -53,22 +52,33 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
           }
         }
 
+        const cur = result.currency || 'EUR'
+
         const productList = result.products
           .map((p, i) => {
-            let line = `${i + 1}. **${p.name}** - $${p.price.toFixed(2)}`
+            let line = ''
+            if (p.image) {
+              line += `![${p.name}](${p.image})\n\n`
+            }
+            line += `**${i + 1}. ${p.name}**\n`
+            line += `Price: ${p.price.toFixed(2)} ${cur}`
             if (p.originalPrice && p.originalPrice > p.price) {
-              line += ` (was $${p.originalPrice.toFixed(2)})`
+              const discount = Math.round((1 - p.price / p.originalPrice) * 100)
+              line += ` ~~${p.originalPrice.toFixed(2)} ${cur}~~ (-${discount}%)`
             }
             if (!p.available) {
               line += ' [OUT OF STOCK]'
             }
-            line += `\n   SKU: ${p.sku}`
+            line += `\nSKU: ${p.sku}`
             if (p.brand) {
               line += ` | Brand: ${p.brand}`
             }
+            if (p.category) {
+              line += ` | Category: ${p.category}`
+            }
             return line
           })
-          .join('\n\n')
+          .join('\n\n---\n\n')
 
         return {
           content: [
@@ -104,10 +114,26 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
       try {
         const product = await client.get<ProductDetail>(`/product/${params.sku}`)
 
-        let details = `**${product.name}**\n`
-        details += `Price: $${product.price.toFixed(2)}\n`
+        let details = ''
+        if (product.image) {
+          details += `![${product.name}](${product.image})\n\n`
+        }
+        details += `**${product.name}**\n`
+        details += `Price: ${product.price.toFixed(2)}`
+        if (product.originalPrice && product.originalPrice > product.price) {
+          const discount = Math.round((1 - product.price / product.originalPrice) * 100)
+          details += ` ~~${product.originalPrice.toFixed(2)}~~ (-${discount}%)`
+        }
+        details += `\n`
         details += `SKU: ${product.sku}\n`
         details += `Availability: ${product.available ? 'In Stock' : 'Out of Stock'}\n`
+
+        if (product.brand) {
+          details += `Brand: ${product.brand}\n`
+        }
+        if (product.category) {
+          details += `Category: ${product.category}\n`
+        }
 
         if (product.description) {
           details += `\nDescription: ${product.description}\n`

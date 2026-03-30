@@ -33,9 +33,9 @@ export function mapProduct(vtexProduct: VTEXProduct): SimpleProduct {
   const seller = sku.sellers?.[0];
   const offer = seller?.commertialOffer;
 
-  // Convert from cents to dollars (VTEX stores in cents)
-  const price = (offer?.Price || 0) / 100;
-  const listPrice = (offer?.ListPrice || 0) / 100;
+  // VTEX Search API returns prices in store currency (not cents)
+  const price = offer?.Price || 0;
+  const listPrice = offer?.ListPrice || 0;
 
   return {
     sku: sku.itemId,
@@ -44,7 +44,7 @@ export function mapProduct(vtexProduct: VTEXProduct): SimpleProduct {
     originalPrice: listPrice > price ? listPrice : undefined,
     image: sku.images?.[0]?.imageUrl,
     available: (offer?.AvailableQuantity || 0) > 0,
-    category: vtexProduct.categories?.[0]?.replace(/\//g, ' > ').trim(),
+    category: vtexProduct.categories?.[0]?.replace(/\//g, ' > ').replace(/^ > | > $/g, '').trim(),
     brand: vtexProduct.brand,
   };
 }
@@ -75,8 +75,10 @@ export function mapProductDetail(
 
   const seller = sku.sellers?.[0];
   const offer = seller?.commertialOffer;
-  const price = (offer?.Price || 0) / 100;
-  const listPrice = (offer?.ListPrice || 0) / 100;
+
+  // VTEX Search API returns prices in store currency (not cents)
+  const price = offer?.Price || 0;
+  const listPrice = offer?.ListPrice || 0;
 
   // Extract specifications from product
   const specifications: Record<string, string> = {};
@@ -97,7 +99,7 @@ export function mapProductDetail(
     image: sku.images?.[0]?.imageUrl,
     images: sku.images?.map((img) => img.imageUrl) || [],
     available: (offer?.AvailableQuantity || 0) > 0,
-    category: vtexProduct.categories?.[0]?.replace(/\//g, ' > ').trim(),
+    category: vtexProduct.categories?.[0]?.replace(/\//g, ' > ').replace(/^ > | > $/g, '').trim(),
     brand: vtexProduct.brand,
     description: vtexProduct.description
       ? truncateDescription(vtexProduct.description, 300)

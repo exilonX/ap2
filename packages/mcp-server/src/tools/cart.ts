@@ -46,9 +46,9 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
         let response = `Added to cart!\n\n`
         response += `**Current Cart:**\n`
         cart.items.forEach((item) => {
-          response += `- ${item.name} × ${item.quantity} = $${item.totalPrice.toFixed(2)}\n`
+          response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${cart.currency}\n`
         })
-        response += `\n**Total: $${cart.total.toFixed(2)} ${cart.currency}**`
+        response += `\n**Total: ${cart.total.toFixed(2)} ${cart.currency}**`
 
         return {
           content: [{ type: 'text' as const, text: response }],
@@ -87,18 +87,18 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
 
       let response = `**Your Cart:**\n\n`
       cart.items.forEach((item) => {
-        response += `- ${item.name} × ${item.quantity} = $${item.totalPrice.toFixed(2)}\n`
+        response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${cart.currency}\n`
       })
 
       response += `\n`
-      response += `Subtotal: $${cart.subtotal.toFixed(2)}\n`
+      response += `Subtotal: ${cart.subtotal.toFixed(2)} ${cart.currency}\n`
       if (cart.shipping !== undefined) {
-        response += `Shipping: $${cart.shipping.toFixed(2)}\n`
+        response += `Shipping: ${cart.shipping.toFixed(2)} ${cart.currency}\n`
       }
       if (cart.discount) {
-        response += `Discount: -$${cart.discount.toFixed(2)}\n`
+        response += `Discount: -${cart.discount.toFixed(2)} ${cart.currency}\n`
       }
-      response += `**Total: $${cart.total.toFixed(2)} ${cart.currency}**`
+      response += `**Total: ${cart.total.toFixed(2)} ${cart.currency}**`
 
       return {
         content: [{ type: 'text' as const, text: response }],
@@ -145,9 +145,9 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
 
         let response = `Item removed.\n\n**Updated Cart:**\n`
         result.cart.items.forEach((item) => {
-          response += `- ${item.name} × ${item.quantity} = $${item.totalPrice.toFixed(2)}\n`
+          response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${result.cart.currency}\n`
         })
-        response += `\n**Total: $${result.cart.total.toFixed(2)}**`
+        response += `\n**Total: ${result.cart.total.toFixed(2)} ${result.cart.currency}**`
 
         return {
           content: [{ type: 'text' as const, text: response }],
@@ -188,7 +188,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
       result.deals.forEach((deal, i) => {
         response += `${i + 1}. ${deal.message}`
         if (deal.savings) {
-          response += ` (Save $${deal.savings.toFixed(2)})`
+          response += ` (Save ${deal.savings.toFixed(2)})`
         }
         response += '\n'
       })

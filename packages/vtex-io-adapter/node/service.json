@@ -33,6 +33,10 @@
       "path": "/_v/acg/checkout/initiate",
       "public": true
     },
+    "checkoutRedirect": {
+      "path": "/_v/acg/checkout/redirect/:sessionId",
+      "public": true
+    },
     "paymentPage": {
       "path": "/_v/acg/checkout/pay/:sessionId",
       "public": true

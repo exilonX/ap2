@@ -6,6 +6,9 @@
 
 import { mapProduct, mapProductDetail } from '../mappers/product';
 
+// Cache store currency to avoid repeated orderForm creation
+let cachedCurrency: string | null = null;
+
 /**
  * GET /_v/acg/search
  * Search for products
@@ -52,10 +55,22 @@ export async function searchProducts(ctx: Context) {
       products = products.filter((p) => p.price <= max);
     }
 
+    // Get store currency (cached after first call)
+    if (!cachedCurrency) {
+      try {
+        const orderForm = await ctx.clients.checkout.createOrderForm();
+        cachedCurrency = orderForm.storePreferencesData?.currencyCode || 'EUR';
+      } catch {
+        cachedCurrency = 'EUR';
+      }
+    }
+    const currency = cachedCurrency;
+
     const response = {
       products,
       total: products.length,
       query: q,
+      currency,
     };
 
     console.log('[ACG Search] Response:', JSON.stringify(response, null, 2));
@@ -75,10 +90,8 @@ export async function searchProducts(ctx: Context) {
  * Get product details by SKU
  */
 export async function getProductDetail(ctx: Context) {
-  const {
-    params: { sku },
-    clients: { search },
-  } = ctx;
+  const { search } = ctx.clients;
+  const sku = ctx.vtex.route?.params?.sku ?? ctx.params?.sku;
 
   if (!sku) {
     ctx.status = 400;

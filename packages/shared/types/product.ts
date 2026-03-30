@@ -19,6 +19,7 @@ export interface ProductSearchResult {
   products: SimpleProduct[];
   total: number;           // Total matching products (for pagination)
   query: string;           // The search query used
+  currency: string;        // Store currency (e.g., "RON", "USD", "BRL")
 }
 
 export interface ProductDetail extends SimpleProduct {

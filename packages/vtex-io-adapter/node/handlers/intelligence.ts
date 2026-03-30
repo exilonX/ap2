@@ -60,7 +60,7 @@ export async function proposeDeal(ctx: Context) {
       const amountNeeded = freeShippingThreshold - cart.total;
       deals.push({
         type: 'free_shipping',
-        message: `Add $${amountNeeded.toFixed(2)} more to your cart for FREE shipping!`,
+        message: `Add ${amountNeeded.toFixed(2)} ${cart.currency} more to your cart for FREE shipping!`,
         threshold: freeShippingThreshold,
         savings: 15, // Estimated shipping cost
         action: 'add_more',
@@ -73,7 +73,7 @@ export async function proposeDeal(ctx: Context) {
     const vipSavings = cart.total * vipDiscount;
     deals.push({
       type: 'vip_discount',
-      message: `As a valued customer, I can offer you 15% off today - that's $${vipSavings.toFixed(2)} in savings!`,
+      message: `As a valued customer, I can offer you 15% off today - that's ${vipSavings.toFixed(2)} ${cart.currency} in savings!`,
       discount: vipDiscount,
       savings: vipSavings,
       code: 'VIP15',
@@ -114,7 +114,7 @@ export async function proposeDeal(ctx: Context) {
       },
       deals,
       bestDeal,
-      reasoning: `Based on your cart of $${cart.total.toFixed(2)} with ${cart.itemCount} item(s), I found ${deals.length} potential ways to save.`,
+      reasoning: `Based on your cart of ${cart.total.toFixed(2)} ${cart.currency} with ${cart.itemCount} item(s), I found ${deals.length} potential ways to save.`,
     };
   } catch (error) {
     console.error('Propose deal error:', error);
