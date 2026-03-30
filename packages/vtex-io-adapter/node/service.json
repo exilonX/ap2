@@ -25,6 +25,26 @@
       "path": "/_v/acg/cart/items/:sku",
       "public": true
     },
+    "updateCartItem": {
+      "path": "/_v/acg/cart/items/update",
+      "public": true
+    },
+    "setCustomerProfile": {
+      "path": "/_v/acg/cart/profile",
+      "public": true
+    },
+    "setShippingAddress": {
+      "path": "/_v/acg/cart/shipping",
+      "public": true
+    },
+    "getShippingOptions": {
+      "path": "/_v/acg/cart/shipping-options",
+      "public": true
+    },
+    "applyCoupon": {
+      "path": "/_v/acg/cart/coupon",
+      "public": true
+    },
     "proposeDeal": {
       "path": "/_v/acg/intelligence/propose-deal",
       "public": true

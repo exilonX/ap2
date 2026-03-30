@@ -225,10 +225,23 @@ export class CheckoutClient extends ExternalClient {
   public async simulateOrderForm(
     orderFormId: string
   ): Promise<VTEXOrderForm> {
-    return this.http.post<VTEXOrderForm>(
-      `/api/checkout/pub/orderForm/${orderFormId}/simulation`,
-      {},
+    return this.http.get<VTEXOrderForm>(
+      `/api/checkout/pub/orderForm/${orderFormId}`,
       { metric: 'acg-simulate' }
+    );
+  }
+
+  /**
+   * Add coupon/promo code to orderForm
+   */
+  public async addCoupon(
+    orderFormId: string,
+    couponCode: string
+  ): Promise<VTEXOrderForm> {
+    return this.http.post<VTEXOrderForm>(
+      `/api/checkout/pub/orderForm/${orderFormId}/coupons`,
+      { text: couponCode },
+      { metric: 'acg-add-coupon' }
     );
   }
 

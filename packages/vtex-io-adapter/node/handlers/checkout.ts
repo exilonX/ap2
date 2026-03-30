@@ -434,19 +434,67 @@ export async function executeCheckout(ctx: Context) {
  * GET /_v/acg/orders/:orderId
  * Get order status
  */
+/**
+ * GET /_v/acg/orders/:orderId
+ * Get order status.
+ *
+ * Currently returns mock data. For production, implement VTEX OMS lookup:
+ *   GET /api/oms/pvt/orders/{orderId}
+ * Requires: outbound-access policy for OMS + VTEX API credentials.
+ */
 export async function getOrderStatus(ctx: Context) {
   try {
     const orderId = ctx.vtex.route?.params?.orderId ?? ctx.params?.orderId;
 
-    // TODO: Implement actual VTEX OMS lookup
-    // For demo, return mock data
+    if (!orderId) {
+      ctx.status = 400;
+      ctx.body = { error: 'Missing order ID' };
+      return;
+    }
 
+    // Check if this is a demo order from our checkout session
+    if (typeof orderId === 'string' && orderId.startsWith('ACG-DEMO-')) {
+      ctx.body = {
+        orderId,
+        status: 'payment-approved',
+        statusDescription: 'Payment confirmed, order is being prepared',
+        createdAt: new Date().toISOString(),
+        message: 'Demo order — payment approved.',
+      };
+      return;
+    }
+
+    // For real orders, try to look up in VBase checkout sessions
+    // (in production this would call VTEX OMS API)
+    try {
+      // Search VBase sessions for this orderId
+      const sessions = await ctx.clients.vbase.getJSON<CheckoutSession[]>(
+        VBASE_BUCKET,
+        `order-${orderId}`,
+        true
+      );
+
+      if (sessions) {
+        ctx.body = {
+          orderId,
+          status: 'completed',
+          statusDescription: 'Order found in ACG sessions',
+          createdAt: new Date().toISOString(),
+          message: 'Order completed via ACG.',
+        };
+        return;
+      }
+    } catch {
+      // Not found in VBase — that's fine
+    }
+
+    // Fallback: return a reasonable response for unknown orders
     ctx.body = {
       orderId,
-      status: 'payment-approved',
-      total: 159.99,
-      createdAt: new Date().toISOString(),
-      message: 'Order is being processed',
+      status: 'unknown',
+      statusDescription: 'Order not found in ACG sessions. Check VTEX Admin for full order details.',
+      createdAt: null,
+      message: `Order ${orderId} — check VTEX Admin (Orders > All Orders) for current status.`,
     };
   } catch (error) {
     console.error('Get order status error:', error);

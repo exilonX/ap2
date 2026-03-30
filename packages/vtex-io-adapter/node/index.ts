@@ -3,7 +3,7 @@ import { LRUCache, method, Service } from '@vtex/api'
 
 import { Clients } from './clients'
 import { searchProducts, getProductDetail } from './handlers/search'
-import { getCart, addToCart, removeFromCart } from './handlers/cart'
+import { getCart, addToCart, removeFromCart, updateCartItem, setCustomerProfile, setShippingAddress, getShippingOptions, applyCoupon } from './handlers/cart'
 import { proposeDeal } from './handlers/intelligence'
 import {
   initiateCheckout,
@@ -63,6 +63,21 @@ export default new Service({
     }),
     removeFromCart: method({
       DELETE: [removeFromCart],
+    }),
+    updateCartItem: method({
+      PUT: [updateCartItem],
+    }),
+    setCustomerProfile: method({
+      POST: [setCustomerProfile],
+    }),
+    setShippingAddress: method({
+      POST: [setShippingAddress],
+    }),
+    getShippingOptions: method({
+      GET: [getShippingOptions],
+    }),
+    applyCoupon: method({
+      POST: [applyCoupon],
     }),
 
     // Intelligence routes

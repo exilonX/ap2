@@ -122,6 +122,18 @@ export class VtexClient {
   }
 
   /**
+   * PUT request to VTEX IO service
+   */
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    try {
+      const response = await this.client.put<T>(path, body);
+      return response.data;
+    } catch (error) {
+      throw new Error(this.formatError(error));
+    }
+  }
+
+  /**
    * DELETE request to VTEX IO service
    */
   async delete<T>(path: string): Promise<T> {

@@ -167,7 +167,259 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
   )
 
   /**
-   * Propose deals - the "intelligence" layer
+   * Update item quantity in cart
+   */
+  server.tool(
+    'updateCartItemQuantity',
+    {
+      sku: z.string().describe('The product SKU to update'),
+      quantity: z.number().describe('New quantity (use 0 to remove)'),
+    },
+    async (params) => {
+      try {
+        const result = await client.put<{ success: boolean; cart: SimpleCart; error?: string }>(
+          '/cart/items/update',
+          { sku: params.sku, quantity: params.quantity }
+        )
+
+        if (!result.success) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Could not update item: ${result.error || 'Unknown error'}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+
+        const cart = result.cart
+        if (cart.items.length === 0) {
+          return {
+            content: [{ type: 'text' as const, text: 'Cart is now empty.' }],
+          }
+        }
+
+        let response = `Updated!\n\n**Current Cart:**\n`
+        cart.items.forEach((item) => {
+          response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${cart.currency}\n`
+        })
+        response += `\n**Total: ${cart.total.toFixed(2)} ${cart.currency}**`
+
+        return {
+          content: [{ type: 'text' as const, text: response }],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error updating item: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+
+  /**
+   * Set customer profile for checkout
+   */
+  server.tool(
+    'setCustomerProfile',
+    {
+      email: z.string().describe('Customer email address'),
+      firstName: z.string().describe('Customer first name'),
+      lastName: z.string().describe('Customer last name'),
+      phone: z.string().optional().describe('Customer phone number (optional)'),
+    },
+    async (params) => {
+      try {
+        const result = await client.post<{ success: boolean; message: string; error?: string }>(
+          '/cart/profile',
+          params
+        )
+
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: result.success
+                ? `Profile set: ${params.firstName} ${params.lastName} (${params.email})`
+                : `Could not set profile: ${result.error || 'Unknown error'}`,
+            },
+          ],
+          isError: !result.success,
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error setting profile: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+
+  /**
+   * Set shipping address for delivery
+   */
+  server.tool(
+    'setShippingAddress',
+    {
+      street: z.string().describe('Street name'),
+      number: z.string().describe('Street number'),
+      neighborhood: z.string().describe('Neighborhood'),
+      city: z.string().describe('City'),
+      state: z.string().describe('State/province code (e.g., "BH", "SP")'),
+      postalCode: z.string().describe('Postal/ZIP code'),
+      country: z.string().optional().describe('Country code (default: "ROU")'),
+      receiverName: z.string().optional().describe('Name of the person receiving the delivery'),
+    },
+    async (params) => {
+      try {
+        const result = await client.post<{ success: boolean; cart: SimpleCart; message: string; error?: string }>(
+          '/cart/shipping',
+          params
+        )
+
+        if (!result.success) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Could not set address: ${result.error || 'Unknown error'}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+
+        let response = `Shipping address set: ${params.street} ${params.number}, ${params.city}\n\n`
+        response += `**Cart Total: ${result.cart.total.toFixed(2)} ${result.cart.currency}**`
+        if (result.cart.shipping !== undefined) {
+          response += `\nShipping: ${result.cart.shipping.toFixed(2)} ${result.cart.currency}`
+        }
+
+        return {
+          content: [{ type: 'text' as const, text: response }],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error setting address: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+
+  /**
+   * Get available shipping options for the current cart
+   */
+  server.tool('getShippingOptions', {}, async () => {
+    try {
+      const result = await client.get<{
+        options: Array<{ id: string; name: string; price: number; estimatedDelivery: string }>
+        hasAddress: boolean
+        message: string
+      }>('/cart/shipping-options')
+
+      if (result.options.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: result.message }],
+        }
+      }
+
+      let response = `**Shipping Options:**\n\n`
+      result.options.forEach((opt, i) => {
+        response += `${i + 1}. **${opt.name}** — ${opt.price.toFixed(2)} (${opt.estimatedDelivery})\n`
+      })
+
+      return {
+        content: [{ type: 'text' as const, text: response }],
+      }
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Error getting shipping options: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
+        isError: true,
+      }
+    }
+  })
+
+  /**
+   * Apply a coupon or promo code to the cart.
+   * Use this when the user wants to apply a deal, discount code, or promo code.
+   */
+  server.tool(
+    'applyCoupon',
+    {
+      code: z.string().describe('The coupon or promo code to apply (e.g., "VIP15")'),
+    },
+    async (params) => {
+      try {
+        const result = await client.post<{ success: boolean; cart: SimpleCart; message: string; error?: string }>(
+          '/cart/coupon',
+          { code: params.code }
+        )
+
+        if (!result.success) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Could not apply coupon: ${result.error || 'Unknown error'}`,
+              },
+            ],
+            isError: true,
+          }
+        }
+
+        const cart = result.cart
+        let response = `${result.message}\n\n**Updated Cart:**\n`
+        cart.items.forEach((item) => {
+          response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${cart.currency}\n`
+        })
+        if (cart.discount) {
+          response += `\nDiscount: -${cart.discount.toFixed(2)} ${cart.currency}`
+        }
+        response += `\n**Total: ${cart.total.toFixed(2)} ${cart.currency}**`
+
+        return {
+          content: [{ type: 'text' as const, text: response }],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error applying coupon: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+
+  /**
+   * Get personalized deal suggestions based on the current cart contents.
+   * Use this when the user asks about deals, discounts, offers, or savings.
    */
   server.tool('proposeDeal', {}, async () => {
     try {
