@@ -1,0 +1,19 @@
+{
+  "name": "@acg/core",
+  "version": "0.0.1",
+  "description": "AP2 Protocol Engine - cryptographic mandate signing for agentic commerce",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/jcs.test.ts src/did.test.ts src/mandates.test.ts src/keystore.test.ts"
+  },
+  "dependencies": {
+    "canonicalize": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.0"
+  }
+}

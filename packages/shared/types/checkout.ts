@@ -39,33 +39,55 @@ export interface CheckoutResult {
   error?: string;
 }
 
-/**
- * Future: AP2 Mandate types
- */
+// ─── AP2 Mandate Types ───────────────────────────────────────────
+
+export interface CartLineItem {
+  sku: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface CartData {
+  items: CartLineItem[];
+  totalAmount: number;
+  currency: string;
+  orderFormId: string;
+}
+
 export interface CartMandate {
-  // Cart details (canonical)
-  lineItems: Array<{
-    sku: string;
-    name: string;
-    quantity: number;
-    unitPrice: number;
-  }>;
+  // Mandate metadata
+  mandateId: string;
+  version: '0.1.0';
+  type: 'CartMandate';
+
+  // Cart contents (canonical)
+  lineItems: CartLineItem[];
   totalAmount: number;
   currency: string;
 
+  // References
+  orderFormId: string;
+
   // Parties
   merchantDid: string;
-  payerDid?: string;
 
   // Cryptographic proof
-  signature: string;
-  signedAt: string;
-  expiresAt: string;
-  nonce: string;
+  canonicalHash: string;    // SHA-256 of JCS-canonicalized cart
+  signature: string;        // Ed25519 signature over the hash
+  signedAt: string;         // ISO timestamp
+  expiresAt: string;        // ISO timestamp
+  nonce: string;            // Replay protection
+}
 
-  // Reference
-  mandateId: string;
-  orderFormId: string;
+export interface MandateVerification {
+  valid: boolean;
+  checks: {
+    signatureValid: boolean;
+    notExpired: boolean;
+    hashMatches: boolean;
+  };
+  error?: string;
 }
 
 export interface PaymentMandate {

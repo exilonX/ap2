@@ -36,7 +36,10 @@ export {
   CheckoutInitiation,
   CheckoutSession,
   CheckoutResult,
+  CartLineItem,
+  CartData,
   CartMandate,
+  MandateVerification,
   PaymentMandate,
   ChallengeRequired,
 } from './checkout';
