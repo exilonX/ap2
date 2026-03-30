@@ -25,6 +25,7 @@ import { VtexClient } from './client'
 import { registerSearchTools } from './tools/search'
 import { registerCartTools } from './tools/cart'
 import { registerCheckoutTools } from './tools/checkout'
+import { registerMandateTools } from './tools/mandate'
 
 // Configuration from environment
 const config = {
@@ -48,6 +49,7 @@ async function main() {
   registerSearchTools(server, vtexClient)
   registerCartTools(server, vtexClient)
   registerCheckoutTools(server, vtexClient)
+  registerMandateTools(server, vtexClient)
 
   // Connect via stdio (for Claude Desktop)
   const transport = new StdioServerTransport()

@@ -68,6 +68,10 @@
     "orderStatus": {
       "path": "/_v/acg/orders/:orderId",
       "public": true
+    },
+    "didDocument": {
+      "path": "/_v/acg/.well-known/did.json",
+      "public": true
     }
   }
 }

@@ -53,7 +53,7 @@ describe('keystore - loadOrCreateIdentity', () => {
     assert.equal(first.keys.privateKeyHex, second.keys.privateKeyHex);
   });
 
-  it('loaded keys can sign and verify mandates', () => {
+  it('loaded keys can sign and verify mandates', async () => {
     // First run: generate
     const identity1 = loadOrCreateIdentity(DOMAIN, TEST_KEY_FILE);
     const cart = {
@@ -62,11 +62,11 @@ describe('keystore - loadOrCreateIdentity', () => {
       currency: 'RON',
       orderFormId: 'test-123',
     };
-    const mandate = createCartMandate(cart, identity1.domain, identity1.keys);
+    const mandate = await createCartMandate(cart, identity1.domain, identity1.keys);
 
     // Second run: load from file
     const identity2 = loadOrCreateIdentity(DOMAIN, TEST_KEY_FILE);
-    const result = verifyCartMandate(mandate, identity2.keys.publicKey);
+    const result = await verifyCartMandate(mandate, identity2.keys.publicKey);
 
     assert.equal(result.valid, true);
   });
@@ -116,7 +116,7 @@ describe('keystore - loadIdentityFromEnv', () => {
     assert.equal(result.keys.publicKeyHex, generated.keys.publicKeyHex);
   });
 
-  it('env-loaded keys can sign and verify', () => {
+  it('env-loaded keys can sign and verify', async () => {
     const generated = loadOrCreateIdentity(DOMAIN, TEST_KEY_FILE);
 
     process.env.MERCHANT_PUBLIC_KEY = generated.keys.publicKeyHex;
@@ -131,8 +131,8 @@ describe('keystore - loadIdentityFromEnv', () => {
       orderFormId: 'env-test-of',
     };
 
-    const mandate = createCartMandate(cart, identity.domain, identity.keys);
-    const result = verifyCartMandate(mandate, identity.keys.publicKey);
+    const mandate = await createCartMandate(cart, identity.domain, identity.keys);
+    const result = await verifyCartMandate(mandate, identity.keys.publicKey);
     assert.equal(result.valid, true);
   });
 });

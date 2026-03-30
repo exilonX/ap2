@@ -1,15 +1,17 @@
 /**
  * @acg/core — AP2 Protocol Engine
  *
- * Cryptographic mandate signing for agentic commerce.
- * Platform-agnostic — knows nothing about VTEX, Shopify, etc.
+ * AP2-compliant cryptographic mandate signing for agentic commerce.
+ * Follows the AP2 v0.1.0 specification (Human Present scenario).
+ *
+ * Reference: https://github.com/google-agentic-commerce/AP2
  *
  * Usage:
  *   import { generateKeyPair, createCartMandate, verifyCartMandate } from '@acg/core';
  *
  *   const keys = generateKeyPair();
- *   const mandate = createCartMandate(cartData, 'merchant.com', keys);
- *   const result = verifyCartMandate(mandate, keys.publicKey);
+ *   const mandate = await createCartMandate(cartData, 'merchant.com', keys);
+ *   const result = await verifyCartMandate(mandate, keys.publicKey);
  */
 
 // DID management
@@ -39,13 +41,17 @@ export {
   type MerchantIdentity,
 } from './keystore';
 
-// Mandate management
+// Mandate management (AP2-compliant)
 export {
   createCartMandate,
   verifyCartMandate,
   mandateMatchesCart,
+  type PaymentAmount,
+  type PaymentItem,
+  type CartContents,
+  type CartMandate,
+  type MandateJWTPayload,
+  type MandateVerification,
   type CartLineItem,
   type CartData,
-  type CartMandate,
-  type MandateVerification,
 } from './mandates';

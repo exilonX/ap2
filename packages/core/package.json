@@ -9,7 +9,8 @@
     "test": "node --import tsx --test src/jcs.test.ts src/did.test.ts src/mandates.test.ts src/keystore.test.ts"
   },
   "dependencies": {
-    "canonicalize": "^2.0.0"
+    "canonicalize": "^2.0.0",
+    "jose": "^4.15.9"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

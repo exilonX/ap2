@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@acg/core": "file:../core",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.13.6",
     "zod": "^4.3.6"

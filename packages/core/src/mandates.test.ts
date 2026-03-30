@@ -18,259 +18,253 @@ function makeCart(overrides?: Partial<CartData>): CartData {
 
 const DOMAIN = 'ap2--vtexeurope.myvtex.com';
 
-describe('mandates - createCartMandate', () => {
-  it('creates a mandate with all required fields', () => {
+describe('mandates - createCartMandate (AP2 spec)', () => {
+  it('creates a mandate with nested structure per AP2 spec', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
-    assert.ok(mandate.mandateId.startsWith('mandate-'));
-    assert.equal(mandate.version, '0.1.0');
-    assert.equal(mandate.type, 'CartMandate');
-    assert.equal(mandate.lineItems.length, 2);
-    assert.equal(mandate.totalAmount, 110.56);
-    assert.equal(mandate.currency, 'RON');
-    assert.equal(mandate.orderFormId, 'test-order-form-123');
-    assert.equal(mandate.merchantDid, 'did:web:ap2--vtexeurope.myvtex.com');
-    assert.ok(mandate.canonicalHash.length === 64);
-    assert.ok(mandate.signature.length > 0);
-    assert.ok(mandate.signedAt);
-    assert.ok(mandate.expiresAt);
-    assert.ok(mandate.nonce.length > 0);
+    // AP2 structure: { contents, merchant_authorization }
+    assert.ok(mandate.contents);
+    assert.ok(mandate.merchant_authorization);
+    assert.ok(typeof mandate.merchant_authorization === 'string');
+    // JWT has 3 base64url-encoded parts separated by dots
+    assert.equal(mandate.merchant_authorization.split('.').length, 3);
   });
 
-  it('sets correct expiry (default 10 minutes)', () => {
+  it('contents have W3C PaymentItem format', async () => {
+    const keys = generateKeyPair();
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
+
+    assert.ok(mandate.contents.id.startsWith('mandate-'));
+    assert.equal(mandate.contents.merchant_name, 'did:web:ap2--vtexeurope.myvtex.com');
+    assert.equal(mandate.contents.payment_items.length, 2);
+
+    // W3C PaymentItem format: { label, amount: { currency, value } }
+    const item = mandate.contents.payment_items[0];
+    assert.equal(item.label, 'Tricou');
+    assert.equal(item.amount.currency, 'RON');
+    assert.equal(item.amount.value, '110.48'); // 55.24 * 2
+    assert.equal(item.sku, '5');
+    assert.equal(item.quantity, 2);
+  });
+
+  it('total uses W3C PaymentCurrencyAmount format', async () => {
+    const keys = generateKeyPair();
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
+
+    assert.equal(mandate.contents.total.currency, 'RON');
+    assert.equal(mandate.contents.total.value, '110.56');
+  });
+
+  it('includes order_reference from orderFormId', async () => {
+    const keys = generateKeyPair();
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
+    assert.equal(mandate.contents.order_reference, 'test-order-form-123');
+  });
+
+  it('sets correct cart_expiry (default 10 minutes)', async () => {
     const keys = generateKeyPair();
     const before = Date.now();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
-    const after = Date.now();
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
-    const expiresAt = new Date(mandate.expiresAt).getTime();
-    const signedAt = new Date(mandate.signedAt).getTime();
-    const diff = expiresAt - signedAt;
-
-    // Should be 10 minutes (600000ms) ± 1 second tolerance
-    assert.ok(diff >= 599000 && diff <= 601000, `Expected ~600000ms, got ${diff}ms`);
+    const expiry = new Date(mandate.contents.cart_expiry).getTime();
+    const diff = expiry - before;
+    // Should be ~10 minutes (600000ms) ± 2 second tolerance
+    assert.ok(diff >= 598000 && diff <= 602000, `Expected ~600000ms, got ${diff}ms`);
   });
 
-  it('respects custom expiry', () => {
+  it('respects custom expiry', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys, 30);
+    const before = Date.now();
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys, 30);
 
-    const expiresAt = new Date(mandate.expiresAt).getTime();
-    const signedAt = new Date(mandate.signedAt).getTime();
-    const diff = expiresAt - signedAt;
-
-    // Should be 30 minutes
-    assert.ok(diff >= 1799000 && diff <= 1801000, `Expected ~1800000ms, got ${diff}ms`);
+    const expiry = new Date(mandate.contents.cart_expiry).getTime();
+    const diff = expiry - before;
+    assert.ok(diff >= 1798000 && diff <= 1802000, `Expected ~1800000ms, got ${diff}ms`);
   });
 
-  it('generates unique mandate IDs', () => {
+  it('generates unique mandate IDs', async () => {
     const keys = generateKeyPair();
-    const a = createCartMandate(makeCart(), DOMAIN, keys);
-    const b = createCartMandate(makeCart(), DOMAIN, keys);
-    assert.notEqual(a.mandateId, b.mandateId);
+    const a = await createCartMandate(makeCart(), DOMAIN, keys);
+    const b = await createCartMandate(makeCart(), DOMAIN, keys);
+    assert.notEqual(a.contents.id, b.contents.id);
   });
 
-  it('generates unique nonces', () => {
+  it('JWT header uses EdDSA algorithm', async () => {
     const keys = generateKeyPair();
-    const a = createCartMandate(makeCart(), DOMAIN, keys);
-    const b = createCartMandate(makeCart(), DOMAIN, keys);
-    assert.notEqual(a.nonce, b.nonce);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
+
+    const headerBase64 = mandate.merchant_authorization.split('.')[0];
+    const header = JSON.parse(Buffer.from(headerBase64, 'base64url').toString());
+    assert.equal(header.alg, 'EdDSA');
+    assert.equal(header.typ, 'JWT');
   });
 
-  it('line items match input cart', () => {
+  it('JWT payload contains cart_hash and standard claims', async () => {
     const keys = generateKeyPair();
-    const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
-    assert.equal(mandate.lineItems[0].sku, '5');
-    assert.equal(mandate.lineItems[0].name, 'Tricou');
-    assert.equal(mandate.lineItems[0].quantity, 2);
-    assert.equal(mandate.lineItems[0].unitPrice, 55.24);
-    assert.equal(mandate.lineItems[1].sku, '1');
+    const payloadBase64 = mandate.merchant_authorization.split('.')[1];
+    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64url').toString());
+
+    assert.equal(payload.iss, 'did:web:ap2--vtexeurope.myvtex.com');
+    assert.ok(payload.sub.startsWith('mandate-'));
+    assert.equal(payload.aud, 'ap2');
+    assert.ok(typeof payload.iat === 'number');
+    assert.ok(typeof payload.exp === 'number');
+    assert.ok(typeof payload.jti === 'string');
+    assert.ok(typeof payload.cart_hash === 'string');
+    assert.equal(payload.cart_hash.length, 64); // SHA-256 hex
   });
 });
 
-describe('mandates - verifyCartMandate', () => {
-  it('verifies a valid mandate', () => {
+describe('mandates - verifyCartMandate (AP2 spec)', () => {
+  it('verifies a valid mandate', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
-    const result = verifyCartMandate(mandate, keys.publicKey);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
+    const result = await verifyCartMandate(mandate, keys.publicKey);
 
     assert.equal(result.valid, true);
     assert.equal(result.checks.signatureValid, true);
     assert.equal(result.checks.notExpired, true);
     assert.equal(result.checks.hashMatches, true);
     assert.equal(result.error, undefined);
+    assert.ok(result.payload);
+    assert.ok(result.payload.cart_hash);
   });
 
-  it('fails with wrong public key', () => {
+  it('fails with wrong public key', async () => {
     const keys1 = generateKeyPair();
     const keys2 = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys1);
-    const result = verifyCartMandate(mandate, keys2.publicKey);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys1);
+    const result = await verifyCartMandate(mandate, keys2.publicKey);
 
     assert.equal(result.valid, false);
     assert.equal(result.checks.signatureValid, false);
-    assert.equal(result.error, 'Invalid signature');
+    assert.equal(result.error, 'Invalid JWT signature');
   });
 
-  it('fails when mandate is tampered (price changed)', () => {
+  it('fails when cart contents are tampered (total changed)', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
-    // Tamper with the total
-    mandate.totalAmount = 999.99;
+    // Tamper with total
+    mandate.contents.total.value = '999.99';
 
-    const result = verifyCartMandate(mandate, keys.publicKey);
+    const result = await verifyCartMandate(mandate, keys.publicKey);
     assert.equal(result.valid, false);
     assert.equal(result.checks.hashMatches, false);
-    assert.equal(result.error, 'Cart contents have been tampered with');
+    assert.ok(result.error?.includes('tampered'));
   });
 
-  it('fails when mandate is tampered (item changed)', () => {
+  it('fails when cart item is tampered', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
     // Tamper with an item price
-    mandate.lineItems[0].unitPrice = 99.99;
+    mandate.contents.payment_items[0].amount.value = '999.99';
 
-    const result = verifyCartMandate(mandate, keys.publicKey);
+    const result = await verifyCartMandate(mandate, keys.publicKey);
     assert.equal(result.valid, false);
     assert.equal(result.checks.hashMatches, false);
   });
 
-  it('fails when mandate is tampered (nonce changed)', () => {
+  it('fails when mandate is expired', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
+    // Create a mandate that expires in 2 seconds (2/60 minutes)
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys, 2 / 60);
 
-    mandate.nonce = 'tampered-nonce';
+    // Wait for it to expire
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const result = verifyCartMandate(mandate, keys.publicKey);
-    assert.equal(result.valid, false);
-    assert.equal(result.checks.hashMatches, false);
-  });
-
-  it('fails when mandate is expired', () => {
-    const keys = generateKeyPair();
-    // Create mandate that expired 1 minute ago
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys, -1);
-
-    const result = verifyCartMandate(mandate, keys.publicKey);
+    const result = await verifyCartMandate(mandate, keys.publicKey);
     assert.equal(result.valid, false);
     assert.equal(result.checks.notExpired, false);
-    assert.equal(result.error, 'Mandate has expired');
+    assert.ok(result.error?.includes('expired'));
   });
 
-  it('fails with corrupted signature', () => {
+  it('fails with corrupted JWT', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
-    mandate.signature = 'deadbeef'.repeat(16);
+    mandate.merchant_authorization = 'invalid.jwt.here';
 
-    const result = verifyCartMandate(mandate, keys.publicKey);
+    const result = await verifyCartMandate(mandate, keys.publicKey);
     assert.equal(result.valid, false);
     assert.equal(result.checks.signatureValid, false);
   });
 
-  it('signature check catches completely invalid signature format', () => {
+  it('works with restored keys from hex', async () => {
     const keys = generateKeyPair();
-    const mandate = createCartMandate(makeCart(), DOMAIN, keys);
+    const mandate = await createCartMandate(makeCart(), DOMAIN, keys);
 
-    mandate.signature = 'not-a-valid-hex';
-
-    const result = verifyCartMandate(mandate, keys.publicKey);
-    assert.equal(result.valid, false);
-    assert.equal(result.checks.signatureValid, false);
+    const { keyPairFromHex } = await import('./did');
+    const restored = keyPairFromHex(keys.publicKeyHex, keys.privateKeyHex);
+    const result = await verifyCartMandate(mandate, restored.publicKey);
+    assert.equal(result.valid, true);
   });
 });
 
 describe('mandates - mandateMatchesCart', () => {
-  it('returns true when cart matches', () => {
+  it('returns true when cart matches', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
     assert.equal(mandateMatchesCart(mandate, cart), true);
   });
 
-  it('returns false when total changed', () => {
+  it('returns false when total changed', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({ totalAmount: 999.99 });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
+    assert.equal(mandateMatchesCart(mandate, makeCart({ totalAmount: 999.99 })), false);
   });
 
-  it('returns false when currency changed', () => {
+  it('returns false when currency changed', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({ currency: 'USD' });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
+    assert.equal(mandateMatchesCart(mandate, makeCart({ currency: 'USD' })), false);
   });
 
-  it('returns false when orderFormId changed', () => {
+  it('returns false when orderFormId changed', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({ orderFormId: 'different-id' });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
+    assert.equal(mandateMatchesCart(mandate, makeCart({ orderFormId: 'different' })), false);
   });
 
-  it('returns false when item count changed', () => {
+  it('returns false when item count changed', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({
-      items: [{ sku: '5', name: 'Tricou', quantity: 2, unitPrice: 55.24 }],
-    });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
+    const modified = makeCart({ items: [{ sku: '5', name: 'Tricou', quantity: 2, unitPrice: 55.24 }] });
+    assert.equal(mandateMatchesCart(mandate, modified), false);
   });
 
-  it('returns false when item SKU changed', () => {
+  it('returns false when item quantity changed', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({
-      items: [
-        { sku: '999', name: 'Tricou', quantity: 2, unitPrice: 55.24 },
-        { sku: '1', name: 'Rochita Roz', quantity: 1, unitPrice: 0.08 },
-      ],
-    });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
-  });
-
-  it('returns false when item quantity changed', () => {
-    const keys = generateKeyPair();
-    const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
+    const modified = makeCart({
       items: [
         { sku: '5', name: 'Tricou', quantity: 5, unitPrice: 55.24 },
         { sku: '1', name: 'Rochita Roz', quantity: 1, unitPrice: 0.08 },
       ],
     });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
+    assert.equal(mandateMatchesCart(mandate, modified), false);
   });
 
-  it('returns false when item price changed', () => {
+  it('returns false when item price changed', async () => {
     const keys = generateKeyPair();
     const cart = makeCart();
-    const mandate = createCartMandate(cart, DOMAIN, keys);
-
-    const modifiedCart = makeCart({
+    const mandate = await createCartMandate(cart, DOMAIN, keys);
+    const modified = makeCart({
       items: [
         { sku: '5', name: 'Tricou', quantity: 2, unitPrice: 60.00 },
         { sku: '1', name: 'Rochita Roz', quantity: 1, unitPrice: 0.08 },
       ],
     });
-    assert.equal(mandateMatchesCart(mandate, modifiedCart), false);
+    assert.equal(mandateMatchesCart(mandate, modified), false);
   });
 });
