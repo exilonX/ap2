@@ -10,6 +10,7 @@ import { getOrderFormIdFromRequest, generateSessionId } from '../utils/session';
 import type { CheckoutSession } from '../types/shared';
 
 const VBASE_BUCKET = 'acg-sessions';
+const MANDATE_BUCKET = 'acg-mandates';
 
 interface CheckoutExecuteRequest {
   customerData?: {
@@ -50,6 +51,17 @@ export async function initiateCheckout(ctx: Context) {
   try {
     console.log('[ACG Checkout] INITIATE request');
 
+    // Check for mandate in request body
+    let mandate: unknown = null;
+    try {
+      const body = await json(ctx.req);
+      if (body?.mandate) {
+        mandate = body.mandate;
+      }
+    } catch {
+      // No body or no mandate — that's fine
+    }
+
     const orderFormId = getOrderFormIdFromRequest(ctx);
 
     if (!orderFormId) {
@@ -82,6 +94,22 @@ export async function initiateCheckout(ctx: Context) {
     // Store session in VBase
     await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
 
+    // Store mandate if provided
+    let mandateId: string | null = null;
+    if (mandate && typeof mandate === 'object') {
+      const m = mandate as { contents?: { id?: string } };
+      mandateId = m.contents?.id || null;
+      if (mandateId) {
+        await ctx.clients.vbase.saveJSON(MANDATE_BUCKET, mandateId, {
+          mandate,
+          sessionId,
+          orderFormId,
+          storedAt: new Date().toISOString(),
+        });
+        console.log(`[ACG Checkout] Mandate stored: ${mandateId}`);
+      }
+    }
+
     const cart = mapOrderFormToCart(orderForm);
     const workspace = ctx.vtex.workspace || 'master';
     const host = workspace === 'master'
@@ -96,6 +124,7 @@ export async function initiateCheckout(ctx: Context) {
 
     const response = {
       sessionId,
+      mandateId,
       checkoutUrl: checkoutRedirectUrl,
       directCheckoutUrl: checkoutDirectUrl,
       expiresAt: new Date(session.expiresAt).toISOString(),
@@ -107,7 +136,7 @@ export async function initiateCheckout(ctx: Context) {
       message: 'Click the checkout link to complete your purchase.',
     };
 
-    console.log('[ACG Checkout] INITIATE Response:', JSON.stringify(response, null, 2));
+    console.log('[ACG Checkout] INITIATE Response:', `sessionId: ${response.sessionId}`);
     ctx.body = response;
   } catch (error) {
     console.error('[ACG Checkout] Initiate error:', error);

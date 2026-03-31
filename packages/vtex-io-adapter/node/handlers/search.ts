@@ -33,7 +33,7 @@ export async function searchProducts(ctx: Context) {
       parseInt(limit as string, 10)
     );
 
-    console.log('[ACG Search] VTEX Response:', JSON.stringify(vtexProducts, null, 2));
+    console.log('[ACG Search] VTEX Response:', `${vtexProducts.length} products found`);
 
     // Map to simple format
     let products = vtexProducts.map(mapProduct);
@@ -73,7 +73,7 @@ export async function searchProducts(ctx: Context) {
       currency,
     };
 
-    console.log('[ACG Search] Response:', JSON.stringify(response, null, 2));
+    console.log('[ACG Search] Response:', `${response.products?.length ?? 0} products, currency: ${response.currency ?? 'unknown'}`);
     ctx.body = response;
   } catch (error) {
     console.error('Search error:', error);
@@ -104,7 +104,7 @@ export async function getProductDetail(ctx: Context) {
 
     const vtexProduct = await search.getProductBySku(sku);
 
-    console.log('[ACG Product] VTEX Response:', JSON.stringify(vtexProduct, null, 2));
+    console.log('[ACG Product] VTEX Response:', `product ${vtexProduct?.productId ?? 'null'}`);
 
     if (!vtexProduct) {
       ctx.status = 404;
@@ -113,7 +113,7 @@ export async function getProductDetail(ctx: Context) {
     }
 
     const response = mapProductDetail(vtexProduct, sku);
-    console.log('[ACG Product] Response:', JSON.stringify(response, null, 2));
+    console.log('[ACG Product] Response:', `sku: ${response.sku}, price: ${response.price}`);
     ctx.body = response;
   } catch (error) {
     console.error('Product detail error:', error);

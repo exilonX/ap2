@@ -17,6 +17,7 @@ import {
 } from '@acg/core'
 import type { SimpleCart } from '@acg/shared/cart'
 import { join } from 'path'
+import { homedir } from 'os'
 
 // Merchant identity — loaded once, persisted across calls
 let merchantIdentity: MerchantIdentity | null = null;
@@ -34,7 +35,7 @@ export function getLastMandate(): CartMandate | null {
 function getIdentity(): MerchantIdentity {
   if (!merchantIdentity) {
     const domain = `${process.env.VTEX_WORKSPACE || 'master'}--${process.env.VTEX_ACCOUNT || 'store'}.myvtex.com`;
-    const keyPath = join(process.cwd(), 'keys', 'merchant.json');
+    const keyPath = join(homedir(), '.acg', 'keys', 'merchant.json');
     merchantIdentity = loadOrCreateIdentity(domain, keyPath);
   }
   return merchantIdentity;

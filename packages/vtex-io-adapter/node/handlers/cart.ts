@@ -20,10 +20,10 @@ export async function getCart(ctx: Context) {
     console.log('[ACG Cart] OrderFormId:', orderFormId);
 
     const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId);
-    console.log('[ACG Cart] VTEX OrderForm:', JSON.stringify(orderForm, null, 2));
+    console.log('[ACG Cart] VTEX OrderForm:', `${orderForm.items?.length ?? 0} items, value: ${orderForm.value}`);
 
     const response = mapOrderFormToCart(orderForm);
-    console.log('[ACG Cart] Response:', JSON.stringify(response, null, 2));
+    console.log('[ACG Cart] Response:', `${response.items?.length ?? 0} items, total: ${response.total}`);
     ctx.body = response;
   } catch (error) {
     console.error('Get cart error:', error);
@@ -63,7 +63,7 @@ export async function addToCart(ctx: Context) {
       { id: sku, quantity, seller },
     ]);
 
-    console.log('[ACG Cart] VTEX OrderForm after add:', JSON.stringify(orderForm, null, 2));
+    console.log('[ACG Cart] VTEX OrderForm after add:', `${orderForm.items?.length ?? 0} items, value: ${orderForm.value}`);
 
     const cart = mapOrderFormToCart(orderForm);
 
@@ -76,7 +76,7 @@ export async function addToCart(ctx: Context) {
       addedItem,
     };
 
-    console.log('[ACG Cart] ADD Response:', JSON.stringify(response, null, 2));
+    console.log('[ACG Cart] ADD Response:', `success: ${response.success}, items: ${response.cart?.items?.length ?? 0}`);
     ctx.body = response;
   } catch (error) {
     console.error('Add to cart error:', error);
@@ -123,14 +123,14 @@ export async function removeFromCart(ctx: Context) {
       itemIndex
     );
 
-    console.log('[ACG Cart] VTEX OrderForm after remove:', JSON.stringify(updatedOrderForm, null, 2));
+    console.log('[ACG Cart] VTEX OrderForm after remove:', `${updatedOrderForm.items?.length ?? 0} items remaining`);
 
     const response = {
       success: true,
       cart: mapOrderFormToCart(updatedOrderForm),
     };
 
-    console.log('[ACG Cart] REMOVE Response:', JSON.stringify(response, null, 2));
+    console.log('[ACG Cart] REMOVE Response:', `success: ${response.success}, items: ${response.cart?.items?.length ?? 0}`);
     ctx.body = response;
   } catch (error) {
     console.error('Remove from cart error:', error);

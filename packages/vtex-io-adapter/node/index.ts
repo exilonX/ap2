@@ -13,6 +13,7 @@ import {
   getOrderStatus,
 } from './handlers/checkout'
 import { serveDIDDocument } from './handlers/did'
+import { getMandate, storeMandate } from './handlers/mandate'
 
 const TIMEOUT_MS = 5000
 
@@ -101,6 +102,12 @@ export default new Service({
     }),
     orderStatus: method({
       GET: [getOrderStatus],
+    }),
+    getMandate: method({
+      GET: [getMandate],
+    }),
+    storeMandate: method({
+      POST: [storeMandate],
     }),
     didDocument: method({
       GET: [serveDIDDocument],

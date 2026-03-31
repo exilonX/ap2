@@ -18,8 +18,11 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
    */
   server.tool('checkout', {}, async () => {
     try {
-      const result = await client.post<CheckoutInitiation>('/checkout/initiate')
       const mandate = getLastMandate();
+
+      // Send mandate with checkout request if one was created
+      const body = mandate ? { mandate } : undefined;
+      const result = await client.post<CheckoutInitiation & { mandateId?: string }>('/checkout/initiate', body);
 
       let response =
         `Ready to complete your purchase!\n\n` +
@@ -27,19 +30,22 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
         `- Items: ${result.cart.itemCount}\n` +
         `- Total: ${result.cart.total.toFixed(2)} ${result.cart.currency}\n\n`
 
-      if (mandate) {
+      const baseUrl = result.checkoutUrl?.split('/_v/acg/')[0] || '';
+
+      if (mandate && result.mandateId) {
         const jwtParts = mandate.merchant_authorization.split('.');
         const jwtPayload = JSON.parse(Buffer.from(jwtParts[1], 'base64url').toString());
         response +=
-          `**AP2 Mandate:** \`${mandate.contents.id}\`\n` +
+          `**AP2 Mandate:** \`${result.mandateId}\`\n` +
           `- Cart Hash: \`${jwtPayload.cart_hash.substring(0, 16)}...\`\n` +
           `- Signed by: \`${mandate.contents.merchant_name}\`\n` +
-          `- Cart locked at ${mandate.contents.total.value} ${mandate.contents.total.currency}\n\n`
+          `- Cart locked at ${mandate.contents.total.value} ${mandate.contents.total.currency}\n\n` +
+          `**Mandate proof (public):** ${baseUrl}/_v/acg/mandates/${result.mandateId}\n` +
+          `**Merchant identity (DID):** ${baseUrl}/_v/acg/.well-known/did.json\n\n`
       }
 
       response +=
         `**Complete checkout:** ${result.checkoutUrl}\n\n` +
-        `Direct link: ${result.directCheckoutUrl}\n\n` +
         `This link expires in 10 minutes.`
 
       return {
