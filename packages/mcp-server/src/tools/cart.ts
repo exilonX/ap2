@@ -6,15 +6,58 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import axios from 'axios'
 import { VtexClient } from '../client'
 import type { SimpleCart, AddToCartResponse } from '@acg/shared/cart'
 import type { IntelligenceResponse } from '@acg/shared/intelligence'
 
+const CART_APP_URI = 'ui://acg-cart/index.html'
+
+async function imageToDataUri(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000 })
+    const contentType = (response.headers['content-type'] || 'image/jpeg').split(';')[0]
+    return `data:${contentType};base64,${Buffer.from(response.data).toString('base64')}`
+  } catch { return null }
+}
+
+async function embedCartImages(cart: SimpleCart): Promise<SimpleCart> {
+  const items = await Promise.all(
+    cart.items.map(async (item) => {
+      const imgUrl = item.image?.replace(/-\d+-\d+\//, '-100-100/') || item.image
+      const dataUri = imgUrl ? await imageToDataUri(imgUrl) : null
+      return { ...item, image: dataUri || undefined }
+    })
+  )
+  return { ...cart, items }
+}
+
 export function registerCartTools(server: McpServer, client: VtexClient) {
+  // Register cart MCP App resource
+  let cartHtml: string
+  try {
+    cartHtml = readFileSync(join(__dirname, '..', 'apps', 'cart.html'), 'utf-8')
+  } catch {
+    try {
+      cartHtml = readFileSync(join(__dirname, '..', '..', 'src', 'apps', 'cart.html'), 'utf-8')
+    } catch {
+      cartHtml = '<html><body><p>Cart app not found</p></body></html>'
+    }
+  }
+
+  server.resource(
+    CART_APP_URI, CART_APP_URI,
+    { mimeType: 'text/html;profile=mcp-app' },
+    async () => ({
+      contents: [{ uri: CART_APP_URI, mimeType: 'text/html;profile=mcp-app', text: cartHtml }],
+    })
+  )
   /**
-   * Add item to cart
+   * Add item to cart — returns visual cart preview
    */
-  server.tool(
+  const addToCartTool = server.tool(
     'addToCart',
     {
       sku: z.string().describe('The product SKU to add'),
@@ -24,97 +67,55 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
       try {
         const result = await client.post<AddToCartResponse>(
           '/cart/items',
-          {
-            sku: params.sku,
-            quantity: params.quantity || 1,
-          }
+          { sku: params.sku, quantity: params.quantity || 1 }
         )
 
         if (!result.success) {
           return {
-            content: [
-              {
-                type: 'text' as const,
-                text: `Could not add item to cart: ${result.error || 'Unknown error'}`,
-              },
-            ],
+            content: [{ type: 'text' as const, text: `Could not add item to cart: ${result.error || 'Unknown error'}` }],
             isError: true,
           }
         }
 
-        const cart = result.cart
-        let response = `Added to cart!\n\n`
-        response += `**Current Cart:**\n`
-        cart.items.forEach((item) => {
-          response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${cart.currency}\n`
-        })
-        response += `\n**Total: ${cart.total.toFixed(2)} ${cart.currency}**`
-
+        const cartWithImages = await embedCartImages(result.cart)
         return {
-          content: [{ type: 'text' as const, text: response }],
+          content: [{ type: 'text' as const, text: JSON.stringify({ cart: cartWithImages, action: 'added', addedSku: params.sku }) }],
         }
       } catch (error) {
         return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Error adding to cart: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
+          content: [{ type: 'text' as const, text: `Error adding to cart: ${error instanceof Error ? error.message : 'Unknown error'}` }],
           isError: true,
         }
       }
     }
   )
+  addToCartTool._meta = { ui: { resourceUri: CART_APP_URI } } as any
 
   /**
    * Get current cart
    */
-  server.tool('getCart', {}, async () => {
+  const getCartTool = server.tool('getCart', {}, async () => {
     try {
       const cart = await client.get<SimpleCart>('/cart')
 
       if (cart.items.length === 0) {
         return {
-          content: [
-            {
-              type: 'text' as const,
-              text: 'Your cart is empty. Search for products to add.',
-            },
-          ],
+          content: [{ type: 'text' as const, text: JSON.stringify({ cart }) }],
         }
       }
 
-      let response = `**Your Cart:**\n\n`
-      cart.items.forEach((item) => {
-        response += `- ${item.name} × ${item.quantity} = ${item.totalPrice.toFixed(2)} ${cart.currency}\n`
-      })
-
-      response += `\n`
-      response += `Subtotal: ${cart.subtotal.toFixed(2)} ${cart.currency}\n`
-      if (cart.shipping !== undefined) {
-        response += `Shipping: ${cart.shipping.toFixed(2)} ${cart.currency}\n`
-      }
-      if (cart.discount) {
-        response += `Discount: -${cart.discount.toFixed(2)} ${cart.currency}\n`
-      }
-      response += `**Total: ${cart.total.toFixed(2)} ${cart.currency}**`
-
+      const cartWithImages = await embedCartImages(cart)
       return {
-        content: [{ type: 'text' as const, text: response }],
+        content: [{ type: 'text' as const, text: JSON.stringify({ cart: cartWithImages }) }],
       }
     } catch (error) {
       return {
-        content: [
-          {
-            type: 'text' as const,
-            text: `Error getting cart: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          },
-        ],
+        content: [{ type: 'text' as const, text: `Error getting cart: ${error instanceof Error ? error.message : 'Unknown error'}` }],
         isError: true,
       }
     }
   })
+  getCartTool._meta = { ui: { resourceUri: CART_APP_URI } } as any
 
   /**
    * Remove item from cart

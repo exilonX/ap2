@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>ACG Products</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    padding: 20px;
+    min-height: 500px;
+  }
+
+  .search-header {
+    font-size: 14px;
+    color: #8b949e;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #21262d;
+  }
+  .search-header strong { color: #e6edf3; }
+
+  .product-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .product-card {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: row;
+    transition: border-color 0.2s;
+  }
+  .product-card:hover {
+    border-color: #667eea;
+  }
+
+  .product-image-wrap {
+    width: 180px;
+    min-height: 180px;
+    flex-shrink: 0;
+    background: #f5f5f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .product-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .product-image-placeholder {
+    font-size: 40px;
+    color: #ccc;
+  }
+
+  .product-body {
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .product-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #e6edf3;
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+  .product-category {
+    font-size: 12px;
+    color: #8b949e;
+    margin-bottom: 12px;
+  }
+
+  .price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .product-price {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e6edf3;
+  }
+  .product-currency {
+    font-size: 14px;
+    color: #8b949e;
+  }
+  .product-original-price {
+    font-size: 14px;
+    color: #8b949e;
+    text-decoration: line-through;
+  }
+  .product-discount {
+    display: inline-block;
+    background: #da3633;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .product-brand {
+    font-size: 12px;
+    color: #667eea;
+    margin-top: 6px;
+  }
+  .product-sku {
+    font-size: 11px;
+    color: #484f58;
+    margin-top: 2px;
+  }
+
+  .product-actions {
+    margin-top: 12px;
+  }
+
+  .add-btn {
+    padding: 10px 24px;
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .add-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .add-btn:active { transform: translateY(0); }
+  .add-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .add-btn.added {
+    background: #238636;
+  }
+
+  .out-of-stock .product-image-wrap { opacity: 0.5; }
+  .out-of-stock .product-name::after {
+    content: ' — Out of Stock';
+    color: #da3633;
+    font-weight: normal;
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="search-header" id="search-header">Loading products...</div>
+<div class="product-list" id="products-grid"></div>
+
+<script>
+  var rpcId = 1;
+  var pendingRequests = {};
+
+  function sendToHost(msg) { window.parent.postMessage(msg, '*'); }
+
+  function rpcRequest(method, params) {
+    return new Promise(function(resolve, reject) {
+      var id = rpcId++;
+      pendingRequests[id] = { resolve: resolve, reject: reject };
+      sendToHost({ jsonrpc: '2.0', id: id, method: method, params: params || {} });
+      setTimeout(function() {
+        if (pendingRequests[id]) { delete pendingRequests[id]; reject(new Error('Timeout')); }
+      }, 30000);
+    });
+  }
+
+  window.addEventListener('message', function(event) {
+    var data = event.data;
+    if (!data || !data.jsonrpc) return;
+    if (data.id && pendingRequests[data.id]) {
+      var p = pendingRequests[data.id];
+      delete pendingRequests[data.id];
+      data.error ? p.reject(new Error(data.error.message)) : p.resolve(data.result);
+      return;
+    }
+    if (data.method === 'ui/notifications/tool-result' || data.method === 'ui/notifications/tool-input') {
+      handleToolResult(data.params);
+    }
+  });
+
+  function connectToHost() {
+    rpcRequest('ui/initialize', {
+      appInfo: { name: 'ACG Products', version: '1.0.0' },
+      appCapabilities: {},
+      protocolVersion: '2026-01-26',
+    }).then(function() {
+      sendToHost({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} });
+    }).catch(function() {});
+  }
+
+  function handleToolResult(params) {
+    try {
+      var result = params.result || params;
+      var text = null;
+      if (result.content) {
+        for (var i = 0; i < result.content.length; i++) {
+          if (result.content[i].type === 'text') { text = result.content[i].text; break; }
+        }
+      }
+      if (text) renderProducts(JSON.parse(text));
+    } catch (e) {}
+  }
+
+  function renderProducts(data) {
+    var products = data.products || [];
+    var currency = data.currency || 'EUR';
+    var query = data.query || '';
+    var total = data.total || products.length;
+
+    document.getElementById('search-header').innerHTML =
+      'Found <strong>' + total + '</strong> product' + (total !== 1 ? 's' : '') + ' for "<strong>' + escHtml(query) + '</strong>"';
+
+    var html = '';
+    for (var i = 0; i < products.length; i++) {
+      var p = products[i];
+      var discount = 0;
+      if (p.originalPrice && p.originalPrice > p.price) {
+        discount = Math.round((1 - p.price / p.originalPrice) * 100);
+      }
+
+      html += '<div class="product-card' + (!p.available ? ' out-of-stock' : '') + '">';
+
+      // Image
+      html += '<div class="product-image-wrap">';
+      if (p.image) {
+        html += '<img class="product-image" src="' + escAttr(p.image) + '" alt="' + escAttr(p.name) + '">';
+      } else {
+        html += '<div class="product-image-placeholder">&#128722;</div>';
+      }
+      html += '</div>';
+
+      // Body
+      html += '<div class="product-body">';
+      html += '<div>';
+      html += '<div class="product-name">' + escHtml(p.name) + '</div>';
+      if (p.category) html += '<div class="product-category">' + escHtml(p.category) + '</div>';
+
+      // Price
+      html += '<div class="price-row">';
+      html += '<span class="product-price">' + p.price.toFixed(2) + '</span>';
+      html += '<span class="product-currency">' + currency + '</span>';
+      if (discount > 0) {
+        html += '<span class="product-original-price">' + p.originalPrice.toFixed(2) + '</span>';
+        html += '<span class="product-discount">-' + discount + '%</span>';
+      }
+      html += '</div>';
+
+      if (p.brand) html += '<div class="product-brand">' + escHtml(p.brand) + '</div>';
+      html += '<div class="product-sku">SKU: ' + escHtml(p.sku) + '</div>';
+      html += '</div>';
+
+      // Actions
+      html += '<div class="product-actions">';
+      if (p.available) {
+        html += '<button class="add-btn" onclick="addToCart(\'' + escAttr(p.sku) + '\', this)">Add to Cart</button>';
+      }
+      html += '</div>';
+
+      html += '</div></div>';
+    }
+
+    document.getElementById('products-grid').innerHTML = html;
+    notifySize();
+  }
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  window.addToCart = function(sku, btn) {
+    btn.textContent = 'Adding...';
+    btn.disabled = true;
+    rpcRequest('tools/call', { name: 'addToCart', arguments: { sku: sku, quantity: 1 } })
+      .then(function() { btn.textContent = 'Added!'; btn.className = 'add-btn added'; })
+      .catch(function() { btn.textContent = 'Add to Cart'; btn.disabled = false; });
+  };
+
+  function notifySize() {
+    var height = Math.max(document.body.scrollHeight, 500);
+    sendToHost({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: height } });
+  }
+
+  setTimeout(notifySize, 100);
+  setTimeout(notifySize, 1000);
+  connectToHost();
+</script>
+</body>
+</html>

@@ -39,11 +39,20 @@ async function main() {
   // Create VTEX client
   const vtexClient = new VtexClient(config)
 
-  // Create MCP server
-  const server = new McpServer({
-    name: 'vtex-commerce-agent',
-    version: '0.0.1',
-  })
+  // Create MCP server with MCP Apps extension support
+  const server = new McpServer(
+    {
+      name: 'vtex-commerce-agent',
+      version: '0.0.1',
+    },
+    {
+      capabilities: {
+        extensions: {
+          'io.modelcontextprotocol/ui': {},
+        },
+      } as any,
+    }
+  )
 
   // Register all tools
   registerSearchTools(server, vtexClient)
@@ -51,7 +60,7 @@ async function main() {
   registerCheckoutTools(server, vtexClient)
   registerMandateTools(server, vtexClient)
 
-  // Connect via stdio (for Claude Desktop)
+  // Connect via stdio (for Claude Desktop) — must be AFTER all tools registered
   const transport = new StdioServerTransport()
   await server.connect(transport)
 

@@ -134,19 +134,25 @@ The ACG project is a middleware connecting AI agents (Claude, GPT, Gemini) to VT
 
 ## Phase 6: Demo Preparation
 
-### 6.1 End-to-end verification
-- `vtex link` + `npm run build` + Claude Desktop config
-- Full flow: search -> cart -> shipping -> deal -> mandate -> payment -> order
+### Demo script (`docs/DEMO_SCRIPT.md`)
 
-### 6.2 Demo script (`docs/DEMO_SCRIPT.md`)
-- 3-minute choreographed flow
-- Highlight AP2 mandates as differentiator
-- Split-screen: Claude Desktop + VTEX Admin + mandate artifacts
+**Two demo paths:**
 
-### 6.3 Record & publish
-- Screen recording with narration
-- Edit to under 3 minutes
-- LinkedIn / conference ready
+**Path A — VTEX Native Checkout (production-ready)**
+Search → cart → deals → mandate sign → verify → checkout redirect → VTEX checkout in browser → payment → order in VTEX Admin
+
+**Path B — In-Chat Payment (future/AP2-complete)**
+Search → cart → deals → mandate sign → verify → MCP App payment form in chat → payment token → order created → receipt in chat
+
+**Split-screen layout:**
+- Left: Claude Desktop (conversation)
+- Right: Browser (VTEX checkout / mandate proof / DID document / VTEX Admin orders)
+
+**Key talking points:**
+- AP2 protocol compliance (JWT mandates, DID, W3C PaymentItem format)
+- Public verifiability (mandate URL + DID URL)
+- Platform-agnostic core (works with any commerce platform, not just VTEX)
+- Future-ready for Stripe ACP, Adyen, PayPal Agent Ready, Google Pay/UCP
 
 ---
 
@@ -168,7 +174,74 @@ The ACG project is a middleware connecting AI agents (Claude, GPT, Gemini) to VT
 
 ---
 
-## Phase 7: RAG & Intelligent Commerce (Future — Customer-Facing)
+## Phase 5: In-Chat Payment via MCP Apps
+
+Target: enable payment directly inside Claude Desktop without browser redirect.
+
+### Architecture
+MCP Apps (launched Jan 26, 2026) allow MCP servers to return interactive HTML/JS that renders in sandboxed iframes inside the chat. This enables:
+- Payment forms (Stripe Elements, Adyen Drop-in) rendered in-chat
+- PCI-compliant card input in sandboxed iframe (same pattern as Stripe.js on websites)
+- Token generated client-side → MCP server → VTEX headless checkout → order created
+
+### 5.1 Research MCP Apps spec
+- Understand `_meta.ui.resourceUri`, `postMessage` JSON-RPC, sandbox restrictions
+- Check Claude Desktop support for MCP Apps rendering
+
+### 5.2 Build checkout MCP App
+- HTML/JS payment form (card input fields or Stripe Elements)
+- Cart summary display with images and prices
+- "Pay" button that generates a payment token
+
+### 5.3 Wire iframe → MCP server → VTEX headless checkout
+- Iframe sends payment token to MCP server via JSON-RPC postMessage
+- MCP server calls VTEX: `POST /orderForm/{id}/transaction` (place order)
+- Then: `POST /transactions/{id}/payments` (send payment info)
+- Then: `POST /transactions/{id}/authorization-request` (authorize)
+
+### 5.4 Add PaymentReceipt
+- Show order confirmation in chat after successful payment
+- AP2-compliant PaymentReceipt object with orderId, amount, status
+
+---
+
+## Phase 6: Visual Improvements
+
+### 6.1 Better product display
+- Use MCP Apps to render product cards with images, prices, discounts
+- Cart summary as a styled HTML table via MCP App
+
+### 6.2 Profile & shipping data collection
+- MCP App form for customer profile (email, name, phone)
+- MCP App form for shipping address
+- Data flows to VTEX orderForm via existing handlers
+
+---
+
+## Phase 7: Payment Provider Integration
+
+### 7.1 Stripe ACP (SharedPaymentTokens)
+- Accept SPTs from AI platforms (ChatGPT Instant Checkout)
+- Wire SPT → VTEX Stripe connector → payment processed
+- Requires VTEX store to use Stripe as payment gateway
+
+### 7.2 Adyen MCP
+- Use Adyen's MCP server for checkout
+- Pass Adyen tokens through VTEX Adyen connector
+- Most common payment gateway on VTEX in Europe
+
+### 7.3 PayPal Agent Ready
+- Monitor PayPal Agent Ready launch
+- Integrate when available — PayPal connector already exists on most VTEX stores
+
+### 7.4 Google Pay / UCP
+- Natural extension of our AP2 implementation
+- Accept Google Pay FPAN tokens via UCP flow
+- Use VTEX Google Pay connector (already available via WH Google Pay on vtexeurope)
+
+---
+
+## Phase 9: RAG & Intelligent Commerce (Future — Customer-Facing)
 
 Target: post-demo, sellable to VTEX customers as a value-add.
 

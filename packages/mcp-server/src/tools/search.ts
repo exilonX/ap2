@@ -6,21 +6,56 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import axios from 'axios'
 import { VtexClient } from '../client'
 import type { ProductSearchResult, ProductDetail } from '@acg/shared/product'
 
+/**
+ * Fetch image and convert to base64 data URI.
+ */
+async function imageToDataUri(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000 })
+    const contentType = (response.headers['content-type'] || 'image/jpeg').split(';')[0]
+    const base64 = Buffer.from(response.data).toString('base64')
+    return `data:${contentType};base64,${base64}`
+  } catch {
+    return null
+  }
+}
+
+const PRODUCTS_APP_URI = 'ui://acg-products/index.html'
+
 export function registerSearchTools(server: McpServer, client: VtexClient) {
-  /**
-   * Search for products in the store
-   */
-  server.tool(
-    'searchProducts',
+  // Register products MCP App resource
+  let productsHtml: string
+  try {
+    productsHtml = readFileSync(join(__dirname, '..', 'apps', 'products.html'), 'utf-8')
+  } catch {
+    try {
+      productsHtml = readFileSync(join(__dirname, '..', '..', 'src', 'apps', 'products.html'), 'utf-8')
+    } catch {
+      productsHtml = '<html><body><p>Products app not found</p></body></html>'
+    }
+  }
+
+  server.resource(
+    PRODUCTS_APP_URI, PRODUCTS_APP_URI,
+    { mimeType: 'text/html;profile=mcp-app' },
+    async () => ({
+      contents: [{ uri: PRODUCTS_APP_URI, mimeType: 'text/html;profile=mcp-app', text: productsHtml }],
+    })
+  )
+
+  // Visual product search — renders product cards with images in chat
+  const browseProductsTool = server.tool(
+    'browseProducts',
+    'Search and browse products visually with images, prices, and add-to-cart buttons.',
     {
-      query: z.string().describe('Search query (e.g., "running shoes", "blue t-shirt")'),
-      maxResults: z.number().optional().describe('Maximum number of results to return (default: 5)'),
-      category: z.string().optional().describe('Filter by category (optional)'),
-      minPrice: z.number().optional().describe('Minimum price filter (optional)'),
-      maxPrice: z.number().optional().describe('Maximum price filter (optional)'),
+      query: z.string().describe('Search query'),
+      maxResults: z.number().optional().describe('Max results (default: 5)'),
     },
     async (params) => {
       try {
@@ -28,138 +63,46 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
           q: params.query,
           limit: String(params.maxResults || 5),
         }
-
-        if (params.category) {
-          searchParams.category = params.category
-        }
-        if (params.minPrice !== undefined) {
-          searchParams.minPrice = String(params.minPrice)
-        }
-        if (params.maxPrice !== undefined) {
-          searchParams.maxPrice = String(params.maxPrice)
-        }
-
         const result = await client.get<ProductSearchResult>('/search', searchParams)
 
-        if (result.products.length === 0) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: `No products found for "${params.query}". Try a different search term.`,
-              },
-            ],
-          }
-        }
-
-        const cur = result.currency || 'EUR'
-
-        const productList = result.products
-          .map((p, i) => {
-            let line = ''
-            if (p.image) {
-              line += `![${p.name}](${p.image})\n\n`
-            }
-            line += `**${i + 1}. ${p.name}**\n`
-            line += `Price: ${p.price.toFixed(2)} ${cur}`
-            if (p.originalPrice && p.originalPrice > p.price) {
-              const discount = Math.round((1 - p.price / p.originalPrice) * 100)
-              line += ` ~~${p.originalPrice.toFixed(2)} ${cur}~~ (-${discount}%)`
-            }
-            if (!p.available) {
-              line += ' [OUT OF STOCK]'
-            }
-            line += `\nSKU: ${p.sku}`
-            if (p.brand) {
-              line += ` | Brand: ${p.brand}`
-            }
-            if (p.category) {
-              line += ` | Category: ${p.category}`
-            }
-            return line
+        // Fetch images and embed as base64 data URIs (CSP blocks external URLs in iframe)
+        const productsWithImages = await Promise.all(
+          result.products.map(async (p) => {
+            // Request larger image from VTEX CDN (replace -55-55 thumbnail with -500-500)
+            const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
+            const dataUri = imageUrl ? await imageToDataUri(imageUrl) : null
+            return { ...p, image: dataUri || undefined }
           })
-          .join('\n\n---\n\n')
+        )
 
         return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Found ${result.total} products for "${result.query}":\n\n${productList}`,
-            },
-          ],
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ ...result, products: productsWithImages }),
+          }],
         }
       } catch (error) {
         return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Error searching products: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ error: error instanceof Error ? error.message : 'Search failed' }),
+          }],
           isError: true,
         }
       }
     }
   )
 
-  /**
-   * Get detailed information about a specific product
-   */
-  server.tool(
-    'getProductDetails',
-    {
-      sku: z.string().describe('The product SKU'),
+  // Set _meta.ui for MCP App rendering, allow VTEX image CDN
+  browseProductsTool._meta = {
+    ui: {
+      resourceUri: PRODUCTS_APP_URI,
+      csp: {
+        resourceDomains: ['vtexeurope.vteximg.com.br', '*.vteximg.com.br', 'vteximg.com.br'],
+      },
     },
-    async (params) => {
-      try {
-        const product = await client.get<ProductDetail>(`/product/${params.sku}`)
+  } as any
 
-        let details = ''
-        if (product.image) {
-          details += `![${product.name}](${product.image})\n\n`
-        }
-        details += `**${product.name}**\n`
-        details += `Price: ${product.price.toFixed(2)}`
-        if (product.originalPrice && product.originalPrice > product.price) {
-          const discount = Math.round((1 - product.price / product.originalPrice) * 100)
-          details += ` ~~${product.originalPrice.toFixed(2)}~~ (-${discount}%)`
-        }
-        details += `\n`
-        details += `SKU: ${product.sku}\n`
-        details += `Availability: ${product.available ? 'In Stock' : 'Out of Stock'}\n`
-
-        if (product.brand) {
-          details += `Brand: ${product.brand}\n`
-        }
-        if (product.category) {
-          details += `Category: ${product.category}\n`
-        }
-
-        if (product.description) {
-          details += `\nDescription: ${product.description}\n`
-        }
-
-        if (product.specifications && Object.keys(product.specifications).length > 0) {
-          details += `\nSpecifications:\n`
-          for (const [key, value] of Object.entries(product.specifications)) {
-            details += `- ${key}: ${value}\n`
-          }
-        }
-
-        return {
-          content: [{ type: 'text' as const, text: details }],
-        }
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Error getting product details: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            },
-          ],
-          isError: true,
-        }
-      }
-    }
-  )
+  // searchProducts and getProductDetails commented out — browseProducts replaces them
+  // with visual MCP App rendering. Uncomment if text-only search is needed.
 }

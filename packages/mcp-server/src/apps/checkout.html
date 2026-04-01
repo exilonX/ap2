@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>ACG Checkout</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f8f9fa;
+    color: #1a1a2e;
+    padding: 16px;
+    min-height: 500px;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 16px 20px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header h2 { font-size: 16px; font-weight: 600; }
+  .header .badge {
+    background: rgba(255,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+  }
+
+  .cart-items {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #999;
+    margin-bottom: 12px;
+  }
+  .cart-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .cart-item:last-child { border-bottom: none; }
+  .cart-item img {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #eee;
+  }
+  .cart-item .details { flex: 1; }
+  .cart-item .name { font-size: 13px; font-weight: 500; }
+  .cart-item .qty { font-size: 11px; color: #999; }
+  .cart-item .price { font-size: 14px; font-weight: 600; text-align: right; }
+
+  .totals {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .total-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+    color: #666;
+  }
+  .total-line.discount { color: #28a745; }
+  .total-line.grand {
+    padding-top: 10px;
+    margin-top: 8px;
+    border-top: 2px solid #1a1a2e;
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+
+  .ap2-section {
+    background: #161b22;
+    border: 1px solid #238636;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .ap2-verified {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #3fb950;
+    margin-bottom: 12px;
+  }
+  .ap2-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: #238636;
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+  }
+  .ap2-detail {
+    font-size: 12px;
+    padding: 3px 0;
+    display: flex;
+    gap: 6px;
+  }
+  .ap2-label { color: #8b949e; min-width: 70px; }
+  .ap2-value { color: #e6edf3; font-family: monospace; font-size: 11px; word-break: break-all; }
+  .ap2-links {
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .ap2-link {
+    font-size: 12px;
+    color: #667eea;
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 1px solid #667eea;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+  .ap2-link:hover { background: #667eea20; }
+
+  .checkout-btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    display: block;
+    text-align: center;
+  }
+  .checkout-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(102,126,234,0.4);
+  }
+
+  .secure-note {
+    text-align: center;
+    margin-top: 12px;
+    font-size: 11px;
+    color: #999;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h2>Order Summary</h2>
+  <span class="badge">AP2 Secured</span>
+</div>
+
+<div class="cart-items">
+  <div class="section-title">Your Items</div>
+  <div id="items-list"></div>
+</div>
+
+<div class="totals" id="totals"></div>
+
+<div class="ap2-section" id="ap2-section" style="display:none">
+  <div class="section-title">AP2 Security</div>
+  <div class="ap2-status">
+    <div class="ap2-verified">
+      <span class="ap2-check">&#10004;</span>
+      <span>Cart cryptographically signed &amp; verified</span>
+    </div>
+    <div class="ap2-detail"><span class="ap2-label">Mandate:</span> <span class="ap2-value" id="mandate-id"></span></div>
+    <div class="ap2-detail"><span class="ap2-label">Merchant:</span> <span class="ap2-value" id="mandate-did"></span></div>
+    <div class="ap2-detail"><span class="ap2-label">Cart Hash:</span> <span class="ap2-value" id="mandate-hash"></span></div>
+    <div class="ap2-detail"><span class="ap2-label">Signed:</span> <span class="ap2-value" id="mandate-issued"></span></div>
+    <div class="ap2-detail"><span class="ap2-label">Expires:</span> <span class="ap2-value" id="mandate-expires"></span></div>
+    <div class="ap2-links">
+      <a class="ap2-link" id="mandate-proof-link" href="#" onclick="openLink('mandate-proof-link'); return false;">View Mandate Proof</a>
+      <a class="ap2-link" id="did-link" href="#" onclick="openLink('did-link'); return false;">Verify Merchant Identity</a>
+    </div>
+  </div>
+</div>
+
+<a class="checkout-btn" id="checkout-btn" href="#" onclick="openLink('checkout-btn'); return false;">Proceed to Checkout</a>
+
+<div class="secure-note">Secured by AP2 Protocol v0.1.0 &bull; EdDSA (Ed25519) &bull; JWT signed mandate</div>
+
+<script>
+  var rpcId = 1;
+  var pendingRequests = {};
+
+  function sendToHost(msg) { window.parent.postMessage(msg, '*'); }
+
+  function rpcRequest(method, params) {
+    return new Promise(function(resolve, reject) {
+      var id = rpcId++;
+      pendingRequests[id] = { resolve: resolve, reject: reject };
+      sendToHost({ jsonrpc: '2.0', id: id, method: method, params: params || {} });
+      setTimeout(function() {
+        if (pendingRequests[id]) { delete pendingRequests[id]; reject(new Error('Timeout')); }
+      }, 30000);
+    });
+  }
+
+  window.addEventListener('message', function(event) {
+    var data = event.data;
+    if (!data || !data.jsonrpc) return;
+    if (data.id && pendingRequests[data.id]) {
+      var p = pendingRequests[data.id];
+      delete pendingRequests[data.id];
+      data.error ? p.reject(new Error(data.error.message)) : p.resolve(data.result);
+      return;
+    }
+    if (data.method === 'ui/notifications/tool-result' || data.method === 'ui/notifications/tool-input') {
+      handleToolResult(data.params);
+    }
+  });
+
+  function connectToHost() {
+    rpcRequest('ui/initialize', {
+      appInfo: { name: 'ACG Checkout', version: '1.0.0' },
+      appCapabilities: {},
+      protocolVersion: '2026-01-26',
+    }).then(function() {
+      sendToHost({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} });
+    }).catch(function() {});
+  }
+
+  function handleToolResult(params) {
+    try {
+      var result = params.result || params;
+      var text = null;
+      if (result.content) {
+        for (var i = 0; i < result.content.length; i++) {
+          if (result.content[i].type === 'text') { text = result.content[i].text; break; }
+        }
+      }
+      if (text) populateCheckout(JSON.parse(text));
+    } catch (e) {}
+  }
+
+  function populateCheckout(data) {
+    var cart = data.cart;
+    if (!cart || !cart.items) return;
+
+    // Items
+    var html = '';
+    for (var i = 0; i < cart.items.length; i++) {
+      var item = cart.items[i];
+      html += '<div class="cart-item">';
+      if (item.image) {
+        html += '<img src="' + item.image + '" alt="' + item.name + '">';
+      }
+      html += '<div class="details">';
+      html += '<div class="name">' + item.name + '</div>';
+      html += '<div class="qty">&times; ' + item.quantity + '</div>';
+      html += '</div>';
+      html += '<div class="price">' + item.totalPrice.toFixed(2) + ' ' + cart.currency + '</div>';
+      html += '</div>';
+    }
+    document.getElementById('items-list').innerHTML = html;
+
+    // Totals
+    var totals = '';
+    totals += '<div class="total-line"><span>Subtotal</span><span>' + cart.subtotal.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    if (cart.discount) {
+      totals += '<div class="total-line discount"><span>Discount</span><span>-' + cart.discount.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    }
+    if (cart.shipping !== undefined && cart.shipping !== null) {
+      totals += '<div class="total-line"><span>Shipping</span><span>' + cart.shipping.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    }
+    totals += '<div class="total-line grand"><span>Total</span><span>' + cart.total.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    document.getElementById('totals').innerHTML = totals;
+
+    // AP2 Mandate
+    if (data.mandate && data.mandate.id) {
+      document.getElementById('ap2-section').style.display = 'block';
+      document.getElementById('mandate-id').textContent = data.mandate.id;
+      document.getElementById('mandate-did').textContent = data.mandate.merchantDid || '';
+      document.getElementById('mandate-hash').textContent = (data.mandate.cartHash || '').substring(0, 24) + '...';
+      document.getElementById('mandate-issued').textContent = data.mandate.issuedAt ? new Date(data.mandate.issuedAt).toLocaleString() : '';
+      document.getElementById('mandate-expires').textContent = data.mandate.expiresAt ? new Date(data.mandate.expiresAt).toLocaleString() : '';
+      if (data.mandate.mandateUrl) {
+        document.getElementById('mandate-proof-link').href = data.mandate.mandateUrl;
+      }
+      if (data.mandate.didUrl) {
+        document.getElementById('did-link').href = data.mandate.didUrl;
+      }
+    }
+
+    // Checkout button
+    var btn = document.getElementById('checkout-btn');
+    btn.textContent = 'Proceed to Checkout — ' + cart.total.toFixed(2) + ' ' + cart.currency;
+    if (data.checkoutUrl) {
+      btn.href = data.checkoutUrl;
+      btn.onclick = function() {
+        // Try to open via MCP App protocol first
+        rpcRequest('ui/open-link', { url: data.checkoutUrl }).catch(function() {
+          window.open(data.checkoutUrl, '_blank');
+        });
+      };
+    }
+
+    notifySize();
+  }
+
+  function notifySize() {
+    var height = Math.max(document.body.scrollHeight, 400);
+    sendToHost({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: height } });
+  }
+
+  window.openLink = function(elementId) {
+    var url = document.getElementById(elementId).href;
+    if (!url || url === '#') return;
+    // Use MCP App protocol to open link in host browser
+    rpcRequest('ui/open-link', { url: url }).catch(function() {
+      // Fallback: try window.open
+      window.open(url, '_blank');
+    });
+  };
+
+  setTimeout(notifySize, 100);
+  setTimeout(notifySize, 500);
+  connectToHost();
+</script>
+</body>
+</html>

@@ -32,6 +32,13 @@ export function getLastMandate(): CartMandate | null {
   return lastMandate;
 }
 
+/**
+ * Set the last mandate (used by checkout tool when auto-signing).
+ */
+export function setLastMandate(mandate: CartMandate): void {
+  lastMandate = mandate;
+}
+
 function getIdentity(): MerchantIdentity {
   if (!merchantIdentity) {
     const domain = `${process.env.VTEX_WORKSPACE || 'master'}--${process.env.VTEX_ACCOUNT || 'store'}.myvtex.com`;

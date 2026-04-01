@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@acg/core": "file:../core",
+    "@modelcontextprotocol/ext-apps": "^1.3.2",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "axios": "^1.13.6",
     "zod": "^4.3.6"

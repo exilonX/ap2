@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>ACG Cart</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    padding: 20px;
+    min-height: 300px;
+  }
+
+  .cart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #21262d;
+  }
+  .cart-header h3 { font-size: 16px; }
+  .cart-header .count {
+    background: #667eea;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 12px;
+  }
+
+  .empty-cart {
+    text-align: center;
+    padding: 40px 20px;
+    color: #8b949e;
+  }
+  .empty-cart .icon { font-size: 40px; margin-bottom: 12px; }
+
+  .cart-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #21262d;
+  }
+  .cart-item:last-child { border-bottom: none; }
+  .cart-item img {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: #f5f5f5;
+  }
+  .cart-item .img-placeholder {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    background: #21262d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    color: #484f58;
+  }
+  .cart-item .details { flex: 1; }
+  .cart-item .name { font-size: 13px; font-weight: 500; }
+  .cart-item .meta { font-size: 11px; color: #8b949e; margin-top: 2px; }
+  .cart-item .price-col { text-align: right; }
+  .cart-item .item-total { font-size: 14px; font-weight: 600; }
+  .cart-item .unit-price { font-size: 11px; color: #8b949e; }
+
+  .totals {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #21262d;
+  }
+  .total-line {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+    color: #8b949e;
+  }
+  .total-line.discount { color: #3fb950; }
+  .total-line.grand {
+    padding-top: 10px;
+    margin-top: 8px;
+    border-top: 2px solid #667eea;
+    font-size: 20px;
+    font-weight: 700;
+    color: #e6edf3;
+  }
+
+  .status-flags {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .flag {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: #21262d;
+    color: #8b949e;
+  }
+  .flag.ready { background: #238636; color: white; }
+  .flag.warning { background: #9e6a03; color: white; }
+</style>
+</head>
+<body>
+
+<div id="cart-content">
+  <div class="empty-cart">
+    <div class="icon">&#128722;</div>
+    <p>Loading cart...</p>
+  </div>
+</div>
+
+<script>
+  var rpcId = 1;
+  var pendingRequests = {};
+  function sendToHost(msg) { window.parent.postMessage(msg, '*'); }
+  function rpcRequest(method, params) {
+    return new Promise(function(resolve, reject) {
+      var id = rpcId++;
+      pendingRequests[id] = { resolve: resolve, reject: reject };
+      sendToHost({ jsonrpc: '2.0', id: id, method: method, params: params || {} });
+      setTimeout(function() { if (pendingRequests[id]) { delete pendingRequests[id]; reject(new Error('Timeout')); } }, 30000);
+    });
+  }
+  window.addEventListener('message', function(event) {
+    var data = event.data;
+    if (!data || !data.jsonrpc) return;
+    if (data.id && pendingRequests[data.id]) {
+      var p = pendingRequests[data.id]; delete pendingRequests[data.id];
+      data.error ? p.reject(new Error(data.error.message)) : p.resolve(data.result); return;
+    }
+    if (data.method === 'ui/notifications/tool-result' || data.method === 'ui/notifications/tool-input') {
+      handleToolResult(data.params);
+    }
+  });
+  function connectToHost() {
+    rpcRequest('ui/initialize', { appInfo: { name: 'ACG Cart', version: '1.0.0' }, appCapabilities: {}, protocolVersion: '2026-01-26' })
+      .then(function() { sendToHost({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }); }).catch(function() {});
+  }
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function handleToolResult(params) {
+    try {
+      var result = params.result || params;
+      var text = null;
+      if (result.content) { for (var i = 0; i < result.content.length; i++) { if (result.content[i].type === 'text') { text = result.content[i].text; break; } } }
+      if (text) renderCart(JSON.parse(text));
+    } catch (e) {}
+  }
+
+  function renderCart(data) {
+    var cart = data.cart || data;
+    if (!cart || !cart.items) return;
+
+    if (cart.items.length === 0) {
+      document.getElementById('cart-content').innerHTML =
+        '<div class="empty-cart"><div class="icon">&#128722;</div><p>Your cart is empty</p></div>';
+      notifySize(); return;
+    }
+
+    var html = '<div class="cart-header"><h3>Your Cart</h3><span class="count">' + cart.itemCount + ' item' + (cart.itemCount !== 1 ? 's' : '') + '</span></div>';
+
+    for (var i = 0; i < cart.items.length; i++) {
+      var item = cart.items[i];
+      html += '<div class="cart-item">';
+      if (item.image) {
+        html += '<img src="' + item.image + '" alt="' + escHtml(item.name) + '">';
+      } else {
+        html += '<div class="img-placeholder">&#128722;</div>';
+      }
+      html += '<div class="details">';
+      html += '<div class="name">' + escHtml(item.name) + '</div>';
+      html += '<div class="meta">SKU: ' + escHtml(item.sku) + ' &middot; Qty: ' + item.quantity + '</div>';
+      html += '</div>';
+      html += '<div class="price-col">';
+      html += '<div class="item-total">' + item.totalPrice.toFixed(2) + ' ' + cart.currency + '</div>';
+      if (item.quantity > 1) html += '<div class="unit-price">' + item.unitPrice.toFixed(2) + ' each</div>';
+      html += '</div></div>';
+    }
+
+    // Totals
+    html += '<div class="totals">';
+    html += '<div class="total-line"><span>Subtotal</span><span>' + cart.subtotal.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    if (cart.discount) html += '<div class="total-line discount"><span>Discount</span><span>-' + cart.discount.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    if (cart.shipping !== undefined && cart.shipping !== null) html += '<div class="total-line"><span>Shipping</span><span>' + cart.shipping.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    html += '<div class="total-line grand"><span>Total</span><span>' + cart.total.toFixed(2) + ' ' + cart.currency + '</span></div>';
+    html += '</div>';
+
+    // Status flags
+    html += '<div class="status-flags">';
+    html += cart.hasShippingAddress ? '<span class="flag ready">Address set</span>' : '<span class="flag warning">No address</span>';
+    html += cart.isReadyForCheckout ? '<span class="flag ready">Ready for checkout</span>' : '<span class="flag">Not ready</span>';
+    html += '</div>';
+
+    document.getElementById('cart-content').innerHTML = html;
+    notifySize();
+  }
+
+  function notifySize() {
+    var height = Math.max(document.body.scrollHeight, 300);
+    sendToHost({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: height } });
+  }
+  setTimeout(notifySize, 100);
+  setTimeout(notifySize, 1000);
+  connectToHost();
+</script>
+</body>
+</html>
