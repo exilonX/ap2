@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 
+packages/vtex-io-adapter/key.txt
+
 # Build output
 dist/
 
@@ -38,3 +40,4 @@ coverage/
 
 # Claude Code
 .claude/
+out

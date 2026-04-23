@@ -1,292 +1,228 @@
 # ACG (Agent Commerce Gateway) — Master Development Plan
 
 **Created:** 2026-03-27
-**Goal:** Demo-ready AP2-secured agentic commerce on VTEX, targeting Google Cloud Next (April 22, 2026)
+**Updated:** 2026-04-01
+**Product:** AI Shopping Agent for VTEX stores — RAG product knowledge + conversational checkout + AP2 security
 
 ---
 
-## Context
+## What We're Building
 
-The ACG project is a middleware connecting AI agents (Claude, GPT, Gemini) to VTEX e-commerce stores via MCP protocol, with AP2 cryptographic mandate signing for secure agentic commerce.
+An AI-powered shopping assistant that VTEX merchants embed on their storefront. Customers chat with it to discover products, get answers about specifications/sizing/materials, build carts, and checkout — all in natural language.
 
-**Current state:** Code exists across 4 packages but has critical gaps — session management is broken (MCP server is stateless but VTEX IO needs cookies), types are duplicated in 3 places, several MCP tools are missing, and the AP2 core (`packages/core/`) has zero code.
+### Core Value Proposition
 
-**Why AP2 matters now:** 60+ partners (Mastercard, Visa, PayPal, Stripe, Adyen), Nexi piloting in Europe, Google Cloud Next in 4 weeks. Basic MCP commerce wrappers exist (Shopify, Nexi, Zepto) — the AP2 mandate layer is our differentiator. VTEX has no public AP2 involvement, making this the first VTEX + AP2 integration.
+1. **RAG Product Knowledge** — AI knows every product detail, answers questions from specs/reviews, reduces cart abandonment and returns
+2. **Conversational Search** — "I need summer shoes under 200 RON" → finds the right products (not just keyword matching)
+3. **Chat Checkout** — Build cart, apply deals, AP2-signed mandate, redirect to VTEX native checkout
+4. **AP2 Security** — Cryptographic proof of cart authorization per Google's AP2 protocol (60+ partners)
 
----
+### Who We Sell To
 
-## Phase 0: Shared Types & Foundation
-
-### 0.1 Wire `@acg/shared` across all packages
-- **Problem:** Three copies of the same interfaces in `shared/`, `mcp-server/`, `vtex-io-adapter/`
-- **Fix:** Build `@acg/shared`, add as dependency to both consumers, remove local type duplicates
-- **Files:** `packages/shared/package.json`, `packages/mcp-server/src/tools/*.ts`, `packages/vtex-io-adapter/node/mappers/*.ts`, `node/handlers/intelligence.ts`
-
-### 0.2 Fix `zod/v4` import
-- **Problem:** `import { z } from 'zod/v4'` may not resolve on all setups
-- **Fix:** Change to `import { z } from 'zod'` in all MCP server tool files
+VTEX merchants who want an AI shopping assistant on their store. Monthly SaaS fee per store.
 
 ---
 
-## Phase 1: Fix Critical Blockers
+## Architecture
 
-### 1.1 Session management (CRITICAL — blocks entire flow)
-- **Problem:** MCP server makes stateless HTTP. VTEX IO uses cookies for `orderFormId`. Every tool call = new cart.
-- **Solution:** Header-based session
-  - MCP server: persist `orderFormId` in memory, send `X-ACG-Order-Form-Id` header
-  - VTEX IO: accept header as alternative to cookie in `getOrCreateOrderForm()`
-  - Return `orderFormId` in all cart/checkout response bodies
-- **Files:** `mcp-server/src/client.ts`, `vtex-io-adapter/node/handlers/cart.ts`, `intelligence.ts`, `checkout.ts`
-
-### 1.2 Switch MCP server from fetch to axios
-- Better error handling, interceptors for automatic orderFormId tracking
-- **Files:** `mcp-server/package.json`, `mcp-server/src/client.ts`
-
-### 1.3 Clean up VTEX IO adapter
-- Remove stale TODO in `node/clients/search.ts:5` (implementation exists)
-- Deduplicate `generateSessionId()` — use `uuid` via `utils/session.ts` everywhere
-- Wire `utils/session.ts` functions into handlers
-- **Files:** `search.ts`, `checkout.ts`, `utils/session.ts`
-
----
-
-## Phase 2: Complete MCP Tools & API Coverage
-
-### 2.1 Missing MCP tools (from Postman collection analysis)
-
-| Missing Tool | Purpose | VTEX API |
-|---|---|---|
-| `updateCartItemQuantity` | "Change to 2 pairs" | `POST /orderForm/{id}/items/update` |
-| `setCustomerProfile` | Set email/name before checkout | `POST /orderForm/{id}/attachments/clientProfileData` |
-| `setShippingAddress` | Set delivery address | `POST /orderForm/{id}/attachments/shippingData` |
-| `getShippingOptions` | "What shipping options?" | `POST /orderForm/{id}/simulation` |
-
-**Files:** New tools in `mcp-server/`, new handlers + routes in `vtex-io-adapter/`
-
-### 2.2 Implement real `getOrderStatus`
-- Replace hardcoded mock at `checkout.ts:394` with VTEX OMS API call
-- May need OMS outbound policy in `manifest.json`
-
-### 2.3 Verify VTEX response post-processing
-- All responses already go through mappers (product mapper, cart mapper)
-- Adapter does the heavy lifting, MCP server receives clean data
-- Verify no raw VTEX data leaks during testing
+```
+                      ┌────────────────────┐
+                      │  RAG Vector Store   │
+                      │  (Product catalog   │
+                      │   embeddings)       │
+                      └─────────┬──────────┘
+                                │
+┌───────────────────────────────▼───────────────────────────────┐
+│                    ACG Backend (VTEX IO App)                   │
+│                    /_v/acg/* endpoints                         │
+│                                                                │
+│  Search │ Cart │ Checkout │ Intelligence │ Mandates │ DID      │
+└──┬──────────┬──────────┬──────────┬──────────────────────────┘
+   │          │          │          │
+   ▼          ▼          ▼          ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│ Store  │ │ Claude │ │ChatGPT │ │ Google │
+│ Widget │ │Desktop │ │  GPT   │ │  UCP   │
+│ (JS)   │ │ (MCP)  │ │(Actions│ │(future)│
+│        │ │        │ │        │ │        │
+│ P0     │ │ DEV    │ │ P2     │ │ P1     │
+└────────┘ └────────┘ └────────┘ └────────┘
+```
 
 ---
 
-## Phase 3: AP2 Protocol Engine (`packages/core/`)
+## What's Done (Phases 0-5)
 
-### 3.1 Package setup
-- Dependencies: `canonicalize` (RFC 8785), `jose` (JWS), `@noble/ed25519`
+### Completed Infrastructure
+- [x] Shared types (`@acg/shared`) with sync script to VTEX IO adapter
+- [x] Session management (header-based orderFormId, persists across MCP tool calls)
+- [x] MCP server with axios, 19 tools, connected to Claude Desktop
+- [x] VTEX IO adapter with all handlers (search, cart, checkout, intelligence, DID, mandates)
+- [x] Checkout redirect to VTEX native checkout (cookie + query param handoff)
+- [x] Price/currency fixes (RON, correct mapping from VTEX APIs)
+- [x] Clean logs (no more 50KB orderForm dumps)
 
-### 3.2 DID management (`src/did.ts`)
-- `generateKeyPair()` — Ed25519
-- `createDIDDocument()` — W3C DID Document
-- `serializeDID()` — for `/.well-known/did.json`
+### Completed AP2 Protocol
+- [x] `packages/core` — JCS canonicalization (RFC 8785), Ed25519 signing, JWT mandates
+- [x] AP2-compliant CartMandate structure (`{ contents, merchant_authorization }`)
+- [x] W3C PaymentItem format for cart items
+- [x] DID document serving at `/_v/acg/.well-known/did.json`
+- [x] Mandate storage in VBase + public retrieval at `/_v/acg/mandates/:id`
+- [x] Auto-sign mandate at checkout
+- [x] 68 tests passing for core
+- [x] AP2 spec v0.1 saved in docs + compliance document
 
-### 3.3 JCS canonicalization (`src/jcs.ts`)
-- `canonicalize(json)` — RFC 8785 deterministic JSON
-- `hash(canonical)` — SHA-256 digest
-
-### 3.4 Mandate management (`src/mandates.ts`)
-- `createCartMandate(cart, merchantKeys)` — sign cart as verifiable credential
-- `createPaymentMandate(cartMandate, paymentInfo)`
-- `verifyMandate(mandate, publicKey)`
-
----
-
-## Phase 4: AP2 Integration
-
-### 4.1 Mandates in VTEX IO checkout
-- `initiateCheckout` creates and signs a `CartMandate`
-- Store mandate in VBase alongside session
-- Return mandate hash + DID + expiry in response
-
-### 4.2 Payment page mandate display
-- Show cryptographic proof section (mandate hash, signer DID, timestamp, expiry)
-- Visual trust indicator for demo
-
-### 4.3 AP2 MCP tools
-- `createCartMandate` — Claude explicitly requests signing
-- `verifyMandate` — Claude verifies a mandate
-- New file: `mcp-server/src/tools/mandate.ts`
+### Completed MCP Apps (Visual Widgets)
+- [x] Product cards with images (base64 embedded), prices, discounts, Add to Cart buttons
+- [x] Cart preview widget with item thumbnails, totals, discounts, status flags
+- [x] Checkout widget with AP2 Security section (verified badge, mandate links)
+- [x] Dark theme matching Claude Desktop UI
 
 ---
 
-## Phase 5: Testing
+## Phase 6: Store Chat Widget (P0 — Revenue Driver)
 
-### 5.1 MCP Server — full coverage
-- Unit tests for each tool (mock VtexClient)
-- Integration test for session persistence
-- Error handling paths
+**Goal:** Embeddable JavaScript widget that VTEX merchants add to their store with one script tag.
 
-### 5.2 VTEX IO Adapter — replace placeholder
-- Mapper tests (product, cart)
-- Session utils tests
-- Handler tests with mocked clients
+### 6.1 Widget Frontend (packages/widget)
+- React-based chat panel (bottom-right corner bubble)
+- Renders product cards, cart summary, checkout button
+- Same visual design as MCP Apps but in the store's context
+- Responsive (mobile + desktop)
+- Customizable theme (merchant's brand colors)
+- Script tag: `<script src="https://acg.vtexeurope.com/widget.js" data-account="storename"></script>`
 
-### 5.3 AP2 Core
-- JCS canonicalization correctness
-- Key gen + sign + verify roundtrip
-- Mandate lifecycle tests
+### 6.2 Widget Backend (packages/api)
+- Express/Fastify HTTP server wrapping our MCP tools as REST endpoints
+- `/api/chat` — main conversation endpoint (streaming)
+- `/api/search` — product search with RAG
+- `/api/cart/*` — cart operations
+- `/api/checkout` — initiate checkout
+- Uses Claude API (or GPT API) for conversation orchestration
+- Rate limiting, API keys per merchant
 
----
+### 6.3 Conversation Orchestration
+- System prompt with store context (name, currency, policies)
+- Tool calling: same tools as MCP server but via HTTP
+- Conversation history (stored per session, in-memory or Redis)
+- Handoff to human agent (when AI can't help)
 
-## Phase 6: Demo Preparation
+### 6.4 Integration with VTEX Storefront
+- Widget runs on same domain (myvtex.com) — cookies work for cart
+- Can read current page context (product page → pre-load product info)
+- Cart sync: widget cart = store cart (same orderFormId)
+- Checkout: redirect to `/checkout/` with orderFormId (already works)
 
-### Demo script (`docs/DEMO_SCRIPT.md`)
-
-**Two demo paths:**
-
-**Path A — VTEX Native Checkout (production-ready)**
-Search → cart → deals → mandate sign → verify → checkout redirect → VTEX checkout in browser → payment → order in VTEX Admin
-
-**Path B — In-Chat Payment (future/AP2-complete)**
-Search → cart → deals → mandate sign → verify → MCP App payment form in chat → payment token → order created → receipt in chat
-
-**Split-screen layout:**
-- Left: Claude Desktop (conversation)
-- Right: Browser (VTEX checkout / mandate proof / DID document / VTEX Admin orders)
-
-**Key talking points:**
-- AP2 protocol compliance (JWT mandates, DID, W3C PaymentItem format)
-- Public verifiability (mandate URL + DID URL)
-- Platform-agnostic core (works with any commerce platform, not just VTEX)
-- Future-ready for Stripe ACP, Adyen, PayPal Agent Ready, Google Pay/UCP
+### Technical Stack
+- Frontend: React + Tailwind, bundled to single JS file
+- Backend: Node.js + Express + Claude API
+- State: Redis for sessions, VBase for mandates
+- Deployment: VTEX IO app (serves widget JS + backend API)
 
 ---
 
-## Priority Matrix
+## Phase 7: UCP / Google Product Discovery (P1 — Future-Proofing)
 
-| Priority | Task | Effort | Impact |
-|----------|------|--------|--------|
-| **P0** | 1.1 Session management | Medium | Blocks everything |
-| **P0** | 0.1 Wire shared types | Medium | Prevents drift |
-| **P1** | 1.2 axios for MCP client | Low | Better DX |
-| **P1** | 1.3 Adapter cleanup | Low | Code quality |
-| **P1** | 0.2 Fix zod import | Low | Compatibility |
-| **P2** | 2.1 Missing MCP tools | Medium | Demo completeness |
-| **P2** | 2.2 Real getOrderStatus | Low | Demo polish |
-| **P3** | 3.x AP2 core engine | High | **Key differentiator** |
-| **P3** | 4.x AP2 integration | Medium | Demo wow factor |
-| **P4** | 5.x Full test coverage | Medium | Quality |
-| **P5** | 6.x Demo prep & video | Medium | Showcase |
+**Goal:** When Google Shopping agents discover merchants via UCP, our stores are already compatible.
 
----
+### 7.1 UCP Merchant Registration
+- Register store as UCP-compatible merchant endpoint
+- Expose product catalog via UCP discovery format
+- Cart/checkout flow via UCP standard
 
-## Phase 5: In-Chat Payment via MCP Apps
+### 7.2 AP2 Integration with UCP
+- AP2 mandates flow through UCP payment handlers
+- Our DID document serves as merchant identity
+- Payment network visibility via PaymentMandate
 
-Target: enable payment directly inside Claude Desktop without browser redirect.
+### 7.3 A2A Agent Discovery
+- Publish agent card for merchant discovery
+- Support A2A message flow for agent-to-agent commerce
 
-### Architecture
-MCP Apps (launched Jan 26, 2026) allow MCP servers to return interactive HTML/JS that renders in sandboxed iframes inside the chat. This enables:
-- Payment forms (Stripe Elements, Adyen Drop-in) rendered in-chat
-- PCI-compliant card input in sandboxed iframe (same pattern as Stripe.js on websites)
-- Token generated client-side → MCP server → VTEX headless checkout → order created
-
-### 5.1 Research MCP Apps spec
-- Understand `_meta.ui.resourceUri`, `postMessage` JSON-RPC, sandbox restrictions
-- Check Claude Desktop support for MCP Apps rendering
-
-### 5.2 Build checkout MCP App
-- HTML/JS payment form (card input fields or Stripe Elements)
-- Cart summary display with images and prices
-- "Pay" button that generates a payment token
-
-### 5.3 Wire iframe → MCP server → VTEX headless checkout
-- Iframe sends payment token to MCP server via JSON-RPC postMessage
-- MCP server calls VTEX: `POST /orderForm/{id}/transaction` (place order)
-- Then: `POST /transactions/{id}/payments` (send payment info)
-- Then: `POST /transactions/{id}/authorization-request` (authorize)
-
-### 5.4 Add PaymentReceipt
-- Show order confirmation in chat after successful payment
-- AP2-compliant PaymentReceipt object with orderId, amount, status
+### Dependencies
+- UCP public access (currently invitation-only via Google)
+- AP2 v1.x with push payments and recurring transactions
+- Payment network tokenization for agent transactions
 
 ---
 
-## Phase 6: Visual Improvements
+## Phase 8: ChatGPT GPT + OpenAPI (P2 — Nice-to-Have)
 
-### 6.1 Better product display
-- Use MCP Apps to render product cards with images, prices, discounts
-- Cart summary as a styled HTML table via MCP App
+### 8.1 OpenAPI Spec for ACG endpoints
+- Document all `/_v/acg/*` endpoints as OpenAPI 3.0
+- Include auth (API key), request/response schemas
 
-### 6.2 Profile & shipping data collection
-- MCP App form for customer profile (email, name, phone)
-- MCP App form for shipping address
-- Data flows to VTEX orderForm via existing handlers
-
----
-
-## Phase 7: Payment Provider Integration
-
-### 7.1 Stripe ACP (SharedPaymentTokens)
-- Accept SPTs from AI platforms (ChatGPT Instant Checkout)
-- Wire SPT → VTEX Stripe connector → payment processed
-- Requires VTEX store to use Stripe as payment gateway
-
-### 7.2 Adyen MCP
-- Use Adyen's MCP server for checkout
-- Pass Adyen tokens through VTEX Adyen connector
-- Most common payment gateway on VTEX in Europe
-
-### 7.3 PayPal Agent Ready
-- Monitor PayPal Agent Ready launch
-- Integrate when available — PayPal connector already exists on most VTEX stores
-
-### 7.4 Google Pay / UCP
-- Natural extension of our AP2 implementation
-- Accept Google Pay FPAN tokens via UCP flow
-- Use VTEX Google Pay connector (already available via WH Google Pay on vtexeurope)
+### 8.2 Custom GPT Registration
+- Register as ChatGPT Custom GPT with Actions
+- Users can search products, build carts, checkout from ChatGPT
+- Low effort (endpoints already exist), low distribution value
 
 ---
 
-## Phase 9: RAG & Intelligent Commerce (Future — Customer-Facing)
+## Phase 9: RAG Product Knowledge (Core Differentiator)
 
-Target: post-demo, sellable to VTEX customers as a value-add.
+### 9.1 Embedding Pipeline
+- Sync VTEX catalog to vector store (triggered by catalog webhooks)
+- Embed: product name + description + specifications + reviews + category
+- Chunking strategy: one embedding per product (description + specs combined)
+- Model: text-embedding-3-small (OpenAI) or Anthropic embeddings
 
-### 7.1 Product Knowledge RAG
-- Embed product catalog (descriptions, specs, materials, care instructions, reviews)
-- Vector store (Pinecone / Weaviate / VTEX Intelligent Search)
-- Embedding sync pipeline (keep vectors up-to-date with catalog changes)
-- **Use case:** Conversational discovery — "I need something for a beach wedding in August, budget 200 RON"
-- **Use case:** Product Q&A — "Does this run large?" / "Is this machine washable?"
-- **ROI:** Reduces cart abandonment (unanswered questions) and returns (15-30% of revenue)
+### 9.2 Vector Store
+- Options: Pinecone (managed) / Qdrant (self-hosted) / pgvector (PostgreSQL)
+- Metadata filtering: price range, category, availability, brand
+- Recommended: Pinecone for MVP (managed, fast, good free tier)
 
-### 7.2 Personalized Cross-Sell / Upsell
-- RAG over purchase history, frequently-bought-together, styling guides
-- Replace hardcoded `proposeDeal` rules with intelligent recommendations
-- **Use case:** "What goes well with this tricou?"
+### 9.3 Semantic Search Integration
+- Replace VTEX Catalog API search with semantic search
+- Flow: user query → embed → vector search → rerank → return products
+- Fallback: if no semantic match, fall back to VTEX keyword search
+- Hybrid: combine semantic results with VTEX Intelligent Search
 
-### 7.3 Post-Purchase Agent
-- Order tracking — "Where's my package?" (RAG over OMS + logistics)
-- Returns/exchanges — agent initiates flow, links to return portal
-- Reordering — "Order my usual coffee again" (RAG over customer history)
-- **ROI:** Deflects 60-80% of customer support tickets
+### 9.4 Product Q&A
+- "Does this run large?" → search reviews/specs for sizing info
+- "Is this machine washable?" → search care instructions
+- "What material is this?" → search specifications
+- Requires embedding reviews (separate from product embeddings)
 
-### 7.4 Omnichannel Intelligence
-- Store availability — "Is this in stock at the Bucharest store?" (inventory by location)
-- Loyalty/points — "How many points do I have? What can I get?"
-- Price alerts — "Tell me when this drops below 100 RON" (monitoring intents)
-- Gift recommendations — "Birthday gift for my wife" (catalog + history)
-
-### Technical Requirements
-- Embedding pipeline (product catalog → vectors, triggered on catalog changes)
-- Vector store with metadata filtering (price, category, availability)
-- Chunking strategy for product data (description vs specs vs reviews)
-- Customer context injection (order history, preferences, segment)
-- New MCP tools: `askAboutProduct`, `getRecommendations`, `trackOrder`, `initiateReturn`
+### 9.5 Smart Recommendations
+- "What goes with this?" → semantic similarity on complementary categories
+- "Similar but cheaper?" → filtered semantic search
+- "Best for running?" → search specs for running-related features
 
 ---
 
-## Verification Checklist
+## Phase 10: Post-Purchase Agent (Future)
 
-- [ ] `cd packages/shared && npm run build` succeeds
-- [ ] MCP server and adapter compile with `@acg/shared` imports
-- [ ] MCP: `searchProducts` -> `addToCart` -> `getCart` retains items (same orderFormId)
-- [ ] MCP: `setCustomerProfile` -> `setShippingAddress` -> `checkout` works
-- [ ] `cd packages/core && npm test` — all crypto tests pass
-- [ ] Checkout response includes mandate hash
-- [ ] Payment page shows cryptographic proof section
-- [ ] `npm test` in each package — all pass
-- [ ] 3-minute demo video recorded
+### 10.1 Order Tracking
+- "Where's my order?" → VTEX OMS API lookup
+- Proactive notifications (shipping updates)
+
+### 10.2 Returns & Exchanges
+- Agent initiates return flow
+- Links to VTEX return portal
+- Tracks return status
+
+### 10.3 Reordering
+- "Order my usual coffee" → RAG over order history
+- Subscription suggestions
+
+---
+
+## Distribution Channels Summary
+
+| Channel | How users access it | Priority | Status |
+|---------|-------------------|----------|--------|
+| **Store Widget** | Chat bubble on VTEX storefront | P0 | Next to build |
+| **Claude Desktop** | Manual MCP config | DEV | Working (demo tool) |
+| **Google UCP** | Google Shopping agents find the store | P1 | Waiting for UCP access |
+| **ChatGPT GPT** | Custom GPT with Actions | P2 | Endpoints ready, need OpenAPI spec |
+| **Gemini A2A** | Agent-to-agent discovery | Future | Waiting for A2A commerce |
+
+---
+
+## Immediate Next Steps
+
+1. **Build the store chat widget** (Phase 6) — this is the product
+2. **Demo video** — record the full flow (search → cart → mandate → checkout)
+3. **RAG pipeline** (Phase 9) — start with product description embeddings
+4. **First pilot client** — deploy on a real VTEX store

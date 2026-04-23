@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "skills": {
+    "architecture-well-architected-commerce": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "0f0770123d0bb30fdc3a8e356e95f2fba134344444d866300347ead30b51a39e"
+    },
+    "faststore-storefront": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "a601c08602ddbe30d3c078b5ff1ef1f68f2bee5ceff63e406b9beeadfa27ee48"
+    },
+    "headless-bff-architecture": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "1bb3d40750632c381720a4d6971e035e4533ae16b7cfd735da9304cddf99c9ab"
+    },
+    "headless-caching-strategy": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "19871d0716155a585e805dfe73b321c1edc46b2fd372437c7eb400fe40149de1"
+    },
+    "headless-checkout-proxy": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "9049d0a140ba2d861b08363ca1bd75be47373862e5d7e0b14f63068392de2b23"
+    },
+    "headless-intelligent-search": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "874b443076617a8da60b86f2841070d2a4fa6893af8fad1d60eda4bba917b8b5"
+    },
+    "marketplace-catalog-sync": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "7f624b95d9a2866c0660f89df8dde6bccd25a886eb3044f1d9445549ccdf2eb2"
+    },
+    "marketplace-fulfillment": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "eeed2109fab34ba4aac458da1faa96f8b0eeabb685e4db17292ebf0b92798f72"
+    },
+    "marketplace-order-hook": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "82410d1401e0a40e627e286a154a8776c49cec3249dc1a0fd43c9653ec2849ef"
+    },
+    "marketplace-rate-limiting": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "a8e8c361f925099b2b57c9ee24549cb31ba8a688e743ac4528db7267608f4748"
+    },
+    "payment-async-flow": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "443fe0c44d6dde88c5ba89389f206128aca21995736579b95198d6daa7fe5c43"
+    },
+    "payment-idempotency": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "fed2a2fd29dd66edb3f00780373accd37c57618c165399c11f568904fbe6440d"
+    },
+    "payment-pci-security": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "44b6292b4b4622d33fa6a0a421e02803371276214ffbe4736ad965d25660460d"
+    },
+    "payment-provider-framework": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "25cd6259ca939ddf12f016b7173934db8e800b191701c4f7a73d541abde6d28b"
+    },
+    "payment-provider-protocol": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "8df35d08099a4cf53de74c0bb9506b679459cce9a7f040177c15a6cde969f30f"
+    },
+    "vtex-io-admin-react": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "c02659e21cc8a17f7868f956f3879abff0166d24c6587a4a640f4e12219a4cfc"
+    },
+    "vtex-io-app-contract": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "8fd5c0d3b98b470a61e6c12ddca616a05981202e376afd56aabd7547a4090570"
+    },
+    "vtex-io-app-settings": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "6d1c223ef0c03a9f101e92485a97d446899a3e4bbc65cbac9257ad495e23397a"
+    },
+    "vtex-io-application-performance": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "974f97a28f402d23ebaad0745d52cb95514097eea0cda635ba9ecb2e3e00dd5a"
+    },
+    "vtex-io-auth-and-policies": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "86b78393a2037c5e32ab9a9c83d8ca03ec493d6d817479054546f364a367a2b4"
+    },
+    "vtex-io-auth-tokens-and-context": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "ae17ce68a68a155b74d61fd4b6f5062688ee2a2f953dd9cbcee4dd02d324af58"
+    },
+    "vtex-io-client-integration": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "f31c7a54fc60385f344ed6989bafffb1995028e0fed06996d7f16657d7fcdb2c"
+    },
+    "vtex-io-data-access-patterns": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "7f1c9417c95633780223240e4019ee4a6def24c4225c56ee2659299361244e01"
+    },
+    "vtex-io-events-and-workers": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "22fb940bb16f7c09c70ab4cee77ac6835b4ed1c64ab3414a26f705f9115b7d21"
+    },
+    "vtex-io-graphql-api": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "00ed590c40fa8710c3f5f0861bc8a2763bd591f8c6deeea52a7d0b7995302eb9"
+    },
+    "vtex-io-http-routes": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "4a2b4558bd550cb6ca8cbd4a6a1c223c9f0ba757c8dfff315c2859909ff8c9c8"
+    },
+    "vtex-io-masterdata": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "2f03122c8e83ff7b7a4774d744c0b4c9c0e87a71ea694bd2ca0f1f92112b04bf"
+    },
+    "vtex-io-masterdata-strategy": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "e259aaeda2d54f1221c2f97bcc77a2819f247f70459b17cc2cd5edf84450de58"
+    },
+    "vtex-io-messages-and-i18n": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "f5fe6dbd9fee773506842524af598f9d99264f3a2d0c46c4d71de178b50342fc"
+    },
+    "vtex-io-observability-and-ops": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "0a13794d37e8d9665ce29cb7e79d87bffee803571a7aa49af67ec5055f19f40a"
+    },
+    "vtex-io-react-apps": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "989fa7d278b80a72b471b3ba2653471934edf5953b44df093e6035315a884c40"
+    },
+    "vtex-io-render-runtime-and-blocks": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "884850b1969855635d3304f87fb5192740ad6c8523c93af6b920664efc588a5d"
+    },
+    "vtex-io-security-boundaries": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "64bcedc8de434107647e37066ecfe3b5bfadad9e90c7d2fd2f2f3146e8ec23c8"
+    },
+    "vtex-io-service-apps": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "4853dedced4d2b0b3844ae68ae93ba2ddb0d962faaa1d4b5e6c8d5ac33e9c500"
+    },
+    "vtex-io-service-configuration-apps": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "4c2874dee711bbec53e47562378b639dfd024dd20257ca64369d5cbcff02a2eb"
+    },
+    "vtex-io-service-paths-and-cdn": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "256f7b18695a45c145806bfd05d68651c01f409a6eab6f94ff53e63ac43d476e"
+    },
+    "vtex-io-service-runtime": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "d1c2c0c72eee57d4e6bcb131f5f3f91cfb1692818ef3366225486dfdb9635ebe"
+    },
+    "vtex-io-session-apps": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "6d592ea382e3ffba25d16db9612160a3cd3dae5ca9581c3cff4f251dea7a7d90"
+    },
+    "vtex-io-storefront-react": {
+      "source": "vtex/skills",
+      "sourceType": "github",
+      "computedHash": "713243e35282706eb325ceaf284023c811ef2d324d3a0a65489ab1c70c3d846e"
+    }
+  }
+}
