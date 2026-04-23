@@ -1,0 +1,7 @@
+{
+  "store/acg-chat.header.title": "Assistente de Compras",
+  "store/acg-chat.header.status": "Online",
+  "store/acg-chat.greeting": "Oi! Sou seu assistente de compras com IA. Como posso ajudar?",
+  "store/acg-chat.input.placeholder": "Digite uma mensagem...",
+  "store/acg-chat.footer.powered": "Desenvolvido por ACG"
+}

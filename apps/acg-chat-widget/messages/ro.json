@@ -1,0 +1,7 @@
+{
+  "store/acg-chat.header.title": "Asistent de Cumparaturi",
+  "store/acg-chat.header.status": "Online",
+  "store/acg-chat.greeting": "Salut! Sunt asistentul tau de cumparaturi. Cu ce te pot ajuta?",
+  "store/acg-chat.input.placeholder": "Scrie un mesaj...",
+  "store/acg-chat.footer.powered": "Powered by ACG"
+}

@@ -1,0 +1,7 @@
+{
+  "store/acg-chat.header.title": "Title shown at the top of the chat panel",
+  "store/acg-chat.header.status": "Online status indicator text",
+  "store/acg-chat.greeting": "Initial greeting message from the AI assistant",
+  "store/acg-chat.input.placeholder": "Placeholder text in the message input field",
+  "store/acg-chat.footer.powered": "Powered-by attribution at the bottom of the chat"
+}

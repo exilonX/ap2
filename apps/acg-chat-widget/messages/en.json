@@ -1,0 +1,7 @@
+{
+  "store/acg-chat.header.title": "Shopping Assistant",
+  "store/acg-chat.header.status": "Online",
+  "store/acg-chat.greeting": "Hi! I'm your AI shopping assistant. How can I help you today?",
+  "store/acg-chat.input.placeholder": "Type a message...",
+  "store/acg-chat.footer.powered": "Powered by ACG"
+}

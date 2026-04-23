@@ -1,0 +1,36 @@
+{
+  "name": "acg-chat-widget",
+  "vendor": "vtexeurope",
+  "version": "0.0.1",
+  "title": "ACG Chat Widget",
+  "description": "AI shopping assistant chat widget for VTEX storefronts",
+  "mustUpdateAt": "2027-01-01",
+  "categories": [],
+  "dependencies": {
+    "vtex.pixel-interfaces": "1.x"
+  },
+  "builders": {
+    "react": "3.x",
+    "store": "0.x",
+    "pixel": "0.x",
+    "messages": "1.x"
+  },
+  "settingsSchema": {
+    "title": "ACG Chat Widget",
+    "type": "object",
+    "properties": {
+      "position": {
+        "title": "Widget Position",
+        "description": "Position of the chat bubble on the page",
+        "type": "string",
+        "enum": [
+          "bottom-right",
+          "bottom-left"
+        ],
+        "default": "bottom-right"
+      }
+    }
+  },
+  "policies": [],
+  "$schema": "https://raw.githubusercontent.com/vtex/node-vtex-api/master/gen/manifest.schema"
+}
