@@ -14,6 +14,8 @@ import {
 } from './handlers/checkout'
 import { serveDIDDocument } from './handlers/did'
 import { getMandate, storeMandate } from './handlers/mandate'
+import { chatHandler } from './handlers/chat'
+import { syncCatalog, getSyncStatus } from './handlers/rag'
 
 const TIMEOUT_MS = 5000
 
@@ -111,6 +113,19 @@ export default new Service({
     }),
     didDocument: method({
       GET: [serveDIDDocument],
+    }),
+
+    // Chat route
+    chat: method({
+      POST: [chatHandler],
+    }),
+
+    // RAG routes
+    ragSync: method({
+      POST: [syncCatalog],
+    }),
+    ragStatus: method({
+      GET: [getSyncStatus],
     }),
   },
 })

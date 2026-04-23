@@ -11,12 +11,78 @@
     "node": "7.x"
   },
   "credentialType": "absolute",
+  "settingsSchema": {
+    "title": "ACG Adapter Settings",
+    "type": "object",
+    "properties": {
+      "llmProvider": {
+        "title": "LLM Provider",
+        "description": "Which AI provider to use for the chat assistant",
+        "type": "string",
+        "enum": ["claude", "openai"],
+        "default": "claude"
+      },
+      "claudeApiKey": {
+        "title": "Claude API Key",
+        "description": "Anthropic API key (starts with sk-ant-)",
+        "type": "string"
+      },
+      "claudeModel": {
+        "title": "Claude Model",
+        "description": "Model ID (default: claude-haiku-4-5-20251001)",
+        "type": "string",
+        "default": "claude-haiku-4-5-20251001"
+      },
+      "openaiApiKey": {
+        "title": "OpenAI API Key",
+        "description": "OpenAI API key (starts with sk-). Also used for embeddings.",
+        "type": "string"
+      },
+      "openaiModel": {
+        "title": "OpenAI Model",
+        "description": "Model ID (default: gpt-4o-mini)",
+        "type": "string",
+        "default": "gpt-4o-mini"
+      },
+      "pineconeApiKey": {
+        "title": "Pinecone API Key",
+        "description": "Pinecone API key for vector store",
+        "type": "string"
+      },
+      "pineconeIndexHost": {
+        "title": "Pinecone Index Host",
+        "description": "Pinecone index host (e.g., acg-products-xxxxx.svc.aped-1234.pinecone.io)",
+        "type": "string"
+      }
+    }
+  },
   "policies": [
     {
       "name": "outbound-access",
       "attrs": {
         "host": "{{account}}.vtexcommercestable.com.br",
         "path": "*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
+        "host": "api.anthropic.com",
+        "path": "/v1/*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
+        "host": "api.openai.com",
+        "path": "/v1/*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
+        "host": "*.svc.*.pinecone.io",
+        "path": "/*"
       }
     },
     {

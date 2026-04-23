@@ -1,6 +1,6 @@
 {
   "memory": 256,
-  "timeout": 10,
+  "timeout": 30,
   "minReplicas": 2,
   "maxReplicas": 10,
   "workers": 4,
@@ -79,6 +79,18 @@
     },
     "didDocument": {
       "path": "/_v/acg/.well-known/did.json",
+      "public": true
+    },
+    "chat": {
+      "path": "/_v/acg/chat",
+      "public": true
+    },
+    "ragSync": {
+      "path": "/_v/acg/rag/sync",
+      "public": true
+    },
+    "ragStatus": {
+      "path": "/_v/acg/rag/status",
       "public": true
     }
   }

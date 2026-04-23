@@ -309,6 +309,16 @@ export class CheckoutClient extends ExternalClient {
       { metric: 'acg-place-order' }
     );
   }
+
+  /**
+   * Get order details by order ID
+   */
+  public async getOrder(orderId: string): Promise<any> {
+    return this.http.get(
+      `/api/oms/pvt/orders/${orderId}`,
+      { metric: 'acg-get-order' }
+    );
+  }
 }
 
 /**
