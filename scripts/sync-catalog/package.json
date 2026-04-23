@@ -1,0 +1,33 @@
+{
+  "name": "@acg/sync-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone VTEX catalog → Pinecone sync script with resume, retry, and cost estimation",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "sync-catalog": "./index.ts"
+  },
+  "scripts": {
+    "start": "tsx index.ts",
+    "sync": "tsx index.ts",
+    "sync:100": "tsx index.ts --fresh --limit 100",
+    "estimate": "tsx index.ts --estimate",
+    "retry": "tsx index.ts --retry",
+    "fresh": "tsx index.ts --fresh",
+    "query": "tsx index.ts --query",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.15.2",
+    "axios-retry": "^4.5.0",
+    "tiktoken": "^1.0.17"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.0"
+  }
+}

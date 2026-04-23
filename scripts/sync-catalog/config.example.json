@@ -1,0 +1,27 @@
+{
+  "vtex": {
+    "account": "vtexeurope",
+    "workspace": "master",
+    "appKey": "vtexappkey-YOUR-KEY",
+    "appToken": "YOUR-TOKEN",
+    "salesChannel": 1,
+    "locale": "pt-BR"
+  },
+  "openai": {
+    "apiKey": "sk-...",
+    "model": "text-embedding-3-small",
+    "dimensions": 512
+  },
+  "pinecone": {
+    "apiKey": "pcsk_...",
+    "indexHost": "acg-products-xxxxx.svc.aped-1234.pinecone.io",
+    "namespace": "products"
+  },
+  "sync": {
+    "concurrency": 20,
+    "batchSize": 100,
+    "hardTokenBudget": 1000,
+    "softTokenTarget": 500,
+    "throttleMs": 200
+  }
+}
