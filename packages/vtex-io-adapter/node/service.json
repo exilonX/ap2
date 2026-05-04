@@ -85,8 +85,8 @@
       "path": "/_v/acg/chat",
       "public": true
     },
-    "ragSync": {
-      "path": "/_v/acg/rag/sync",
+    "acgConfig": {
+      "path": "/_v/acg/config",
       "public": true
     },
     "ragStatus": {

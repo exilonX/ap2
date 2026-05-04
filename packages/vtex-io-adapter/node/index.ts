@@ -15,7 +15,8 @@ import {
 import { serveDIDDocument } from './handlers/did'
 import { getMandate, storeMandate } from './handlers/mandate'
 import { chatHandler } from './handlers/chat'
-import { syncCatalog, getSyncStatus } from './handlers/rag'
+import { getConfig } from './handlers/config'
+import { getSyncStatus } from './handlers/rag'
 
 const TIMEOUT_MS = 5000
 
@@ -120,10 +121,12 @@ export default new Service({
       POST: [chatHandler],
     }),
 
-    // RAG routes
-    ragSync: method({
-      POST: [syncCatalog],
+    // Client config (brand, strings, starter chips, etc.)
+    acgConfig: method({
+      GET: [getConfig],
     }),
+
+    // RAG status (bulk sync runs via scripts/sync-catalog/, not this endpoint)
     ragStatus: method({
       GET: [getSyncStatus],
     }),

@@ -1,7 +1,7 @@
 {
   "name": "acg-adapter",
   "vendor": "vtexeurope",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "title": "Agent Commerce Gateway Adapter",
   "description": "VTEX IO adapter for AI agent commerce operations",
   "mustUpdateAt": "2025-01-01",
@@ -19,7 +19,11 @@
         "title": "LLM Provider",
         "description": "Which AI provider to use for the chat assistant",
         "type": "string",
-        "enum": ["claude", "openai"],
+        "enum": [
+          "claude",
+          "openai",
+          "gemini"
+        ],
         "default": "claude"
       },
       "claudeApiKey": {
@@ -43,6 +47,17 @@
         "description": "Model ID (default: gpt-4o-mini)",
         "type": "string",
         "default": "gpt-4o-mini"
+      },
+      "geminiApiKey": {
+        "title": "Gemini API Key",
+        "description": "Google AI Studio API key",
+        "type": "string"
+      },
+      "geminiModel": {
+        "title": "Gemini Model",
+        "description": "Model ID (default: gemini-2.5-flash)",
+        "type": "string",
+        "default": "gemini-2.5-flash"
       },
       "pineconeApiKey": {
         "title": "Pinecone API Key",
@@ -81,7 +96,14 @@
     {
       "name": "outbound-access",
       "attrs": {
-        "host": "*.svc.*.pinecone.io",
+        "host": "generativelanguage.googleapis.com",
+        "path": "/v1beta/*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
+        "host": "acg-rag-vtexeurope-rlhbm0e.svc.aped-4627-b74a.pinecone.io",
         "path": "/*"
       }
     },
