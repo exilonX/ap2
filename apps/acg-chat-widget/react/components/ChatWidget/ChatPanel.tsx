@@ -9,16 +9,24 @@ interface ChatPanelProps {
   messages: Message[]
   isTyping: boolean
   onSend: (text: string) => void
+  onAddToCart: (sku: string, name: string) => void
+  onQuickReply: (text: string) => void
+  onClear: () => void
   placeholder?: string
+  headerTitle?: string
+  headerStatus?: string
+  clearLabel?: string
+  poweredBy?: string
+  accentColor?: string
 }
 
 const PANEL_BASE: React.CSSProperties = {
   position: 'absolute',
   bottom: '72px',
   right: '0',
-  width: '440px',
+  width: '880px',
   maxWidth: 'calc(100vw - 40px)',
-  height: '640px',
+  height: '800px',
   maxHeight: 'calc(100vh - 120px)',
   background: '#fff',
   borderRadius: '16px',
@@ -37,13 +45,6 @@ const PANEL_OPEN: React.CSSProperties = {
   opacity: 1,
   transform: 'translateY(0) scale(1)',
   pointerEvents: 'auto' as const,
-}
-
-const HEADER_STYLE: React.CSSProperties = {
-  background: '#f71963',
-  color: '#fff',
-  padding: '16px 20px',
-  flexShrink: 0,
 }
 
 const TITLE_STYLE: React.CSSProperties = {
@@ -81,24 +82,103 @@ const POWERED_STYLE: React.CSSProperties = {
   padding: '0 16px 10px',
 }
 
-function ChatPanel({ isOpen, messages, isTyping, onSend, placeholder }: ChatPanelProps) {
+const CLEAR_BTN_STYLE: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '6px 10px',
+  background: 'rgba(255, 255, 255, 0.1)',
+  border: '1px solid rgba(255, 255, 255, 0.3)',
+  borderRadius: '8px',
+  color: '#fff',
+  fontSize: '12px',
+  fontWeight: 500,
+  cursor: 'pointer',
+  transition: 'background 0.15s ease',
+  fontFamily: 'inherit',
+}
+
+function ChatPanel({
+  isOpen,
+  messages,
+  isTyping,
+  onSend,
+  onAddToCart,
+  onQuickReply,
+  onClear,
+  placeholder,
+  headerTitle = 'Shopping Assistant',
+  headerStatus = 'Online',
+  clearLabel = 'Resetează conversația',
+  poweredBy = 'Powered by ACG',
+  accentColor = '#f71963',
+}: ChatPanelProps) {
+  const headerStyle: React.CSSProperties = {
+    background: accentColor,
+    color: '#fff',
+    padding: '16px 20px',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  }
+
+  // Only show the clear button when there's more than the greeting
+  const hasUserMessages = messages.some((m) => m.role === 'user')
+
+  const handleClearClick = () => {
+    if (window.confirm('Resetezi conversația? Istoricul se va șterge.')) {
+      onClear()
+    }
+  }
+
   return (
     <div style={isOpen ? PANEL_OPEN : PANEL_BASE} role="dialog" aria-label="Chat">
-      <div style={HEADER_STYLE}>
-        <div style={TITLE_STYLE}>Shopping Assistant</div>
-        <div style={STATUS_STYLE}>
-          <span style={STATUS_DOT} />
-          Online
+      <div style={headerStyle}>
+        <div>
+          <div style={TITLE_STYLE}>{headerTitle}</div>
+          <div style={STATUS_STYLE}>
+            <span style={STATUS_DOT} />
+            {headerStatus}
+          </div>
         </div>
+        {hasUserMessages && (
+          <button
+            onClick={handleClearClick}
+            style={CLEAR_BTN_STYLE}
+            aria-label={clearLabel}
+            title={clearLabel}
+            type="button"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <line x1="10" y1="11" x2="10" y2="17" />
+              <line x1="14" y1="11" x2="14" y2="17" />
+            </svg>
+            <span style={{ marginLeft: '6px' }}>Reset</span>
+          </button>
+        )}
       </div>
 
       <div style={BODY_STYLE}>
-        <MessageList messages={messages} isTyping={isTyping} />
+        <MessageList
+          messages={messages}
+          isTyping={isTyping}
+          onAddToCart={onAddToCart}
+          onQuickReply={onQuickReply}
+        />
       </div>
 
       <div style={{ flexShrink: 0 }}>
         <ChatInput onSend={onSend} disabled={isTyping} placeholder={placeholder} />
-        <div style={POWERED_STYLE}>Powered by ACG</div>
+        <div style={POWERED_STYLE}>{poweredBy}</div>
       </div>
     </div>
   )

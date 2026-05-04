@@ -74,8 +74,6 @@ function parseLine(
         <a
           key={match.index}
           href={match[5]}
-          target="_blank"
-          rel="noopener noreferrer"
           style={linkStyle}
         >
           {match[4]}
@@ -87,8 +85,6 @@ function parseLine(
         <a
           key={match.index}
           href={match[6]}
-          target="_blank"
-          rel="noopener noreferrer"
           style={linkStyle}
         >
           {match[6].length > 50 ? `${match[6].slice(0, 50)}...` : match[6]}

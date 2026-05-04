@@ -83,7 +83,7 @@ function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder || 'Type a message...'}
+        placeholder={placeholder || 'Scrie un mesaj...'}
         disabled={disabled}
         rows={1}
       />

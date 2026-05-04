@@ -1,12 +1,16 @@
 import React, { useEffect, useRef } from 'react'
 
 import type { Message } from './types'
-import ProductCardComponent from './ProductCard'
+import CartPreviewCard from './CartPreviewCard'
+import ProductGroup from './ProductGroup'
+import QuickReplies from './QuickReplies'
 import RichText from './RichText'
 
 interface MessageListProps {
   messages: Message[]
   isTyping: boolean
+  onAddToCart: (sku: string, name: string) => void
+  onQuickReply: (text: string) => void
 }
 
 function formatTime(timestamp: number): string {
@@ -21,7 +25,13 @@ const LIST_STYLE: React.CSSProperties = {
   padding: '16px',
   display: 'flex',
   flexDirection: 'column',
-  gap: '12px',
+  gap: '16px',
+}
+
+const MESSAGE_WRAP_STYLE: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
 }
 
 const ROW_STYLE: React.CSSProperties = {
@@ -82,7 +92,13 @@ const DOT_STYLE: React.CSSProperties = {
   animation: 'acgTypingBounce 1.4s infinite ease-in-out both',
 }
 
-function MessageList({ messages, isTyping }: MessageListProps) {
+function MessageList({ messages, isTyping, onAddToCart, onQuickReply }: MessageListProps) {
+  const lastMessage = messages[messages.length - 1]
+  const showSuggestions =
+    lastMessage?.role === 'assistant' &&
+    !isTyping &&
+    lastMessage.suggestions &&
+    lastMessage.suggestions.length > 0
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -99,23 +115,19 @@ function MessageList({ messages, isTyping }: MessageListProps) {
       `}</style>
 
       {messages.map((msg) => (
-        <div
-          key={msg.id}
-          style={msg.role === 'user' ? ROW_USER_STYLE : ROW_ASSISTANT_STYLE}
-        >
-          <div style={msg.role === 'user' ? BUBBLE_USER : BUBBLE_ASSISTANT}>
-            <span style={{ display: 'block', wordBreak: 'break-word' as const }}>
-              <RichText text={msg.content} isUser={msg.role === 'user'} />
-            </span>
-            {msg.products && msg.products.length > 0 && (
-              <>
-                {msg.products.map((product) => (
-                  <ProductCardComponent key={product.productId} product={product} />
-                ))}
-              </>
-            )}
-            <span style={TIME_STYLE}>{formatTime(msg.timestamp)}</span>
+        <div key={msg.id} style={MESSAGE_WRAP_STYLE}>
+          <div style={msg.role === 'user' ? ROW_USER_STYLE : ROW_ASSISTANT_STYLE}>
+            <div style={msg.role === 'user' ? BUBBLE_USER : BUBBLE_ASSISTANT}>
+              <span style={{ display: 'block', wordBreak: 'break-word' as const }}>
+                <RichText text={msg.content} isUser={msg.role === 'user'} />
+              </span>
+              <span style={TIME_STYLE}>{formatTime(msg.timestamp)}</span>
+            </div>
           </div>
+          {msg.products && msg.products.length > 0 && (
+            <ProductGroup products={msg.products} onAddToCart={onAddToCart} />
+          )}
+          {msg.cartPreview && <CartPreviewCard cart={msg.cartPreview} />}
         </div>
       ))}
 
@@ -129,6 +141,10 @@ function MessageList({ messages, isTyping }: MessageListProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {showSuggestions && lastMessage.suggestions && (
+        <QuickReplies suggestions={lastMessage.suggestions} onSelect={onQuickReply} />
       )}
 
       <div ref={bottomRef} />

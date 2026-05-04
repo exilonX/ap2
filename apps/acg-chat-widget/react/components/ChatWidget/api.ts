@@ -1,4 +1,4 @@
-import type { Message, ProductCard } from './types'
+import type { CartPreview, Message, ProductCard } from './types'
 import { getMockResponse } from './mockResponses'
 
 interface ChatAPIResponse {
@@ -9,9 +9,14 @@ interface ChatAPIResponse {
     imageUrl: string
     price: number
     listPrice?: number
+    discountPct?: number
+    onSale?: boolean
     currency: string
     url: string
+    groupLabel?: string
   }>
+  suggestions?: string[]
+  cartPreview?: CartPreview
   cartUpdated?: boolean
   error?: string
 }
@@ -25,13 +30,15 @@ function getBaseUrl(): string {
   return ''
 }
 
-function buildHistory(messages: Message[]): HistoryEntry[] {
-  return messages
-    .slice(-10)
-    .map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
+function buildHistory(messages: Message[], currentUserMessage: string): HistoryEntry[] {
+  // The widget pushes the new user message into messages BEFORE calling the API,
+  // and the backend also appends `body.message` itself. Drop the trailing user
+  // turn if it matches what we're about to send to avoid a duplicate role:user.
+  const last = messages[messages.length - 1]
+  const dropLast = last && last.role === 'user' && last.content === currentUserMessage
+  const slice = dropLast ? messages.slice(-11, -1) : messages.slice(-10)
+
+  return slice.map((m) => ({ role: m.role, content: m.content }))
 }
 
 /**
@@ -99,30 +106,47 @@ function triggerCartRefresh(): void {
 export async function sendChatMessage(
   userMessage: string,
   conversationHistory: Message[]
-): Promise<{ content: string; products?: ProductCard[]; cartUpdated?: boolean }> {
+): Promise<{
+  content: string
+  products?: ProductCard[]
+  suggestions?: string[]
+  cartPreview?: CartPreview
+  cartUpdated?: boolean
+}> {
   const baseUrl = getBaseUrl()
   const orderFormId = getOrderFormIdFromCookie()
 
+  let response: Response
+
   try {
-    const response = await fetch(`${baseUrl}/_v/acg/chat`, {
+    response = await fetch(`${baseUrl}/_v/acg/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({
         message: userMessage,
-        history: buildHistory(conversationHistory),
+        history: buildHistory(conversationHistory, userMessage),
         orderFormId,
       }),
     })
+  } catch (error) {
+    // Network-level failure (no backend, DNS, etc.) — dev-time fallback to mock.
+    console.error('[ACG Chat] Network error:', error)
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
+    return fallbackToMock(userMessage)
+  }
 
-      console.error('[ACG Chat] API error:', response.status, errorData)
+  if (!response.ok) {
+    // Backend reachable but returned an error (5xx from upstream LLM, validation
+    // failure, etc.). Throw so the widget shows the localized errorConnection
+    // message in the user's language instead of the English mock fallback.
+    const errorData = await response.json().catch(() => ({}))
 
-      return fallbackToMock(userMessage)
-    }
+    console.error('[ACG Chat] API error:', response.status, errorData)
+    throw new Error(`Chat backend returned ${response.status}`)
+  }
 
+  try {
     const data: ChatAPIResponse = await response.json()
 
     // If the backend modified the cart, trigger a refresh so the store's mini-cart updates
@@ -136,19 +160,25 @@ export async function sendChatMessage(
       imageUrl: p.imageUrl,
       price: p.price,
       listPrice: p.listPrice,
+      discountPct: p.discountPct,
+      onSale: p.onSale,
       currency: p.currency,
       url: p.url,
+      groupLabel: p.groupLabel,
     }))
 
     return {
       content: data.reply,
       products,
+      suggestions: data.suggestions,
+      cartPreview: data.cartPreview,
       cartUpdated: data.cartUpdated,
     }
   } catch (error) {
-    console.error('[ACG Chat] Network error:', error)
-
-    return fallbackToMock(userMessage)
+    // JSON parse failure on a 200 response — server returned malformed body.
+    // Throw so the widget shows the localized error.
+    console.error('[ACG Chat] Response parse error:', error)
+    throw error
   }
 }
 

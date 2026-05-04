@@ -110,7 +110,9 @@ export function getMockResponse(userMessage: string): MockResponse {
 export function createMessage(
   role: 'user' | 'assistant',
   content: string,
-  products?: ProductCard[]
+  products?: ProductCard[],
+  suggestions?: string[],
+  cartPreview?: import('./types').CartPreview
 ): Message {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -118,5 +120,7 @@ export function createMessage(
     content,
     timestamp: Date.now(),
     products,
+    suggestions,
+    cartPreview,
   }
 }
