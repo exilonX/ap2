@@ -47,6 +47,9 @@ function parseArgs(argv: string[]): CliArgs {
         args.topK = Number(argv[++i])
         if (Number.isNaN(args.topK)) throw new Error('--top requires a number')
         break
+      case '--on-sale':
+        args.onSaleOnly = true
+        break
       case '--config':
         args.configPath = argv[++i]
         break
@@ -82,6 +85,7 @@ Modes:
   --estimate            Estimate cost & time — no API writes
   --query "<text>"      Semantic search: embed query, return top matches
                         Use --top N to change result count (default 5)
+                        Add --on-sale to filter to discounted products only
 
 Options:
   --config <path>       Path to config.json (default: ./config.json)
@@ -130,7 +134,7 @@ async function main(): Promise<void> {
 
     case 'query':
       if (!args.query) throw new Error('--query requires text')
-      await runQuery(config, args.query, args.topK ?? 5)
+      await runQuery(config, args.query, args.topK ?? 5, { onSaleOnly: args.onSaleOnly })
       break
 
     case 'fresh':

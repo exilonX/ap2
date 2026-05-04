@@ -142,10 +142,21 @@ function buildStructuredParts(product: VTEXProduct, currency = 'RON'): string[] 
 
   if (tags.length > 0) parts.push(`Tags: ${tags.join(', ')}`)
 
-  // 7. Price
-  const price = extractPrice(product)
+  // 7. Price + discount signal
+  const { price, listPrice } = extractPricing(product)
 
-  if (price > 0) parts.push(`Price: ${price} ${currency}`)
+  if (price > 0) {
+    if (listPrice > price) {
+      const discountPct = Math.round(((listPrice - price) / listPrice) * 100)
+      const savings = Math.round(listPrice - price)
+
+      parts.push(
+        `Price: ${price} ${currency} (on sale, reduced from ${listPrice} ${currency}, ${discountPct}% off, save ${savings} ${currency})`
+      )
+    } else {
+      parts.push(`Price: ${price} ${currency}`)
+    }
+  }
 
   return parts
 }
@@ -193,11 +204,14 @@ function extractTags(product: VTEXProduct): string[] {
   )
 }
 
-function extractPrice(product: VTEXProduct): number {
+function extractPricing(product: VTEXProduct): { price: number; listPrice: number } {
   const sku: VTEXSku | undefined = product.items?.[0]
-  const seller = sku?.sellers?.[0]
+  const offer = sku?.sellers?.[0]?.commertialOffer
 
-  return seller?.commertialOffer?.Price ?? 0
+  return {
+    price: offer?.Price ?? 0,
+    listPrice: offer?.ListPrice ?? 0,
+  }
 }
 
 function pickBestDescription(product: VTEXProduct): string {

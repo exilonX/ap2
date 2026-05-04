@@ -86,8 +86,11 @@ export interface ProductMetadata extends Record<string, unknown> {
   sku: string
   productId: string
   name: string
+  linkText: string        // URL slug — product page is at /{linkText}/p
   price: number
-  originalPrice: number
+  originalPrice: number   // catalog list price (> price when on sale)
+  discountPct: number     // 0 if not on sale, else % off
+  onSale: boolean         // true when originalPrice > price
   image: string
   category: string
   brand: string
@@ -171,5 +174,6 @@ export interface CliArgs {
   concurrency?: number
   query?: string
   topK?: number
+  onSaleOnly?: boolean
 }
 

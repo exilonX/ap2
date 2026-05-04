@@ -425,12 +425,20 @@ function toProductMetadata(product: VTEXProduct): ProductMetadata {
   const seller = sku?.sellers?.[0]
   const offer = seller?.commertialOffer
 
+  const price = offer?.Price ?? 0
+  const listPrice = offer?.ListPrice ?? 0
+  const onSale = listPrice > price && price > 0
+  const discountPct = onSale ? Math.round(((listPrice - price) / listPrice) * 100) : 0
+
   return {
     sku: sku?.itemId ?? product.productId,
     productId: String(product.productId),
     name: product.productName,
-    price: offer?.Price ?? 0,
-    originalPrice: offer?.ListPrice ?? 0,
+    linkText: product.linkText ?? '',
+    price,
+    originalPrice: listPrice,
+    discountPct,
+    onSale,
     image: sku?.images?.[0]?.imageUrl ?? '',
     category: product.categories?.[0] ?? '',
     brand: product.brand ?? '',
