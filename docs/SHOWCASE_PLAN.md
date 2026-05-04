@@ -163,6 +163,20 @@ This demonstrates the AP2 protocol working end-to-end. Honest case-study narrati
 
 ---
 
+## Architecture pitch (see docs/ARCHITECTURE.md)
+
+The real product differentiator isn't "we built a chat widget" — it's **"our widget adapts to your vertical via config"**. See `docs/ARCHITECTURE.md` for the full 4-layer design:
+
+- **Layer 1:** YAML config per client (brand, filters, starters, LLM context, industry)
+- **Layer 2:** Adapter reads config → injects prompt + loads industry tool bundle
+- **Layer 3:** Widget reads config → renders filter panel via component registry
+- **Layer 4:** Generic core (chat loop, Pinecone, cart) — never changes per client
+
+For THIS demo (v1): hardcoded miniprix config in adapter settings.
+For real clients (v2+): YAML per client, zod-validated.
+
+Case study angle: *"Other widgets are templates; ours is a platform."*
+
 ## What we are NOT doing this cycle
 
 These are great ideas for v2 but will kill the timeline:
