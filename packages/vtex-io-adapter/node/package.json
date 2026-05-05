@@ -15,7 +15,6 @@
     "@vtex/api": "^7.0.0",
     "@vtex/test-tools": "^1.0.0",
     "@vtex/tsconfig": "^0.5.6",
-    "tsx": "^4.21.0",
     "typescript": "5.5.3"
   },
   "resolutions": {
@@ -24,8 +23,7 @@
     "@types/express-serve-static-core": "4.16.0"
   },
   "scripts": {
-    "lint": "tsc --noEmit --pretty",
-    "test": "node --import tsx --test cart/**/*.test.ts identity/**/*.test.ts mandates/**/*.test.ts"
+    "lint": "tsc --noEmit --pretty"
   },
   "version": "0.3.0"
 }

@@ -43,8 +43,8 @@ Per package:
 |---|---|---|---|
 | `packages/core` | `npm run build` (tsc) | `npm test` (node `--test` over `*.test.ts` via `tsx`) | 68 tests; covers JCS, DID, mandates, keystore |
 | `packages/mcp-server` | `npm run build` (tsc) | — | `npm run dev` for `tsx watch`; `npm start` runs built `dist/index.js` |
-| `packages/vtex-io-adapter` (root) | `yarn lint` (eslint), `yarn format` (prettier) | — | `lint.sh` reinstalls + lints |
-| `packages/vtex-io-adapter/node` | `yarn lint` (= `tsc --noEmit --pretty`) | `vtex-test-tools test` (Jest, only stub) | App lives under `node/`; this is the runtime entry — see manifest |
+| `packages/vtex-io-adapter` (root) | `yarn lint` (eslint), `yarn format` (prettier) | `yarn test` (`node --import tsx --test` over `node/{cart,identity,mandates}/**/*.test.ts`; 49 tests) | `lint.sh` reinstalls + lints. Test tooling (`tsx`) lives here, NOT in `node/`, because VTEX's `node@4` builder runs Node 16 and would reject `tsx@4.x` (engine mismatch). |
+| `packages/vtex-io-adapter/node` | `yarn lint` (= `tsc --noEmit --pretty`) | — (run from adapter root) | App lives under `node/`; this is the runtime entry. Keep `node/package.json` minimal — anything added to its `dependencies` or `devDependencies` is installed by VTEX builder on `vtex link`. |
 | `apps/acg-chat-widget/react` | — | `vtex-test-tools test` | TypeScript pinned to **3.9.7** (VTEX render-runtime constraint) |
 | `scripts/sync-catalog` | `npm run typecheck` | — | `npm run estimate`, `npm run sync`, `npm run fresh`, `npm run retry`, `--limit N`, `--concurrency N` |
 
