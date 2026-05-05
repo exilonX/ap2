@@ -1,6 +1,8 @@
 {
   "dependencies": {
+    "canonicalize": "^2.0.0",
     "co-body": "^6.0.0",
+    "jose": "^4.15.9",
     "ramda": "^0.25.0",
     "uuid": "^9.0.0"
   },
@@ -23,7 +25,7 @@
   },
   "scripts": {
     "lint": "tsc --noEmit --pretty",
-    "test": "node --import tsx --test cart/**/*.test.ts"
+    "test": "node --import tsx --test cart/**/*.test.ts identity/**/*.test.ts mandates/**/*.test.ts"
   },
   "version": "0.3.0"
 }

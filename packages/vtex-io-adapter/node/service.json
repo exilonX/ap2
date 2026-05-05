@@ -73,10 +73,6 @@
       "path": "/_v/acg/mandates/:mandateId",
       "public": true
     },
-    "storeMandate": {
-      "path": "/_v/acg/mandates",
-      "public": true
-    },
     "didDocument": {
       "path": "/_v/acg/.well-known/did.json",
       "public": true

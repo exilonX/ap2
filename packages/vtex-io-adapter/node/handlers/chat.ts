@@ -12,9 +12,11 @@ import { ClaudeClient, GeminiClient, OpenAIClient } from '../clients/llm'
 import type { LLMMessage, LLMTool, LLMToolCall, LLMResponse, LLMProvider } from '../clients/llm'
 import { loadConfigForAccount } from '../config/load'
 import type { ClientConfig } from '../config/types'
+import { MandateOrchestration } from '../mandates/mandate-orchestration'
 import { mapOrderFormToCart } from '../mappers/cart'
 import { mapProduct } from '../mappers/product'
 import { getOrderFormIdFromRequest, resolveOrderFormId } from '../utils/session'
+import { buildMerchantIdentity } from './did'
 import { semanticSearch } from './rag'
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -441,6 +443,14 @@ async function executeTool(
   cartUpdated?: boolean
   suggestions?: string[]
   cartPreview?: CartPreviewData
+  mandate?: {
+    mandateId: string
+    retrievalUrl: string
+    cartHash: string
+    signedBy: string
+    signedAt: string
+    didDocumentUrl: string
+  }
 }> {
   const args = toolCall.arguments
 
@@ -1057,10 +1067,20 @@ async function executeTool(
         return { result: 'Your cart is empty. Add some products first!' }
       }
 
-      const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId)
-      const cart = mapOrderFormToCart(orderForm)
+      const cart = new Cart({ checkout: ctx.clients.checkout })
+      let snapshot
+      try {
+        snapshot = await cart.getCart(orderFormId)
+      } catch (err) {
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+        throw err
+      }
 
-      if (cart.items.length === 0) {
+      if (snapshot.items.length === 0) {
         return { result: 'Your cart is empty. Add some products first!' }
       }
 
@@ -1070,10 +1090,39 @@ async function executeTool(
           ? `${ctx.vtex.account}.myvtex.com`
           : `${workspace}--${ctx.vtex.account}.myvtex.com`
 
+      // Sign a CartMandate via MandateOrchestration. This is the
+      // demo's punchline beat: the merchant just signed *this exact*
+      // cart and committed to it.
+      const identity = buildMerchantIdentity(ctx)
+      const orchestration = new MandateOrchestration({
+        identity,
+        vbase: ctx.clients.vbase,
+      })
+      const bundle = await orchestration.signAndPersist(snapshot, {
+        orderFormId,
+        source: 'chat-tool',
+      })
+
       const checkoutUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`
+      const retrievalUrl = `https://${host}/_v/acg/mandates/${bundle.mandateId}`
+      const didDocumentUrl = `https://${host}/_v/acg/.well-known/did.json`
 
       return {
-        result: `Your cart total is ${cart.total} ${cart.currency} (${cart.itemCount} items). Checkout here: ${checkoutUrl}`,
+        result: [
+          `Your cart total is ${snapshot.total} ${snapshot.currency} (${snapshot.itemCount} items).`,
+          `The merchant signed this cart with AP2 mandate ${bundle.mandateId}.`,
+          `Mandate proof: ${retrievalUrl}`,
+          `Merchant identity (DID): ${didDocumentUrl}`,
+          `Checkout: ${checkoutUrl}`,
+        ].join('\n'),
+        mandate: {
+          mandateId: bundle.mandateId,
+          retrievalUrl,
+          cartHash: bundle.cartHash,
+          signedBy: bundle.signedBy,
+          signedAt: bundle.signedAt,
+          didDocumentUrl,
+        },
       }
     }
 

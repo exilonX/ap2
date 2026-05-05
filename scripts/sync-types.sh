@@ -14,6 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 SHARED_DIR="$ROOT_DIR/packages/shared/types"
 TARGET="$ROOT_DIR/packages/vtex-io-adapter/node/types/shared.ts"
+CORE_SRC_DIR="$ROOT_DIR/packages/core/src"
+CORE_TARGET_DIR="$ROOT_DIR/packages/vtex-io-adapter/node/core"
 
 # Verify source exists
 if [ ! -d "$SHARED_DIR" ]; then
@@ -50,3 +52,16 @@ for file in product.ts cart.ts intelligence.ts checkout.ts; do
 done
 
 echo "Synced shared types → $TARGET"
+
+# Sync @acg/core source files into the adapter (VTEX IO can't reach
+# `file:` deps so the core code is vendored). The adapter index.ts in
+# packages/vtex-io-adapter/node/core/ stays untouched — only the
+# primitive .ts files are copied verbatim.
+if [ -d "$CORE_SRC_DIR" ] && [ -d "$CORE_TARGET_DIR" ]; then
+  for file in jcs.ts did.ts keystore.ts mandates.ts evidence.ts; do
+    if [ -f "$CORE_SRC_DIR/$file" ]; then
+      cp "$CORE_SRC_DIR/$file" "$CORE_TARGET_DIR/$file"
+    fi
+  done
+  echo "Synced @acg/core sources → $CORE_TARGET_DIR"
+fi

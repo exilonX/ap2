@@ -1,20 +1,20 @@
 /**
- * @acg/core — AP2 Protocol Engine
+ * @acg/core — vendored copy.
  *
- * AP2-compliant cryptographic mandate signing for agentic commerce.
- * Follows the AP2 v0.1.0 specification (Human Present scenario).
+ * VTEX IO can't reach `file:` deps, so the AP2 cryptographic primitives
+ * from `packages/core/src/*` are vendored here. The source of truth
+ * remains `packages/core/`; this directory mirrors its public surface.
  *
- * Reference: https://github.com/google-agentic-commerce/AP2
+ * If you change anything in `packages/core/src/`, run the vendor sync
+ * (or, until the script lands, manually copy the relevant files).
  *
- * Usage:
- *   import { generateKeyPair, createCartMandate, verifyCartMandate } from '@acg/core';
- *
- *   const keys = generateKeyPair();
- *   const mandate = await createCartMandate(cartData, 'merchant.com', keys);
- *   const result = await verifyCartMandate(mandate, keys.publicKey);
+ * Public surface re-exported from this index matches `@acg/core`:
+ *   - `loadOrCreateIdentity`, `KeyStore`, `MerchantIdentity`
+ *   - `createCartMandate`, `verifyCartMandate`, `mandateMatchesCart`
+ *   - `extractEvidenceBundle`, `EvidenceBundle`
+ *   - DID and JCS primitives
  */
 
-// DID management
 export {
   generateKeyPair,
   keyPairFromHex,
@@ -26,7 +26,6 @@ export {
   type DIDDocument,
 } from './did';
 
-// JSON Canonicalization (RFC 8785)
 export {
   canonicalizeJson,
   sha256,
@@ -34,7 +33,6 @@ export {
   canonicalHash,
 } from './jcs';
 
-// Key persistence
 export {
   loadOrCreateIdentity,
   loadIdentityFromEnv,
@@ -45,7 +43,6 @@ export {
   type MerchantIdentity,
 } from './keystore';
 
-// Mandate management (AP2-compliant)
 export {
   createCartMandate,
   verifyCartMandate,
@@ -60,7 +57,6 @@ export {
   type CartData,
 } from './mandates';
 
-// Evidence Bundle (AP2-compliant — ties a CartMandate to its persisted record)
 export {
   extractEvidenceBundle,
   type EvidenceBundle,

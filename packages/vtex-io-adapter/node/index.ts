@@ -13,7 +13,7 @@ import {
   getOrderStatus,
 } from './handlers/checkout'
 import { serveDIDDocument } from './handlers/did'
-import { getMandate, storeMandate } from './handlers/mandate'
+import { getMandate } from './handlers/mandate'
 import { chatHandler } from './handlers/chat'
 import { getConfig } from './handlers/config'
 import { getSyncStatus } from './handlers/rag'
@@ -108,9 +108,6 @@ export default new Service({
     }),
     getMandate: method({
       GET: [getMandate],
-    }),
-    storeMandate: method({
-      POST: [storeMandate],
     }),
     didDocument: method({
       GET: [serveDIDDocument],

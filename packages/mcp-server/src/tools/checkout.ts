@@ -4,6 +4,12 @@
  * MCP tools for checkout — supports both:
  * - Path A: VTEX native checkout (browser redirect)
  * - Path B: In-chat payment via MCP App (sandboxed iframe)
+ *
+ * Per ADR-0001, the MCP server NEVER signs mandates locally. Both
+ * `checkoutInChat` and `checkout` call `/_v/acg/checkout/initiate` and
+ * the Adapter performs the merchant-side AP2 ceremony — sign, persist,
+ * return the mandate id and retrieval URL. The MCP server merely
+ * displays what came back.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -12,9 +18,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import axios from 'axios'
 import { VtexClient } from '../client'
-import type { CheckoutInitiation } from '@acg/shared/checkout'
 import type { SimpleCart } from '@acg/shared/cart'
-import { getLastMandate } from './mandate'
 
 async function imageToDataUri(url: string): Promise<string | null> {
   try {
@@ -22,6 +26,26 @@ async function imageToDataUri(url: string): Promise<string | null> {
     const contentType = (response.headers['content-type'] || 'image/jpeg').split(';')[0]
     return `data:${contentType};base64,${Buffer.from(response.data).toString('base64')}`
   } catch { return null }
+}
+
+/**
+ * Shape of the Adapter's `/checkout/initiate` response after Issue 01.
+ *
+ * The mandate ceremony happens server-side; the response carries the
+ * mandate id and the retrieval URL the demo recording reads from.
+ */
+interface CheckoutInitiateResponse {
+  sessionId: string
+  mandateId: string
+  retrievalUrl: string
+  cartHash: string
+  signedBy: string
+  signedAt: string
+  checkoutUrl: string
+  directCheckoutUrl?: string
+  expiresAt: string
+  cart: { total: number; currency: string; itemCount: number }
+  message?: string
 }
 
 const CHECKOUT_APP_URI = 'ui://acg-checkout/index.html'
@@ -57,54 +81,26 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
     async () => {
       try {
         const cart = await client.get<SimpleCart>('/cart')
+
+        // The Adapter signs the mandate. We pass no body — `/checkout/initiate`
+        // doesn't accept caller-supplied mandates anymore.
+        const checkoutResult = await client.post<CheckoutInitiateResponse>('/checkout/initiate').catch(() => null)
+
         const baseUrl = `https://${process.env.VTEX_WORKSPACE || 'master'}--${process.env.VTEX_ACCOUNT || 'store'}.myvtex.com`
+        const checkoutUrl =
+          checkoutResult?.checkoutUrl || `${baseUrl}/checkout/?orderFormId=${cart.id}#/cart`
 
-        // Auto-sign mandate if not already signed
-        let mandate = getLastMandate()
-        if (!mandate && cart.items.length > 0) {
-          try {
-            const { loadOrCreateIdentity, createCartMandate } = await import('@acg/core') as any
-            const { homedir } = await import('os')
-            const { join } = await import('path')
-            const domain = `${process.env.VTEX_WORKSPACE || 'master'}--${process.env.VTEX_ACCOUNT || 'store'}.myvtex.com`
-            const identity = loadOrCreateIdentity(domain, join(homedir(), '.acg', 'keys', 'merchant.json'))
-            const cartData = {
-              items: cart.items.map((item) => ({ sku: item.sku, name: item.name, quantity: item.quantity, unitPrice: item.unitPrice })),
-              totalAmount: cart.total,
-              currency: cart.currency,
-              orderFormId: cart.id,
+        const mandateInfo = checkoutResult
+          ? {
+              id: checkoutResult.mandateId,
+              merchantDid: checkoutResult.signedBy,
+              cartHash: checkoutResult.cartHash,
+              issuedAt: checkoutResult.signedAt,
+              verified: true,
+              mandateUrl: checkoutResult.retrievalUrl,
+              didUrl: `${baseUrl}/_v/acg/.well-known/did.json`,
             }
-            const signed = await createCartMandate(cartData, identity.domain, identity.keys)
-            mandate = signed
-            // Store in the mandate module's state
-            const { setLastMandate } = await import('./mandate')
-            setLastMandate(signed)
-          } catch (err) {
-            console.error('[ACG] Auto-sign mandate failed:', (err as Error).message)
-          }
-        }
-
-        // Initiate checkout with mandate
-        const body = mandate ? { mandate } : undefined
-        const checkoutResult = await client.post<CheckoutInitiation & { mandateId?: string }>('/checkout/initiate', body).catch(() => null)
-        const checkoutUrl = checkoutResult?.checkoutUrl || `${baseUrl}/checkout/?orderFormId=${cart.id}#/cart`
-
-        // Build mandate verification info for the widget
-        let mandateInfo = null
-        if (mandate && checkoutResult?.mandateId) {
-          const jwtParts = mandate.merchant_authorization.split('.')
-          const jwtPayload = JSON.parse(Buffer.from(jwtParts[1], 'base64url').toString())
-          mandateInfo = {
-            id: mandate.contents.id,
-            merchantDid: mandate.contents.merchant_name,
-            cartHash: jwtPayload.cart_hash,
-            issuedAt: new Date(jwtPayload.iat * 1000).toISOString(),
-            expiresAt: mandate.contents.cart_expiry,
-            verified: true,
-            mandateUrl: `${baseUrl}/_v/acg/mandates/${checkoutResult.mandateId}`,
-            didUrl: `${baseUrl}/_v/acg/.well-known/did.json`,
-          }
-        }
+          : null
 
         // Embed cart item images as base64
         const itemsWithImages = await Promise.all(
@@ -178,31 +174,23 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
   // ─── checkout (Path A — VTEX native checkout redirect) ─────────
   server.tool('checkout', {}, async () => {
     try {
-      const mandate = getLastMandate()
-      const body = mandate ? { mandate } : undefined
-      const result = await client.post<CheckoutInitiation & { mandateId?: string }>('/checkout/initiate', body)
+      // No body — the Adapter signs the mandate; we just receive the
+      // result and display it.
+      const result = await client.post<CheckoutInitiateResponse>('/checkout/initiate')
+
+      const baseUrl = result.checkoutUrl?.split('/_v/acg/')[0] || ''
 
       let response =
         `Ready to complete your purchase!\n\n` +
         `**Order Summary:**\n` +
         `- Items: ${result.cart.itemCount}\n` +
-        `- Total: ${result.cart.total.toFixed(2)} ${result.cart.currency}\n\n`
-
-      const baseUrl = result.checkoutUrl?.split('/_v/acg/')[0] || ''
-
-      if (mandate && result.mandateId) {
-        const jwtParts = mandate.merchant_authorization.split('.')
-        const jwtPayload = JSON.parse(Buffer.from(jwtParts[1], 'base64url').toString())
-        response +=
-          `**AP2 Mandate:** \`${result.mandateId}\`\n` +
-          `- Cart Hash: \`${jwtPayload.cart_hash.substring(0, 16)}...\`\n` +
-          `- Signed by: \`${mandate.contents.merchant_name}\`\n` +
-          `- Cart locked at ${mandate.contents.total.value} ${mandate.contents.total.currency}\n\n` +
-          `**Mandate proof (public):** ${baseUrl}/_v/acg/mandates/${result.mandateId}\n` +
-          `**Merchant identity (DID):** ${baseUrl}/_v/acg/.well-known/did.json\n\n`
-      }
-
-      response +=
+        `- Total: ${result.cart.total.toFixed(2)} ${result.cart.currency}\n\n` +
+        `**AP2 Mandate:** \`${result.mandateId}\`\n` +
+        `- Cart Hash: \`${result.cartHash.substring(0, 16)}...\`\n` +
+        `- Signed by: \`${result.signedBy}\`\n` +
+        `- Signed at: ${result.signedAt}\n\n` +
+        `**Mandate proof (public):** ${result.retrievalUrl}\n` +
+        `**Merchant identity (DID):** ${baseUrl}/_v/acg/.well-known/did.json\n\n` +
         `**Complete checkout:** ${result.checkoutUrl}\n\n` +
         `This link expires in 10 minutes.`
 

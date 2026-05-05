@@ -5,12 +5,14 @@
  */
 
 import { json } from 'co-body';
+import { Cart } from '../cart/cart';
 import { mapOrderFormToCart } from '../mappers/cart';
-import { getOrderFormIdFromRequest, generateSessionId } from '../utils/session';
+import { MandateOrchestration } from '../mandates/mandate-orchestration';
+import { buildMerchantIdentity, resolveMerchantDomain } from './did';
+import { resolveOrderFormId, generateSessionId } from '../utils/session';
 import type { CheckoutSession } from '../types/shared';
 
 const VBASE_BUCKET = 'acg-sessions';
-const MANDATE_BUCKET = 'acg-mandates';
 
 interface CheckoutExecuteRequest {
   customerData?: {
@@ -45,38 +47,37 @@ interface CheckoutExecuteRequest {
 
 /**
  * POST /_v/acg/checkout/initiate
- * Start checkout and return payment page URL
+ *
+ * Sign a CartMandate for the current cart, persist it, and return
+ * the session info plus the mandate id and retrieval URL.
+ *
+ * Per ADR-0001, the merchant signs — callers no longer supply a mandate.
+ * The legacy `body.mandate` parameter is gone.
  */
 export async function initiateCheckout(ctx: Context) {
   try {
     console.log('[ACG Checkout] INITIATE request');
 
-    // Check for mandate in request body
-    let mandate: unknown = null;
+    // Drain any incoming body so the request stream completes (callers
+    // may still POST something; we ignore it).
     try {
-      const body = await json(ctx.req);
-      if (body?.mandate) {
-        mandate = body.mandate;
-      }
+      await json(ctx.req);
     } catch {
-      // No body or no mandate — that's fine
+      // No body — that's fine.
     }
 
-    const orderFormId = getOrderFormIdFromRequest(ctx);
-
-    if (!orderFormId) {
-      ctx.status = 400;
-      ctx.body = { error: 'No cart found. Add items first.' };
-      return;
-    }
+    const cartModule = new Cart({ checkout: ctx.clients.checkout });
+    const orderFormId = await resolveOrderFormId(ctx, cartModule);
 
     const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId);
-
     if (orderForm.items.length === 0) {
       ctx.status = 400;
       ctx.body = { error: 'Cart is empty. Add items first.' };
       return;
     }
+
+    // Build the SimpleCart that MandateOrchestration consumes.
+    const simpleCart = mapOrderFormToCart(orderForm);
 
     // Create checkout session
     const sessionId = generateSessionId();
@@ -90,53 +91,47 @@ export async function initiateCheckout(ctx: Context) {
       expiresAt: now + expiresIn,
       status: 'pending',
     };
-
-    // Store session in VBase
     await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
 
-    // Store mandate if provided
-    let mandateId: string | null = null;
-    if (mandate && typeof mandate === 'object') {
-      const m = mandate as { contents?: { id?: string } };
-      mandateId = m.contents?.id || null;
-      if (mandateId) {
-        await ctx.clients.vbase.saveJSON(MANDATE_BUCKET, mandateId, {
-          mandate,
-          sessionId,
-          orderFormId,
-          storedAt: new Date().toISOString(),
-        });
-        console.log(`[ACG Checkout] Mandate stored: ${mandateId}`);
-      }
-    }
+    // Sign + persist the CartMandate. The Adapter is the sole signer
+    // per ADR-0001.
+    const identity = buildMerchantIdentity(ctx);
+    const orchestration = new MandateOrchestration({
+      identity,
+      vbase: ctx.clients.vbase,
+    });
+    const bundle = await orchestration.signAndPersist(simpleCart, {
+      sessionId,
+      orderFormId,
+    });
 
-    const cart = mapOrderFormToCart(orderForm);
-    const workspace = ctx.vtex.workspace || 'master';
-    const host = workspace === 'master'
-      ? `${ctx.vtex.account}.myvtex.com`
-      : `${workspace}--${ctx.vtex.account}.myvtex.com`;
-
-    // Redirect URL: sets cookie + redirects to VTEX native checkout
+    const host = resolveMerchantDomain(ctx);
     const checkoutRedirectUrl = `https://${host}/_v/acg/checkout/redirect/${sessionId}`;
-
-    // Direct VTEX checkout URL (fallback if redirect doesn't work)
     const checkoutDirectUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`;
+    const retrievalUrl = `https://${host}/_v/acg/mandates/${bundle.mandateId}`;
 
     const response = {
       sessionId,
-      mandateId,
+      mandateId: bundle.mandateId,
+      retrievalUrl,
+      cartHash: bundle.cartHash,
+      signedBy: bundle.signedBy,
+      signedAt: bundle.signedAt,
       checkoutUrl: checkoutRedirectUrl,
       directCheckoutUrl: checkoutDirectUrl,
       expiresAt: new Date(session.expiresAt).toISOString(),
       cart: {
-        total: cart.total,
-        currency: cart.currency,
-        itemCount: cart.itemCount,
+        total: simpleCart.total,
+        currency: simpleCart.currency,
+        itemCount: simpleCart.itemCount,
       },
       message: 'Click the checkout link to complete your purchase.',
     };
 
-    console.log('[ACG Checkout] INITIATE Response:', `sessionId: ${response.sessionId}`);
+    console.log(
+      '[ACG Checkout] INITIATE Response:',
+      `sessionId: ${response.sessionId}, mandateId: ${response.mandateId}`
+    );
     ctx.body = response;
   } catch (error) {
     console.error('[ACG Checkout] Initiate error:', error);

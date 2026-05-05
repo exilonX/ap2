@@ -1,204 +1,118 @@
 /**
  * Mandate Tools
  *
- * MCP tools for AP2 mandate operations.
- * Creates AP2-compliant CartMandates with JWT-based merchant authorization.
+ * The MCP server is a Shopping Agent (per `CONTEXT.md` §3) and per
+ * ADR-0001 it MUST NOT hold merchant private keys. The signing
+ * primitives that previously lived in this file have been removed.
+ *
+ * What stays here are read-side conveniences against the Adapter's
+ * mandate endpoints — fetching a stored bundle, displaying the
+ * merchant DID document (verifiable via `/.well-known/did.json`).
+ *
+ * Production verification still works end-to-end:
+ *   1. Caller fetches the EvidenceBundle at `/_v/acg/mandates/:id`.
+ *   2. Caller fetches the DID doc at `/_v/acg/.well-known/did.json`.
+ *   3. Caller verifies the JWT signature with the published public key.
+ * The Adapter's `getMandate` handler also performs verification on
+ * every read and returns the result alongside the bundle.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { VtexClient } from '../client'
-import {
-  loadOrCreateIdentity,
-  createCartMandate,
-  verifyCartMandate,
-  type MerchantIdentity,
-  type CartMandate,
-} from '@acg/core'
-import type { SimpleCart } from '@acg/shared/cart'
-import { join } from 'path'
-import { homedir } from 'os'
+import type { EvidenceBundle, MandateVerification } from '@acg/core'
 
-// Merchant identity — loaded once, persisted across calls
-let merchantIdentity: MerchantIdentity | null = null;
-
-// Last created mandate — kept in memory for verification
-let lastMandate: CartMandate | null = null;
-
-/**
- * Get the last created mandate (used by checkout tool).
- */
-export function getLastMandate(): CartMandate | null {
-  return lastMandate;
-}
-
-/**
- * Set the last mandate (used by checkout tool when auto-signing).
- */
-export function setLastMandate(mandate: CartMandate): void {
-  lastMandate = mandate;
-}
-
-function getIdentity(): MerchantIdentity {
-  if (!merchantIdentity) {
-    const domain = `${process.env.VTEX_WORKSPACE || 'master'}--${process.env.VTEX_ACCOUNT || 'store'}.myvtex.com`;
-    const keyPath = join(homedir(), '.acg', 'keys', 'merchant.json');
-    merchantIdentity = loadOrCreateIdentity(domain, keyPath);
-  }
-  return merchantIdentity;
+interface MandateGetResponse {
+  bundle: EvidenceBundle
+  verification: MandateVerification & { didDocumentUrl: string }
 }
 
 export function registerMandateTools(server: McpServer, client: VtexClient) {
   /**
-   * Create an AP2-compliant CartMandate for the current cart.
-   * Signs the cart contents with a JWT (EdDSA algorithm) per the AP2 specification.
-   * Use this before checkout to create a tamper-proof proof of authorization.
+   * Fetch a previously-signed mandate by id and display its verification
+   * status.
+   *
+   * The Adapter signs at `/checkout/initiate`; this tool is the read-side.
+   * Useful in demos to show "the merchant signed; here's the proof URL;
+   * the signature verifies."
    */
-  server.tool('createCartMandate', {}, async () => {
-    try {
-      const cart = await client.get<SimpleCart>('/cart')
+  server.tool(
+    'getMandate',
+    {
+      mandateId: z.string().describe('The mandate id returned by checkout'),
+    },
+    async (params) => {
+      try {
+        const result = await client.get<MandateGetResponse>(`/mandates/${params.mandateId}`)
+        const { bundle, verification } = result
 
-      if (!cart.items || cart.items.length === 0) {
+        let response = `**Cart Mandate** (AP2 Protocol v0.1.0)\n\n`
+        response += `Mandate ID: \`${bundle.mandateId}\`\n`
+        response += `Signed by: \`${bundle.signedBy}\`\n`
+        response += `Signed at: ${bundle.signedAt}\n\n`
+
+        response += `**Cart contents (W3C PaymentItem format):**\n`
+        bundle.cartMandate.contents.payment_items.forEach((item) => {
+          response += `- ${item.label}`
+          if (item.quantity && item.quantity > 1) response += ` x ${item.quantity}`
+          response += ` — ${item.amount.value} ${item.amount.currency}\n`
+        })
+        response += `\n**Total: ${bundle.cartMandate.contents.total.value} ${bundle.cartMandate.contents.total.currency}**\n\n`
+
+        response += `**Cryptographic proof (JWT / EdDSA):**\n`
+        response += `- Cart Hash (SHA-256): \`${bundle.cartHash}\`\n`
+        response += `- Cart expiry: ${bundle.cartMandate.contents.cart_expiry}\n\n`
+
+        response += `**Verification result:**\n`
+        response += `- JWT Signature (EdDSA): ${verification.checks.signatureValid ? 'PASS' : 'FAIL'}\n`
+        response += `- Not Expired: ${verification.checks.notExpired ? 'PASS' : 'FAIL'}\n`
+        response += `- Cart Hash Integrity: ${verification.checks.hashMatches ? 'PASS' : 'FAIL'}\n\n`
+        response += `**Result: ${verification.valid ? 'VALID' : 'INVALID'}**`
+        if (verification.error) {
+          response += `\nReason: ${verification.error}`
+        }
+        response += `\n\nDID document: ${verification.didDocumentUrl}`
+
+        return { content: [{ type: 'text' as const, text: response }] }
+      } catch (error) {
         return {
-          content: [{
-            type: 'text' as const,
-            text: 'Cannot create mandate — cart is empty. Add items first.',
-          }],
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error fetching mandate: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            },
+          ],
           isError: true,
         }
       }
-
-      const identity = getIdentity();
-
-      const cartData = {
-        items: cart.items.map((item) => ({
-          sku: item.sku,
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-        })),
-        totalAmount: cart.total,
-        currency: cart.currency,
-        orderFormId: cart.id,
-      };
-
-      const mandate = await createCartMandate(cartData, identity.domain, identity.keys);
-      lastMandate = mandate;
-
-      // Decode JWT payload for display
-      const jwtParts = mandate.merchant_authorization.split('.');
-      const jwtPayload = JSON.parse(Buffer.from(jwtParts[1], 'base64url').toString());
-
-      let response = `**Cart Mandate Created** (AP2 Protocol v0.1.0)\n\n`
-      response += `Mandate ID: \`${mandate.contents.id}\`\n`
-      response += `Merchant DID: \`${mandate.contents.merchant_name}\`\n\n`
-
-      response += `**Signed Cart Contents (W3C PaymentItem format):**\n`
-      mandate.contents.payment_items.forEach((item) => {
-        response += `- ${item.label}`
-        if (item.quantity && item.quantity > 1) response += ` x ${item.quantity}`
-        response += ` — ${item.amount.value} ${item.amount.currency}\n`
-      })
-      response += `\n**Total: ${mandate.contents.total.value} ${mandate.contents.total.currency}**\n\n`
-
-      response += `**Cryptographic Proof (JWT / EdDSA):**\n`
-      response += `- Algorithm: EdDSA (Ed25519)\n`
-      response += `- Cart Hash (SHA-256): \`${jwtPayload.cart_hash}\`\n`
-      response += `- JWT ID: \`${jwtPayload.jti}\`\n`
-      response += `- Issued: ${new Date(jwtPayload.iat * 1000).toISOString()}\n`
-      response += `- Expires: ${mandate.contents.cart_expiry}\n\n`
-
-      response += `**JWT Token:** \`${mandate.merchant_authorization.substring(0, 40)}...\`\n\n`
-
-      response += `This mandate cryptographically locks the cart at this exact price. `
-      response += `Any change to items, quantities, or prices invalidates the signature.`
-
-      return {
-        content: [{ type: 'text' as const, text: response }],
-      }
-    } catch (error) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Error creating mandate: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        }],
-        isError: true,
-      }
     }
-  })
-
-  /**
-   * Verify the last created CartMandate.
-   * Checks JWT signature validity, expiration, and cart hash integrity.
-   */
-  server.tool('verifyMandate', {
-    mandateId: z.string().optional().describe('Mandate ID to verify (uses last created if not specified)'),
-  }, async (params) => {
-    try {
-      if (!lastMandate) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: 'No mandate to verify. Create one first with createCartMandate.',
-          }],
-          isError: true,
-        }
-      }
-
-      const identity = getIdentity();
-      const result = await verifyCartMandate(lastMandate, identity.keys.publicKey);
-
-      let response = `**Mandate Verification** (AP2 Protocol)\n\n`
-      response += `Mandate ID: \`${lastMandate.contents.id}\`\n\n`
-
-      response += `**Checks:**\n`
-      response += `- JWT Signature (EdDSA): ${result.checks.signatureValid ? 'PASS' : 'FAIL'}\n`
-      response += `- Not Expired: ${result.checks.notExpired ? 'PASS' : 'FAIL'}\n`
-      response += `- Cart Hash Integrity: ${result.checks.hashMatches ? 'PASS' : 'FAIL'}\n\n`
-
-      response += `**Result: ${result.valid ? 'VALID' : 'INVALID'}**`
-      if (result.error) {
-        response += `\nReason: ${result.error}`
-      }
-
-      return {
-        content: [{ type: 'text' as const, text: response }],
-      }
-    } catch (error) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Error verifying mandate: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        }],
-        isError: true,
-      }
-    }
-  })
+  )
 
   /**
    * Get the merchant's DID document (public key for verification).
+   *
+   * The DID document is served by the Adapter at
+   * `/_v/acg/.well-known/did.json`. Anyone can fetch it and verify
+   * any signed mandate against the public key it publishes.
    */
   server.tool('getMerchantDID', {}, async () => {
     try {
-      const identity = getIdentity();
+      const didDoc = await client.get<unknown>('/.well-known/did.json')
 
       let response = `**Merchant Identity** (AP2 Protocol)\n\n`
-      response += `DID: \`${identity.did}\`\n`
-      response += `Domain: ${identity.domain}\n\n`
       response += `**DID Document:**\n`
-      response += `\`\`\`json\n${JSON.stringify(identity.didDocument, null, 2)}\n\`\`\`\n\n`
-      response += `This document is published at:\n`
-      response += `\`https://${identity.domain}/_v/acg/.well-known/did.json\``
+      response += `\`\`\`json\n${JSON.stringify(didDoc, null, 2)}\n\`\`\`\n\n`
+      response += `Anyone can fetch this document to verify the merchant's signed mandates.`
 
-      return {
-        content: [{ type: 'text' as const, text: response }],
-      }
+      return { content: [{ type: 'text' as const, text: response }] }
     } catch (error) {
       return {
-        content: [{
-          type: 'text' as const,
-          text: `Error getting DID: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        }],
+        content: [
+          {
+            type: 'text' as const,
+            text: `Error fetching DID document: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+        ],
         isError: true,
       }
     }
