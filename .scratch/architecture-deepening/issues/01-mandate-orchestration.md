@@ -1,8 +1,9 @@
 ## 0001 — Mandate Orchestration module (merchant-side AP2 ceremony)
 
-- **Status:** ready-for-agent
+- **Status:** shipped
 - **Created:** 2026-05-05
-- **Last updated:** 2026-05-05 (grilling complete)
+- **Last updated:** 2026-05-05 (shipped)
+- **Shipped:** commit `d6b00f3` — `adapter+core: mandate seam + merchant identity (issue 01)`
 - **GitHub:** _(filled when promoted)_
 - **Priority:** P0 (this is the product we sell)
 - **Demo-blocking:** Yes

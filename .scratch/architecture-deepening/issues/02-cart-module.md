@@ -1,8 +1,9 @@
 ## 0002 — Cart module (Cart Negotiation made concrete)
 
-- **Status:** ready-for-agent
+- **Status:** shipped
 - **Created:** 2026-05-05
-- **Last updated:** 2026-05-05 (grilling complete)
+- **Last updated:** 2026-05-05 (shipped)
+- **Shipped:** commit `25ff75b` — `adapter: cart module + REST/chat migrations, 21 tests (issue 02)`
 - **GitHub:** _(filled when promoted)_
 - **Priority:** P0 (foundation for Issue 01 and the chat tool surface)
 - **Demo-blocking:** Yes
