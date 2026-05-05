@@ -2,9 +2,18 @@
  * Session Utilities
  *
  * Helpers for managing orderForm sessions across MCP and browser clients.
+ *
+ * Boundary:
+ *   - HTTP-side concerns (read header/cookie, write cookie) live here.
+ *   - Cart-domain concerns (creating an empty cart) live in
+ *     `node/cart/cart.ts` (`Cart.createCart()`).
+ *   - `resolveOrderFormId(ctx, cart)` is the convenience composer for
+ *     "read or create-and-cookie".
  */
 
 import { v4 as uuid } from 'uuid';
+
+import type { Cart } from '../cart/cart';
 
 // Header used by the MCP server to pass orderFormId
 const ORDER_FORM_HEADER = 'x-acg-order-form-id';
@@ -37,26 +46,37 @@ export function getOrderFormIdFromRequest(ctx: Context): string | null {
 }
 
 /**
- * Get orderFormId from request or create a new orderForm.
- * Sets cookie for browser clients.
+ * Write the orderFormId cookie for browser clients.
+ *
+ * Factored out of the old `getOrCreateOrderForm` so callers that own
+ * the create-cart step (Cart module) can still emit the cookie.
  */
-export async function getOrCreateOrderForm(ctx: Context): Promise<string> {
-  const existing = getOrderFormIdFromRequest(ctx);
-  if (existing) {
-    return existing;
-  }
-
-  // Create new orderForm
-  const orderForm = await ctx.clients.checkout.createOrderForm();
-
-  // Set cookie for browser clients
-  ctx.cookies.set(ORDER_FORM_COOKIE, `__ofid=${orderForm.orderFormId}`, {
+export function setOrderFormCookie(ctx: Context, orderFormId: string): void {
+  ctx.cookies.set(ORDER_FORM_COOKIE, `__ofid=${orderFormId}`, {
     httpOnly: false,
     secure: true,
     path: '/',
   });
+}
 
-  return orderForm.orderFormId;
+/**
+ * Resolve the orderFormId for the current request.
+ *
+ * If a header/cookie already carries one, returns it. Otherwise calls
+ * `cart.createCart()` to mint an empty cart, sets the cookie, and
+ * returns the new id.
+ */
+export async function resolveOrderFormId(
+  ctx: Context,
+  cart: Cart
+): Promise<string> {
+  const existing = getOrderFormIdFromRequest(ctx);
+  if (existing) {
+    return existing;
+  }
+  const newCart = await cart.createCart();
+  setOrderFormCookie(ctx, newCart.id);
+  return newCart.id;
 }
 
 /**

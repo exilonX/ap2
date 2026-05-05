@@ -1,12 +1,20 @@
 import { json } from 'co-body'
 
+import { Cart } from '../cart/cart'
+import {
+  InvalidSkuFormatError,
+  ItemNotAddedError,
+  ItemNotInCartError,
+  OrderFormSubstitutedError,
+  TransientCartError,
+} from '../cart/errors'
 import { ClaudeClient, GeminiClient, OpenAIClient } from '../clients/llm'
 import type { LLMMessage, LLMTool, LLMToolCall, LLMResponse, LLMProvider } from '../clients/llm'
 import { loadConfigForAccount } from '../config/load'
 import type { ClientConfig } from '../config/types'
 import { mapOrderFormToCart } from '../mappers/cart'
 import { mapProduct } from '../mappers/product'
-import { getOrderFormIdFromRequest, getOrCreateOrderForm } from '../utils/session'
+import { getOrderFormIdFromRequest, resolveOrderFormId } from '../utils/session'
 import { semanticSearch } from './rag'
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -664,102 +672,80 @@ async function executeTool(
     case 'add_to_cart': {
       const sku = args.sku as string
       const quantity = (args.quantity as number) || 1
-      const ofId = orderFormId || await getOrCreateOrderForm(ctx)
-
-      // Pre-flight: reject SKUs that look fabricated (productId + variant label).
-      // VTEX SKUs are pure numeric itemIds. If the LLM constructs "588600_M" or
-      // "574237-M" it's hallucinating — fail fast with a corrective message.
-      if (!/^\d+$/.test(sku)) {
-        console.warn(`[ACG Chat] Rejecting suspicious SKU format: "${sku}"`)
-
-        return {
-          result: `ERROR: SKU "${sku}" e invalid. SKU-urile valide sunt itemId numeric (ex: "590551"), NU productId + variantă (ex: "588600_M"). ACTION: Apelează get_product_details(productId) pentru a vedea SKU-urile reale ale variantelor, apoi add_to_cart cu unul EXACT din lista returnată. NU construi SKU-uri.`,
-        }
-      }
-
-      // Track items before so we can detect silent VTEX rejections
-      const orderFormBefore = await ctx.clients.checkout.getOrderForm(ofId).catch(() => null)
-      const skuQtyBefore = orderFormBefore?.items?.find((i: { id: string; quantity: number }) => i.id === sku)?.quantity ?? 0
-
-      // Retry once on ORD003 (transient rates-and-benefits error from VTEX)
-      const tryAdd = async () =>
-        ctx.clients.checkout.addItems(ofId, [{ id: sku, quantity, seller: '1' }])
-
-      let orderForm
+      const cart = new Cart({ checkout: ctx.clients.checkout })
+      const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
 
       try {
-        orderForm = await tryAdd()
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        const isOrd003 = /ORD003|rates and benefits/i.test(msg)
+        const updated = await cart.addItem(ofId, sku, quantity)
+        const addedItem = updated.items.find((item) => item.sku === sku)
 
-        if (isOrd003) {
-          // One quick retry — ORD003 is usually a transient checkout-service hiccup
-          await new Promise((r) => setTimeout(r, 350))
-          try {
-            orderForm = await tryAdd()
-          } catch (retryError) {
-            const retryMsg = retryError instanceof Error ? retryError.message : String(retryError)
-
-            console.warn(`[ACG Chat] ORD003 persisted after retry for SKU ${sku}:`, retryMsg)
-
-            return {
-              result:
-                'VTEX rates-and-benefits service is having a hiccup (ORD003). Tell the customer briefly that there was a temporary issue and ask them to try again in a few seconds. Do NOT retry add_to_cart in this turn.',
-            }
-          }
-        } else {
-          throw error
+        // addItem guarantees the item is present (else it throws ItemNotAddedError),
+        // but TypeScript needs the narrowing.
+        if (!addedItem) {
+          throw new ItemNotAddedError(sku)
         }
-      }
 
-      const cart = mapOrderFormToCart(orderForm)
-      const addedItem = cart.items.find((item) => item.sku === sku)
-
-      // VTEX silently accepts unknown SKUs — the orderForm comes back unchanged.
-      // If our requested SKU isn't in the cart, OR its quantity didn't grow,
-      // the add was a no-op. Surface that as an error so the LLM doesn't lie
-      // to the user about success.
-      const skuQtyAfter = addedItem?.quantity ?? 0
-      const actuallyAdded = skuQtyAfter > skuQtyBefore
-
-      if (!actuallyAdded || !addedItem) {
-        console.warn(`[ACG Chat] add_to_cart no-op for SKU "${sku}" (qty before/after: ${skuQtyBefore}/${skuQtyAfter})`)
+        const fullName = addedItem.name
+        const variantLabel = extractVariantLabel(fullName) || '(none detected)'
+        // Short product name = first 60 chars before any underscore-noise
+        const shortName = fullName.split(' - ')[0].slice(0, 80)
 
         return {
           result: [
-            `ERROR: add_to_cart pentru SKU "${sku}" a eșuat — VTEX nu a recunoscut SKU-ul. Coșul e neschimbat.`,
+            `Added ${quantity}x to cart.`,
+            `Product: ${shortName}`,
+            `Variant: ${variantLabel || '(none detected)'}`,
+            `Cart total: ${updated.total} ${updated.currency} (${updated.itemCount} items).`,
             '',
-            'CAUZĂ PROBABILĂ: ai inventat un SKU bazat pe pattern (offset numeric, productId + variantă, etc). SKU-urile VTEX NU sunt previzibile.',
-            '',
-            'ACTION OBLIGATORIE — execută în ACEST mesaj:',
-            '  1. Caută în istoricul recent linia "Vreau X (SKU referință: Y)" — Y e productId-ul.',
-            '  2. Apelează get_product_details(Y) ACUM, în acest mesaj.',
-            '  3. Copiază SKU-ul EXACT al variantei alese (mărime/culoare) din output ("SKU XXXXX: ...").',
-            '  4. Apelează add_to_cart cu acel SKU.',
-            '  5. NU cere clientului să apese din nou — TU rezolvi.',
-            '  6. NU spune "am adăugat" până când add_to_cart nu returnează succes.',
+            'CONFIRMATION: Răspunde clientului INCLUZÂND varianta. Exemplu: "Am adăugat ' +
+              shortName + ' ' + (variantLabel || '') +
+              ' — total ' + updated.total + ' ' + updated.currency + ' ✓"',
           ].join('\n'),
+          cartUpdated: true,
         }
-      }
+      } catch (err) {
+        if (err instanceof InvalidSkuFormatError) {
+          console.warn(`[ACG Chat] Rejecting suspicious SKU format: "${err.sku}"`)
 
-      const fullName = addedItem.name
-      const variantLabel = extractVariantLabel(fullName) || '(none detected)'
-      // Short product name = first 60 chars before any underscore-noise
-      const shortName = fullName.split(' - ')[0].slice(0, 80)
+          return {
+            result: `ERROR: SKU "${err.sku}" e invalid. SKU-urile valide sunt itemId numeric (ex: "590551"), NU productId + variantă (ex: "588600_M"). ACTION: Apelează get_product_details(productId) pentru a vedea SKU-urile reale ale variantelor, apoi add_to_cart cu unul EXACT din lista returnată. NU construi SKU-uri.`,
+          }
+        }
 
-      return {
-        result: [
-          `Added ${quantity}x to cart.`,
-          `Product: ${shortName}`,
-          `Variant: ${variantLabel || '(none detected)'}`,
-          `Cart total: ${cart.total} ${cart.currency} (${cart.itemCount} items).`,
-          '',
-          'CONFIRMATION: Răspunde clientului INCLUZÂND varianta. Exemplu: "Am adăugat ' +
-            shortName + ' ' + (variantLabel || '') +
-            ' — total ' + cart.total + ' ' + cart.currency + ' ✓"',
-        ].join('\n'),
-        cartUpdated: true,
+        if (err instanceof ItemNotAddedError) {
+          console.warn(`[ACG Chat] add_to_cart no-op for SKU "${err.sku}"`)
+
+          return {
+            result: [
+              `ERROR: add_to_cart pentru SKU "${err.sku}" a eșuat — VTEX nu a recunoscut SKU-ul. Coșul e neschimbat.`,
+              '',
+              'CAUZĂ PROBABILĂ: ai inventat un SKU bazat pe pattern (offset numeric, productId + variantă, etc). SKU-urile VTEX NU sunt previzibile.',
+              '',
+              'ACTION OBLIGATORIE — execută în ACEST mesaj:',
+              '  1. Caută în istoricul recent linia "Vreau X (SKU referință: Y)" — Y e productId-ul.',
+              '  2. Apelează get_product_details(Y) ACUM, în acest mesaj.',
+              '  3. Copiază SKU-ul EXACT al variantei alese (mărime/culoare) din output ("SKU XXXXX: ...").',
+              '  4. Apelează add_to_cart cu acel SKU.',
+              '  5. NU cere clientului să apese din nou — TU rezolvi.',
+              '  6. NU spune "am adăugat" până când add_to_cart nu returnează succes.',
+            ].join('\n'),
+          }
+        }
+
+        if (err instanceof TransientCartError && err.code === 'ORD003') {
+          return {
+            result:
+              'VTEX rates-and-benefits service is having a hiccup (ORD003). Tell the customer briefly that there was a temporary issue and ask them to try again in a few seconds. Do NOT retry add_to_cart in this turn.',
+          }
+        }
+
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+
+        throw err
       }
     }
 
@@ -768,49 +754,60 @@ async function executeTool(
         return { result: 'Your cart is empty. Try searching for some products!' }
       }
 
-      const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId)
-      const cart = mapOrderFormToCart(orderForm)
+      const cart = new Cart({ checkout: ctx.clients.checkout })
 
-      if (cart.items.length === 0) {
-        return { result: 'Your cart is empty.' }
-      }
+      try {
+        const snapshot = await cart.getCart(orderFormId)
 
-      const workspace = ctx.vtex.workspace || 'master'
-      const host =
-        workspace === 'master'
-          ? `${ctx.vtex.account}.myvtex.com`
-          : `${workspace}--${ctx.vtex.account}.myvtex.com`
+        if (snapshot.items.length === 0) {
+          return { result: 'Your cart is empty.' }
+        }
 
-      const checkoutUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`
+        const workspace = ctx.vtex.workspace || 'master'
+        const host =
+          workspace === 'master'
+            ? `${ctx.vtex.account}.myvtex.com`
+            : `${workspace}--${ctx.vtex.account}.myvtex.com`
 
-      const cartPreview: CartPreviewData = {
-        items: cart.items.map((i) => ({
-          sku: i.sku,
-          name: i.name,
-          quantity: i.quantity,
-          unitPrice: Math.round(i.unitPrice * 100),
-          totalPrice: Math.round(i.totalPrice * 100),
-          image: i.image ?? '',
-        })),
-        subtotal: Math.round(cart.subtotal * 100),
-        total: Math.round(cart.total * 100),
-        itemCount: cart.itemCount,
-        currency: cart.currency,
-        checkoutUrl,
-      }
+        const checkoutUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`
 
-      const items = cart.items
-        .map((i) => `- ${i.name} x${i.quantity} — ${i.totalPrice} ${cart.currency}`)
-        .join('\n')
+        const cartPreview: CartPreviewData = {
+          items: snapshot.items.map((i) => ({
+            sku: i.sku,
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: Math.round(i.unitPrice * 100),
+            totalPrice: Math.round(i.totalPrice * 100),
+            image: i.image ?? '',
+          })),
+          subtotal: Math.round(snapshot.subtotal * 100),
+          total: Math.round(snapshot.total * 100),
+          itemCount: snapshot.itemCount,
+          currency: snapshot.currency,
+          checkoutUrl,
+        }
 
-      const status = [
-        cart.hasShippingAddress ? 'Shipping address: set' : 'Shipping address: not set',
-        cart.isReadyForCheckout ? 'Ready for checkout' : 'Not ready for checkout yet',
-      ].join('\n')
+        const items = snapshot.items
+          .map((i) => `- ${i.name} x${i.quantity} — ${i.totalPrice} ${snapshot.currency}`)
+          .join('\n')
 
-      return {
-        result: `Cart (${cart.itemCount} items):\n${items}\nSubtotal: ${cart.subtotal} ${cart.currency}\nTotal: ${cart.total} ${cart.currency}\n${status}\n\nThe cart UI is rendered for the customer. Do not re-list items in your reply — just briefly note the total and suggest next steps.`,
-        cartPreview,
+        const status = [
+          snapshot.hasShippingAddress ? 'Shipping address: set' : 'Shipping address: not set',
+          snapshot.isReadyForCheckout ? 'Ready for checkout' : 'Not ready for checkout yet',
+        ].join('\n')
+
+        return {
+          result: `Cart (${snapshot.itemCount} items):\n${items}\nSubtotal: ${snapshot.subtotal} ${snapshot.currency}\nTotal: ${snapshot.total} ${snapshot.currency}\n${status}\n\nThe cart UI is rendered for the customer. Do not re-list items in your reply — just briefly note the total and suggest next steps.`,
+          cartPreview,
+        }
+      } catch (err) {
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+
+        throw err
       }
     }
 
@@ -820,19 +817,27 @@ async function executeTool(
       }
 
       const sku = args.sku as string
-      const currentOF = await ctx.clients.checkout.getOrderForm(orderFormId)
-      const itemIndex = currentOF.items.findIndex((i: { id: string }) => i.id === sku)
+      const cart = new Cart({ checkout: ctx.clients.checkout })
 
-      if (itemIndex === -1) {
-        return { result: `SKU ${sku} not found in cart.` }
-      }
+      try {
+        const updated = await cart.removeBySku(orderFormId, sku)
 
-      const orderForm = await ctx.clients.checkout.removeItem(orderFormId, itemIndex)
-      const cart = mapOrderFormToCart(orderForm)
+        return {
+          result: `Item removed. Cart now has ${updated.itemCount} items, total: ${updated.total} ${updated.currency}.`,
+          cartUpdated: true,
+        }
+      } catch (err) {
+        if (err instanceof ItemNotInCartError) {
+          return { result: `SKU ${err.sku} not found in cart.` }
+        }
 
-      return {
-        result: `Item removed. Cart now has ${cart.itemCount} items, total: ${cart.total} ${cart.currency}.`,
-        cartUpdated: true,
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+
+        throw err
       }
     }
 
@@ -843,22 +848,33 @@ async function executeTool(
 
       const sku = args.sku as string
       const quantity = args.quantity as number
-      const currentOF = await ctx.clients.checkout.getOrderForm(orderFormId)
-      const itemIndex = currentOF.items.findIndex((i: { id: string }) => i.id === sku)
+      const cart = new Cart({ checkout: ctx.clients.checkout })
 
-      if (itemIndex === -1) {
-        return { result: `SKU ${sku} not found in cart.` }
-      }
+      try {
+        const updated = await cart.setQuantity(orderFormId, sku, quantity)
 
-      const orderForm = await ctx.clients.checkout.updateItems(orderFormId, [
-        { index: itemIndex, quantity },
-      ])
+        return {
+          result: `Updated quantity. Cart now has ${updated.itemCount} items, total: ${updated.total} ${updated.currency}.`,
+          cartUpdated: true,
+        }
+      } catch (err) {
+        if (err instanceof InvalidSkuFormatError) {
+          return {
+            result: `ERROR: SKU "${err.sku}" e invalid. SKU-urile valide sunt itemId numeric. ACTION: Apelează get_cart pentru a vedea SKU-urile reale din coș.`,
+          }
+        }
 
-      const cart = mapOrderFormToCart(orderForm)
+        if (err instanceof ItemNotInCartError) {
+          return { result: `SKU ${err.sku} not found in cart.` }
+        }
 
-      return {
-        result: `Updated quantity. Cart now has ${cart.itemCount} items, total: ${cart.total} ${cart.currency}.`,
-        cartUpdated: true,
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+
+        throw err
       }
     }
 
@@ -868,24 +884,42 @@ async function executeTool(
       }
 
       const code = args.code as string
+      const cart = new Cart({ checkout: ctx.clients.checkout })
 
       try {
-        const orderForm = await ctx.clients.checkout.addCoupon(orderFormId, code)
-        const cart = mapOrderFormToCart(orderForm)
+        const { cart: updated, applied, reason } = await cart.applyCoupon(orderFormId, code)
 
+        if (applied) {
+          return {
+            result: updated.discount
+              ? `Coupon "${code}" applied! You saved ${updated.discount} ${updated.currency}. New total: ${updated.total} ${updated.currency}.`
+              : `Coupon "${code}" applied. Total: ${updated.total} ${updated.currency}.`,
+            cartUpdated: true,
+          }
+        }
+
+        // Soft outcome — coupon accepted by VTEX but no discount was produced.
         return {
-          result: cart.discount
-            ? `Coupon "${code}" applied! You saved ${cart.discount} ${cart.currency}. New total: ${cart.total} ${cart.currency}.`
-            : `Coupon "${code}" applied. Total: ${cart.total} ${cart.currency}.`,
+          result: `Coupon "${code}" was registered but no discount was applied${
+            reason ? ` (${reason})` : ''
+          }. Tell the customer the code didn't reduce the total and suggest they check eligibility or try another code.`,
           cartUpdated: true,
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+
+        // Hard failure from VTEX — usually means the code itself was rejected.
         return { result: `Coupon "${code}" is not valid or has expired.` }
       }
     }
 
     case 'set_customer_profile': {
-      const ofId = orderFormId || await getOrCreateOrderForm(ctx)
+      const cart = new Cart({ checkout: ctx.clients.checkout })
+      const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
 
       const profileData = {
         email: args.email as string,
@@ -894,38 +928,52 @@ async function executeTool(
         phone: (args.phone as string) || '',
       }
 
-      await ctx.clients.checkout.addClientProfileData(ofId, profileData)
+      try {
+        await cart.setCustomerProfile(ofId, profileData)
 
-      return {
-        result: `Customer profile set for ${profileData.firstName} ${profileData.lastName} (${profileData.email}).`,
-        cartUpdated: true,
+        return {
+          result: `Customer profile set for ${profileData.firstName} ${profileData.lastName} (${profileData.email}).`,
+          cartUpdated: true,
+        }
+      } catch (err) {
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
+
+        throw err
       }
     }
 
     case 'set_shipping_address': {
-      const ofId = orderFormId || await getOrCreateOrderForm(ctx)
+      const cart = new Cart({ checkout: ctx.clients.checkout })
+      const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
 
-      const address = {
-        addressType: 'residential',
-        receiverName: '',
-        street: args.street as string,
-        number: args.number as string,
-        city: args.city as string,
-        state: args.state as string,
-        postalCode: args.postalCode as string,
-        country: args.country as string,
-        complement: (args.complement as string) || '',
-        neighborhood: '',
-      }
+      try {
+        await cart.setShippingAddress(ofId, {
+          street: args.street as string,
+          number: args.number as string,
+          city: args.city as string,
+          state: args.state as string,
+          postalCode: args.postalCode as string,
+          country: args.country as string,
+          complement: (args.complement as string) || '',
+          neighborhood: '',
+        })
 
-      await ctx.clients.checkout.addShippingData(ofId, {
-        selectedAddresses: [address],
-        logisticsInfo: [],
-      })
+        return {
+          result: `Shipping address set to ${args.street} ${args.number}, ${args.city}, ${args.postalCode}.`,
+          cartUpdated: true,
+        }
+      } catch (err) {
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
+          }
+        }
 
-      return {
-        result: `Shipping address set to ${args.street} ${args.number}, ${args.city}, ${args.postalCode}.`,
-        cartUpdated: true,
+        throw err
       }
     }
 
@@ -934,40 +982,34 @@ async function executeTool(
         return { result: 'Add items and set a shipping address first.' }
       }
 
-      const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId)
-      const logisticsInfo = orderForm.shippingData?.logisticsInfo as Array<{
-        slas?: Array<{
-          name: string
-          price: number
-          shippingEstimate?: string
-        }>
-      }> | undefined
+      const cart = new Cart({ checkout: ctx.clients.checkout })
 
-      if (!logisticsInfo?.length) {
-        return { result: 'No shipping options available. Make sure you have set a shipping address.' }
-      }
+      try {
+        const shippingOptions = await cart.getShippingOptions(orderFormId)
 
-      const options: string[] = []
+        if (shippingOptions.length === 0) {
+          return { result: 'No shipping options available. Make sure you have set a shipping address.' }
+        }
 
-      for (const info of logisticsInfo) {
-        if (info.slas) {
-          for (const sla of info.slas) {
-            const price = sla.price / 100
-            const daysMatch = (sla.shippingEstimate || '').replace(/[^\d]/g, '')
-            const days = daysMatch ? parseInt(daysMatch, 10) : 0
+        const lines = shippingOptions.map((opt) => {
+          const daysMatch = (opt.estimatedDelivery || '').replace(/[^\d]/g, '')
+          const days = daysMatch ? parseInt(daysMatch, 10) : 0
 
-            options.push(`- ${sla.name}: ${price > 0 ? `${price} RON` : 'FREE'} (${days} business days)`)
+          return `- ${opt.name}: ${opt.price > 0 ? `${opt.price} RON` : 'FREE'} (${days} business days)`
+        })
+
+        const unique = [...new Set(lines)]
+
+        return { result: `Shipping options:\n${unique.join('\n')}` }
+      } catch (err) {
+        if (err instanceof OrderFormSubstitutedError) {
+          return {
+            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
           }
         }
+
+        throw err
       }
-
-      if (options.length === 0) {
-        return { result: 'No shipping options available for this address.' }
-      }
-
-      const unique = [...new Set(options)]
-
-      return { result: `Shipping options:\n${unique.join('\n')}` }
     }
 
     case 'propose_deal': {
