@@ -575,3 +575,91 @@ The LLM's recovery was actually graceful: *"Am găsit câteva șosete de bărba�
 ### Comments
 
 Surfaced 2026-05-06 immediately after Issue 0008 verified clean. The bug fixture is deterministic — the same `cămăși bărbați` query returns the same socks each call — making it ideal for whichever fix path lands. Diagnosis and fixes are post-demo unless the recording explicitly requires queries that hit this case.
+
+---
+
+## 0010 — Operational hardening of the public `/_v/acg/*` surface
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** No (the public surface is by design for the agent-facing model; this is productionization work)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Every route in `packages/vtex-io-adapter/node/service.json` is declared `public: true`. That's correct for the agent-facing AP2 model — any Shopping Agent (widget, Claude Desktop, future ChatGPT/UCP/voice) needs to be able to call the merchant endpoint without VTEX-account credentials. But the current surface has zero operational guardrails between "anyone on the internet" and our backend. Five distinct hardening items, all out of scope for the 2026-05-14 demo recording but worth filing so they're not forgotten.
+
+The merchant *signing key* itself is correctly sandboxed (VBase, never leaves the Adapter, per ADR-0001). The merchant's *VTEX core auth* is platform-managed (`ctx.vtex.authToken`). LLM/Pinecone keys live in VTEX App Settings, never in source. **Key storage is fine. Caller-authn / abuse prevention is not.**
+
+### Five hardening items
+
+#### 1. Caller authentication for AP2 routes
+
+Today: any caller can hit `POST /_v/acg/checkout/initiate` → merchant signs a CartMandate → bundle persists in VBase. The Adapter happily signs over whatever cart any anonymous caller built. Reputationally awkward (a third party could point to "this merchant signed bundle-X" without ever having had a real customer). Storage-wise it accumulates indefinitely.
+
+Two design directions:
+- **API key per agent.** Each agent we trust gets a key; non-AP2 routes (`/cart/*`, `/search`, `/chat`) stay public for browser-driven widgets, AP2 routes (`/checkout/initiate`, `/payment/execute`) require the key. Simplest.
+- **AP2-native: IntentMandate.** AP2 v0.1 spec already defines IntentMandate — a user-signed credential the agent presents to the merchant proving "the user pre-authorized me to act." Properly aligns with the protocol. Larger work; see `docs/AP2_COMPLIANCE.md`. Lands when IntentMandate signing infrastructure exists (post-CartMandate / PaymentMandate work).
+
+For the demo cycle: defer; document that production deployments would gate AP2 routes.
+
+#### 2. Rate limiting at the adapter
+
+Today: VTEX IO has platform-level limits but they're generous (thousands of req/sec). Adapter has zero internal limits.
+
+Concrete vectors:
+- **`/_v/acg/chat`** triggers an LLM call (~$0.001-0.01 per turn at Haiku pricing per memory `project_cost_efficiency`). A determined caller can rack up real money in minutes. **Highest-priority item in this issue.**
+- **`/_v/acg/search`** triggers a Pinecone query. Cheaper but still real cost at scale.
+- **`/_v/acg/checkout/initiate`** triggers a signing operation + VBase write. CPU + storage.
+
+Strategies:
+- **Per-IP token bucket** (in-memory LRU keyed on remote IP). Cheapest. Defeated by a botnet but covers the common case.
+- **Per-API-key budget** (paired with item 1). Production-grade.
+- **VTEX edge config** if it exposes rate-limit primitives at the route level — check `service.json` for any `rateLimit` field option.
+
+For the demo: defer. Note in the case study that rate limiting is a productionization concern, not a current bug.
+
+#### 3. Per-session LLM cost guard
+
+Even with rate limiting, a single legitimate session could be expensive if the LLM loops. The chat handler already has `MAX_TOOL_ROUNDS = 3` (chat.ts:1379) which bounds rounds-per-turn. What's missing: **a per-session lifetime budget** (e.g., max N tool calls or max N LLM tokens per `sessionId`). After exceeding, the chat returns a graceful "session limit reached" reply.
+
+Sized for a small handler addition once `sessionId` is tracked end-to-end (today it's per-mandate, not per-conversation).
+
+#### 4. Mandate-persistence policy
+
+Today: every signed bundle persists in VBase at `acg-mandates/<mandateId>` indefinitely. After a year of operation that's potentially millions of bundles for a busy merchant — many of them never paid. No GC, no expiry-driven cleanup.
+
+Options:
+- **TTL based on `cart_expiry`:** delete bundles whose JWT `exp` is more than N days past, IF the bundle wasn't followed by a successful `executePayment` for that mandateId.
+- **Mark-and-sweep:** annotate bundles with `paid: true | false` after `executePayment` (success path); GC unpaid bundles older than N days.
+- **Append-only audit + cold storage:** copy bundles older than N days to S3/cold storage, drop from VBase. Preserves auditability.
+
+Demo-irrelevant; a real merchant deployment needs at least one of these.
+
+#### 5. Origin allowlist on `/_v/acg/chat`
+
+Today: the chat endpoint has no `Access-Control-Allow-Origin` restriction beyond VTEX IO's defaults. A malicious page on `evil.com` could embed JavaScript that POSTs to `acg--miniprix.myvtex.com/_v/acg/chat` and burn LLM tokens on our dime (modulo CORS — but if the response doesn't enforce origin, headless requests via curl/scripts work fine).
+
+Fix: middleware on `chatHandler` that reads `Origin` / `Referer` and rejects if not in the merchant's allowed-storefront-host list. Storefront host lives in profile config (`accountMatches`); easy to derive the allowlist.
+
+Pairs with item 1 — if the chat endpoint requires either an agent API key OR a known storefront origin, the abuse vector closes.
+
+### What this issue is NOT
+
+- Not a "the merchant signing key isn't safe" claim. It is — see ADR-0001.
+- Not blocking the demo. The demo path is happy-path agent calls; nothing in the storyboard exercises this.
+- Not a single PR. Five distinct items with separate design choices; each could be its own follow-up.
+
+### Recommendation — sequencing post-demo
+
+1. **Item 5 (origin allowlist)** first — cheapest, closes the most-abusable vector (anonymous LLM calls).
+2. **Item 2 (rate limiting)** — pair with 5 as defense-in-depth.
+3. **Item 4 (mandate TTL)** — operational hygiene; doesn't block features.
+4. **Item 1 (caller authn)** — biggest design work; aligns naturally with IntentMandate when that lands.
+5. **Item 3 (session budget)** — small addition once sessionId is end-to-end.
+
+### Comments
+
+Surfaced 2026-05-06 during the MCP parity work, when the user noticed `VTEX_APP_KEY` / `VTEX_APP_TOKEN` aren't required for MCP server operation. Correct observation — they aren't, *because* every route is public — and that's the structural shape that needs guardrails before production.
+
+The case study should mention this honestly: *"For the prototype, AP2 routes are open to any caller — the trust model assumes the Shopping Agent has authority. Production deployments would gate this with IntentMandate verification and rate-limited per-agent API keys."*
