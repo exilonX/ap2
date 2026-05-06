@@ -8,23 +8,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import axios from 'axios'
 import { VtexClient } from '../client'
 import type { ProductSearchResult, ProductDetail } from '@acg/shared/product'
-
-/**
- * Fetch image and convert to base64 data URI.
- */
-async function imageToDataUri(url: string): Promise<string | null> {
-  try {
-    const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000 })
-    const contentType = (response.headers['content-type'] || 'image/jpeg').split(';')[0]
-    const base64 = Buffer.from(response.data).toString('base64')
-    return `data:${contentType};base64,${base64}`
-  } catch {
-    return null
-  }
-}
 
 const PRODUCTS_APP_URI = 'ui://acg-products/index.html'
 
@@ -65,20 +50,23 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
         }
         const result = await client.get<ProductSearchResult>('/search', searchParams)
 
-        // Fetch images and embed as base64 data URIs (CSP blocks external URLs in iframe)
-        const productsWithImages = await Promise.all(
-          result.products.map(async (p) => {
-            // Request larger image from VTEX CDN (replace -55-55 thumbnail with -500-500)
-            const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
-            const dataUri = imageUrl ? await imageToDataUri(imageUrl) : null
-            return { ...p, image: dataUri || undefined }
-          })
-        )
+        // Issue 0011 fix — return CDN URLs directly. The previous
+        // base64-embedding loop (per-product axios fetch + Promise.all)
+        // was blocking the tool result past the MCP App iframe's
+        // delivery window for some calls, leaving widgets stuck on
+        // "Loading products...". The iframe loads `<img>` tags
+        // straight from `*.vteximg.com.br` (allow-listed in
+        // `_meta.ui.csp.resourceDomains` below). We still upscale the
+        // CDN path from -55-55 thumbnails to -500-500 for layout.
+        const productsWithUpscaledImages = result.products.map((p) => {
+          const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
+          return { ...p, image: imageUrl }
+        })
 
         return {
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ ...result, products: productsWithImages }),
+            text: JSON.stringify({ ...result, products: productsWithUpscaledImages }),
           }],
         }
       } catch (error) {
