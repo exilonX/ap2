@@ -24,12 +24,18 @@ async function imageToDataUri(url: string): Promise<string | null> {
 }
 
 async function embedCartImages(cart: SimpleCart): Promise<SimpleCart> {
-  const items = await Promise.all(
+  // Same regex shape as search.ts — inject -100-100 if URL has no
+  // dimensions, replace existing dimensions otherwise. VTEX CDN serves
+  // the resized variant on-the-fly. 100×100 for cart-line-item icons.
+  const settled = await Promise.allSettled(
     cart.items.map(async (item) => {
-      const imgUrl = item.image?.replace(/-\d+-\d+\//, '-100-100/') || item.image
+      const imgUrl = item.image?.replace(/\/ids\/(\d+)(?:-\d+-\d+)?\//, '/ids/$1-100-100/') || item.image
       const dataUri = imgUrl ? await imageToDataUri(imgUrl) : null
       return { ...item, image: dataUri || undefined }
     })
+  )
+  const items = settled.map((outcome, i) =>
+    outcome.status === 'fulfilled' ? outcome.value : { ...cart.items[i], image: undefined }
   )
   return { ...cart, items }
 }

@@ -87,7 +87,13 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
         // the iframe renders the card without an image (no broken icon).
         const settled = await Promise.allSettled(
           result.products.map(async (p) => {
-            const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
+            // Use VTEX's on-the-fly CDN resize. The regex inserts
+            // -150-150 if no dimensions exist (miniprix URL shape) OR
+            // replaces existing dimensions (other VTEX merchants).
+            // 150×150 is plenty for product cards and 10-20× smaller
+            // than full-res — keeps base64 payloads tiny so the MCP
+            // stdio pipe stays drained.
+            const imageUrl = p.image?.replace(/\/ids\/(\d+)(?:-\d+-\d+)?\//, '/ids/$1-150-150/') || p.image
             const dataUri = imageUrl ? await imageToDataUri(imageUrl) : null
             return { ...p, image: dataUri || undefined }
           })

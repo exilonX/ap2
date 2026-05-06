@@ -102,13 +102,18 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
             }
           : null
 
-        // Embed cart item images as base64
-        const itemsWithImages = await Promise.all(
+        // Embed cart item images as base64. Regex inserts -100-100 if
+        // URL has no dimensions, replaces existing dimensions otherwise.
+        // VTEX CDN serves the resized variant on-the-fly.
+        const settled = await Promise.allSettled(
           cart.items.map(async (item) => {
-            const imgUrl = item.image?.replace(/-\d+-\d+\//, '-100-100/') || item.image
+            const imgUrl = item.image?.replace(/\/ids\/(\d+)(?:-\d+-\d+)?\//, '/ids/$1-100-100/') || item.image
             const dataUri = imgUrl ? await imageToDataUri(imgUrl) : null
             return { ...item, image: dataUri || undefined }
           })
+        )
+        const itemsWithImages = settled.map((outcome, i) =>
+          outcome.status === 'fulfilled' ? outcome.value : { ...cart.items[i], image: undefined }
         )
 
         return {
