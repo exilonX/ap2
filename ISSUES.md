@@ -277,10 +277,19 @@ Sized for a single half-day pass once the demo ships. Not on the critical path; 
 
 ## 0006 — RAG/search returns stale or mislabeled products
 
-- **Status:** needs-triage
+- **Status:** shipped (resync resolved cause #1; periodic syncs needed for sustained operation — see follow-up)
 - **Created:** 2026-05-06
-- **Demo-blocking:** Partially (the card-click flow works; text-shorthand references like "prima varianta" hit the bug)
+- **Last updated:** 2026-05-06 (verified fixed via fresh resync)
+- **Demo-blocking:** No (resolved)
 - **GitHub:** _(filled when promoted)_
+
+### Resolution (2026-05-06)
+
+Fresh sync against `miniprix` (`scripts/sync-catalog && npm run fresh`) replaced the stale Pinecone vectors. Re-test on the storefront confirmed: search for "pantofi mărimea 40" now returns 4 properly-named pantofi products (DOCA 26COS05002, DOCA 26COS05001, etc.) — no more "Pantofi sport de dama 243YY12-243-243" returning pantaloni cargo data. Cause #1 (RAG index drift) was the sole driver; causes #2-#5 ruled out.
+
+Follow-ups:
+- **Periodic syncs** — Step 2c in `docs/SHOWCASE_PLAN.md` (currently deferred). Without it, the index drifts again as the merchant catalog evolves.
+- **Coverage gap** captured in ISSUES.md 0007 (96.1% coverage; 2 high-volume leaves hit IS 2500-cap; 4% of products missing).
 
 ### Context
 
@@ -378,3 +387,91 @@ Post-demo: implement **A** (subcategory facet walking) — most general, integra
 ### Comments
 
 Surfaced 2026-05-06 immediately after the 0006 instrumentation landed. The two capped leaves are deterministic — same merchant, same query patterns will repro the cap each sync. Good acceptance test fixture for whichever option (A/B/C) is picked post-demo.
+
+---
+
+## 0008 — LLM fabricates SKU via productId offset on confirmation turn
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** Yes (this puts wrong items in the customer's cart silently)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Surfaced 2026-05-06 during tier-3 verification of Issue 0006's resync fix. Server logs from `acg--miniprix.myvtex.com` 12:35-12:37:
+
+```
+12:36:17 Tool call: get_product_details {"sku":"593700"}    ← productId for "Pantofi sport DOCA"
+12:36:18 Tool call: suggest_replies ["Da, adaugă", "Nu"]
+12:36:18 Final reply: "Am găsit Pantofi sport damă DOCA, pe bej, mărimea 38. Costă 42.69 RON. Îl adaug în coș?"
+
+12:36:25 Round 0: Tool call: add_to_cart {"sku":"593699","quantity":1}   ← BUG
+12:36:26 Final reply: "Am adăugat Șosete gri închis pentru bărbați 25TAI20192229..."
+```
+
+**The LLM passed SKU `593699` to `add_to_cart`. SKU 593699 is "Șosete gri închis" — completely unrelated to the conversation.** The bug shape:
+
+1. **Skipped `get_product_details`** on the confirmation turn (the rule we added in Issue 0004 should have fired — `"Da, adaugă"` is explicitly in its trigger list at `chat.ts:404` — but the LLM ignored it).
+2. **Fabricated a SKU using the `productId - 1` formula** (593700 - 1 = 593699) — exactly the *"niciodată nu inventa un SKU prin offset numeric"* anti-pattern explicitly forbidden in the system prompt at `chat.ts:414`.
+3. SKU 593699 happens to map to a sock because VTEX SKU IDs are sequential — the LLM's offset-arithmetic landed on a real but unrelated product. The `add_to_cart` succeeded silently.
+
+**Compare to the working flow at 12:37:06** (same conversation, different turn):
+
+```
+12:37:06 Tool call: get_product_details {"sku":"593425"}   ← rule fired this time
+12:37:06 Tool call: add_to_cart {"sku":"593657"}           ← real SKU from the tool result
+```
+
+The user said `"Alb, 40"` (a variant pick — rule fires reliably). The bug case had `"Da, adaugă"` (a confirmation — rule skipped despite explicit listing in the prompt).
+
+### Why prompt-only doesn't catch this
+
+Issue 0004's broadened rule already includes `"Da, adaugă"` in the trigger list. Issue 0004's step 5 explicitly forbids fabricating variant facts without a tool result. The system prompt's CRITIC line at `chat.ts:414` explicitly forbids the productId-offset pattern. The LLM **read all three rules and ignored them**. Stronger prompt language is unlikely to fix this; the LLM's prior on "I just told the user the price, I know the product" overrides the explicit rules.
+
+### Acceptance — server-side enforcement
+
+The chat handler already has two corrective-round guards (`chat.ts:1416,1430` — empty-response and hallucination guards). Add a third for this bug class:
+
+**Pre-add SKU validation guard.** When the LLM calls `add_to_cart` in a chat round:
+
+1. Check whether `get_product_details` was called THIS chat call (any prior round).
+   - If yes: the SKU was likely extracted from a real tool result; allow.
+   - If no: the SKU may be hallucinated.
+2. If `get_product_details` was NOT called this chat call AND the user's last message looks like a confirmation/short variant-shaped reply (matches `/^\s*(da|yes|ok|adaug[ăa]|sigur|confirm|prima|a doua|a treia)\b/i` or single short token), force a corrective round:
+   ```
+   [SYSTEM CORRECTION] Ai apelat add_to_cart cu sku=<X> fără să fi apelat
+   get_product_details în acest mesaj. NU AI VOIE să folosești un SKU
+   din amintire — tool result-urile din mesajele anterioare nu sunt
+   în contextul tău acum. Apelează ACUM get_product_details(productId)
+   pentru produsul discutat, copiază EXACT SKU-ul variantei din
+   rezultatul tool-ului, apoi apelează add_to_cart din nou. Anulează
+   add-ul curent — clientul vede coșul greșit.
+   ```
+3. The corrective round forces the LLM to refetch and use a real SKU. The original (wrong) SKU was added to cart — the corrective round must also undo it. Two options:
+   - **(a)** Server-side undo: detect the bad add, call `Cart.removeBySku(<X>)` BEFORE the corrective round runs. The LLM then re-adds the correct SKU.
+   - **(b)** Tell the LLM to `remove_from_cart` the wrong SKU first. Cheaper to implement; depends on LLM compliance.
+
+Recommendation: **(a)** — server enforces the rollback so the cart never visibly carries the wrong item even mid-conversation. Cleaner demo recording.
+
+### Optional defense-in-depth — SKU offset-pattern detection
+
+If the SKU passed to `add_to_cart` differs by ±1 to ±10 from any productId discussed in the conversation, this strongly suggests offset hallucination. Reject with a more pointed corrective:
+
+```
+[SYSTEM CORRECTION] SKU-ul <X> e suspect de halucinare prin offset
+de la productId-ul <Y> (diferență <N>). Apelează get_product_details(<Y>)
+și copiază SKU-ul real al variantei.
+```
+
+This catches the specific pattern the LLM used here. Lower priority than the main guard.
+
+### What this is NOT
+
+- Not Issue 0004. 0004 was variant *fabrication* (offering a variant the prior turn didn't list). This is variant *misattribution* — the LLM thinks the right variant + the right product, but writes the wrong SKU.
+- Not Issue 0006. 0006 was about wrong/stale data in the index. The data here is correct — the LLM is the one fabricating.
+- Not blocking the recorded card-click demo IF the demo storyboard avoids the confirmation-after-card-click flow. But that's brittle — any realistic recording will hit this.
+
+### Comments
+
+Server logs at `12:36:25` are the clean fixture. Same anti-pattern pre-existed Issue 0004 — `feedback_test_as_we_go` notes that the chat handler has zero tests; this exact transcript should become a regression test once an LLM-test harness lands.
