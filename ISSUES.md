@@ -392,11 +392,25 @@ Surfaced 2026-05-06 immediately after the 0006 instrumentation landed. The two c
 
 ## 0008 — LLM fabricates SKU via productId offset on confirmation turn
 
-- **Status:** in-flight (server-side guard shipped 2026-05-06, awaiting live verification)
+- **Status:** shipped (server-side guard verified live 2026-05-06)
 - **Created:** 2026-05-06
-- **Last updated:** 2026-05-06 (grilled, server-side guard implemented)
-- **Demo-blocking:** Yes (this puts wrong items in the customer's cart silently)
+- **Last updated:** 2026-05-06 (verified live; no fabrication observed in re-test)
+- **Shipped:** commit `2b6126a` — `adapter: server-side SKU-fabrication guard for add_to_cart (issue 0008)`
+- **Demo-blocking:** No (resolved)
 - **GitHub:** _(filled when promoted)_
+
+### Verification (2026-05-06)
+
+Re-tested on the storefront with the same flow shape that originally triggered the bug. Server logs show the LLM correctly threading real SKUs from `get_product_details` results through to `add_to_cart`:
+
+```
+14:02:24 Tool call: get_product_details {"sku":"589317"}    ← productId
+14:02:25 Tool call: add_to_cart {"sku":"589337"}            ← real Albastru-M variant
+```
+
+589337 was a real variant SKU returned by the prior `get_product_details(589317)` call — the validSet contained it; the guard correctly allowed it through. No fabrication, no productId-offset arithmetic. Cart received the right product.
+
+The guard's block-fire path was not exercised in this run (the LLM behaved correctly), but the structural invariant (sku ∈ validSet) is enforced in code. If a future regression surfaces, the `[ACG Chat] add_to_cart blocked — SKU <X> not in valid set (issue 0008)` log line + corrective ERROR + LLM retry path will catch it.
 
 ### Fix shipped (server-side guard, 2026-05-06)
 
@@ -502,3 +516,62 @@ This catches the specific pattern the LLM used here. Lower priority than the mai
 ### Comments
 
 Server logs at `12:36:25` are the clean fixture. Same anti-pattern pre-existed Issue 0004 — `feedback_test_as_we_go` notes that the chat handler has zero tests; this exact transcript should become a regression test once an LLM-test harness lands.
+
+---
+
+## 0009 — Semantic search returns wrong category (cross-category bleed)
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** No (LLM's grounding rules surface the mismatch honestly and the user can refine)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Surfaced 2026-05-06 during tier-3 verification of Issue 0008. The LLM behaved correctly; semantic search did not.
+
+```
+14:01:00 search_products {"query":"cămăși bărbați"}        → returned 4 SOCK products
+14:01:25 search_products {"query":"cămăși bărbați"}        → same 4 socks (deterministic)
+14:01:51 search_products {"query":"cămăși casual bărbați"} → returned 4 SHIRT products
+```
+
+The same query returns the wrong category. Adding a single token (`"casual"`) flips the result. This is the cause #4 hypothesis from Issue 0006 ("embedding text quality / cross-category bleed"), now isolated and reproducible after the resync ruled out cause #1 (stale data).
+
+The LLM's recovery was actually graceful: *"Am găsit câteva șosete de bărbați. Te interesează? Sau poate vrei să încercăm o altă căutare pentru cămăși?"* — surfacing the mismatch honestly per the system prompt's grounding rules. So while the search is wrong, the user-visible behavior is acceptable. **Not demo-blocking.**
+
+### Likely root causes
+
+1. **Catalog imbalance.** The merchant has substantially more men's sock products than men's shirt products in the index. With `text-embedding-3-small` (512d) on Romanian, top-K results lean toward the dominant category whenever the query's category-noun is ambiguous.
+2. **`bărbați` token dominates.** Every men's product carries it; the noun `cămăși` isn't weighted enough to outrank category-based similarity. The query `cămăși casual bărbați` works because `casual` is a high-signal modifier socks rarely carry.
+3. **Embedding text construction over-includes description.** `embedding-text.ts` includes truncated description, specs, tags. Sock product descriptions may coincidentally mention "cămașă" (e.g. "se asortează cu cămașă"), polluting the semantic neighborhood.
+4. **Romanian morphology.** Plural `cămăși` vs singular `Cămașă` may not be obviously related in 512d. Higher-dimensional embeddings or a multilingual-tuned model handle this better.
+
+### Acceptance — diagnosis (~2 hours)
+
+1. **Pinecone top-K inspection.** Run `tsx index.ts --query "cămăși bărbați"` (the sync-catalog query mode) and dump top-10 results with their similarity scores. Confirm the ranking actually puts socks above shirts (vs. a UI rendering bug).
+2. **Compare query embeddings.** Embed `"cămăși bărbați"` vs `"cămăși casual bărbați"` separately; cosine-distance to a known shirt product. Tells us whether `casual` is *adding shirt signal* or *removing sock signal*.
+3. **Catalog histogram.** Count active products per top-level category (`bărbați > cămăși`, `bărbați > șosete`, etc.) from the sync state. Confirms or rules out hypothesis 1.
+4. **Embedding-text inspection of one sock vs one shirt.** Read the raw embedding text for SKU 589317 (a shirt) vs one of the socks returned. See what's polluting.
+
+### Acceptance — fixes (depend on which root cause fires)
+
+- **Cause 1 (catalog imbalance):** out of our control; document in case study.
+- **Cause 2 (`bărbați` dominance):** drop gender words from embedding text; rely on category metadata for filtering. Re-sync.
+- **Cause 3 (description bleed):** drop or aggressively shorten description in embedding text. Re-sync. Ship as embedding-text.ts patch.
+- **Cause 4 (model resolution):** consider switching to `text-embedding-3-large` (1536d) or `text-embedding-3-small` at 1536d. Higher resolution may help Romanian morphology. ~3x cost and re-sync.
+
+### Mitigations available without re-sync
+
+- **LLM-side query expansion.** Teach the LLM (via system prompt) to expand category queries with common modifiers when the first search returns wrong category. This is roughly what already happened organically with `"casual"`.
+- **Post-search reranking.** Server-side, after `semanticSearch` returns top-K, check if any product NAME contains the query's category noun (e.g. `cămășă`/`cămașă` in `cămăși bărbați`). If yes, prioritize those. Cheap; cuts mismatch beats from "search returned X, ah no it's actually Y" to "search returned the right thing first try." Not on the demo critical path but an obvious polish.
+
+### What this is NOT
+
+- Not Issue 0006. 0006 was wrong/stale data. Resync fixed that. This is wrong/correct-but-buried-by-ranking.
+- Not Issue 0008. 0008 was the LLM fabricating SKUs after a confirmation. This is upstream — the search itself returns the wrong product set.
+- Not blocking demo recording. Choose query phrasings the LLM handles cleanly, OR record the LLM's recovery beat as part of the demo (it's actually a nice "the agent is grounded" demonstration).
+
+### Comments
+
+Surfaced 2026-05-06 immediately after Issue 0008 verified clean. The bug fixture is deterministic — the same `cămăși bărbați` query returns the same socks each call — making it ideal for whichever fix path lands. Diagnosis and fixes are post-demo unless the recording explicitly requires queries that hit this case.
