@@ -184,3 +184,51 @@ This is a diagnosis-then-fix issue, not a "ship X" issue. Steps:
 ### Comments
 
 Surfaced 2026-05-06 during tier-3 testing of Issue 03's chat flow on `acg--miniprix.myvtex.com`. Screenshot evidence captured in conversation. The bug existed before Issue 03 — the AgentTool split doesn't touch the variant/confirmation flow — but it's worth fixing before the demo recording because a contradiction like this in the recorded conversation undermines the "the LLM is grounded in real product data" pitch.
+
+---
+
+## 0005 — Replace `console.*` in adapter handlers with an injected Logger
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** No
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+`packages/vtex-io-adapter/node/handlers/chat.ts` (and likely other handlers) uses raw `console.log` / `console.error` / `console.warn` for observability — round-by-round LLM tool calls, hallucination guard fires, error paths. The eslint preset (`eslint-config-vtex`) forbids `console.*` as an error, and every chat.ts commit since this code landed has bypassed the pre-commit hook with `--no-verify`. Confirmed across:
+
+- `129d657` adapter: chat endpoint + RAG backend
+- `611cd82` adapter custom config per store / gemini support / rag tweaks
+- `25ff75b` adapter: cart module + REST/chat migrations, 21 tests (issue 02)
+- `d6b00f3` adapter+core: mandate seam + merchant identity (issue 01)
+- `1d77484` adapter+widget: agent-tools scaffolding + 3 AP2 ceremony tools (issue 03)
+
+This is technical debt with two costs:
+
+1. **The pre-commit hook is meaningless for this file.** Every contributor has to know to `--no-verify`, which means every contributor learns to bypass *all* lint errors — not just the console ones. Real new errors (e.g., a typo) can ride along undetected.
+2. **Observability has no contract.** Today's logs are stdout-only, untyped, formatted ad-hoc per call site. There's no way to filter by severity, attach correlation ids (sessionId, orderFormId, mandateId), or route to a structured backend without grepping every log line.
+
+The AgentTool work in Issue 03 already opens a clean seam — `ToolContext` is the natural place to inject a typed `Logger`. That seam doesn't exist for non-AgentTool code paths today; it would need to land alongside this issue.
+
+### Acceptance
+
+1. **Define a small `Logger` interface** in `node/observability/logger.ts` (new file): `info(msg, meta?)`, `warn(msg, meta?)`, `error(msg, meta?)`, `debug(msg, meta?)`. The `meta` slot is `Record<string, unknown>` for correlation ids and structured fields.
+2. **Ship a `ConsoleLogger` reference implementation** that wraps `console.*` so behaviour at the stdout layer is identical to today. The `vtex-io` runtime captures stdout into its log infrastructure already; nothing else changes.
+3. **Inject the logger into `ToolContext`** (Issue 03's `node/agent-tools/types.ts`). AgentTools take a `log` field that's already in the type (currently optional and unused) and call `ctx.log?.info(...)` instead of `console.log(...)`. Update the dispatcher to construct a logger per request.
+4. **Replace `console.*` in `node/handlers/chat.ts`** with logger calls — every existing call gets a meta object carrying `sessionId` (if available) and the round counter.
+5. **Replace `console.*` in other handlers** that have it (`node/handlers/checkout.ts`, `node/handlers/rag.ts`, etc.) — audit pass.
+6. **Re-enable the `no-console` eslint error** for `node/handlers/**`. The pre-commit hook then catches future regressions.
+7. **No new tests required** — the logger is an injection point, not a behaviour change. Existing tests continue to pass with the `ConsoleLogger` default.
+
+### What this issue is NOT
+
+- Not adding a structured-log backend (Datadog, Honeycomb, OpenTelemetry). Those decisions deserve their own issue. This issue lands the seam so swapping the `ConsoleLogger` for a structured one later is a one-line change.
+- Not adding tracing / spans. Same reasoning.
+- Not changing log content or volume. Just the call sites.
+
+### Comments
+
+Surfaced 2026-05-06 during the Issue 03 commit when the pre-commit hook flagged 10 pre-existing eslint errors in `chat.ts` (4 `no-console` + others). Bypassed with `--no-verify` matching prior precedent, but the pattern is unsustainable — the lint hook protects nothing it should be protecting in this file. Filed so the cleanup doesn't get forgotten post-demo.
+
+Sized for a single half-day pass once the demo ships. Not on the critical path; explicitly post-demo per `feedback_demo_first`.
