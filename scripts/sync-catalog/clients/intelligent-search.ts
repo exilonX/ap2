@@ -331,7 +331,17 @@ export class IntelligentSearchClient {
         }
 
         if (response.products.length < pageSize) break
-        if (page >= 50) break // safety — the 2500 cap
+        if (page >= 50) {
+          // Hit the IS 2500-result cap inside this single leaf. If the leaf
+          // genuinely had ≤2500 products the previous `break` (short page)
+          // would have fired. A full page on the 50th call means there were
+          // *more* products we couldn't reach — silently truncated.
+          // Logged so completeness validation surfaces the gap.
+          process.stderr.write(
+            `\n  ⚠ Leaf "${leaf.slugPath.join(' > ')}" hit IS 2500-cap on page 50 with full page — products beyond the cap are NOT in the index.\n`
+          )
+          break
+        }
 
         page++
       }

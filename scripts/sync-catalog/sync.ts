@@ -62,6 +62,7 @@ async function discoverActiveProducts(
   products: IntelligentSearchProduct[]
   hitCap: boolean
   walkedCategories: boolean
+  expectedTotal: number | null
 }> {
   console.log('Phase 1 — Discovering active products via Intelligent Search...')
 
@@ -69,12 +70,20 @@ async function discoverActiveProducts(
   const seenIds = new Set<string>()
   let hitCap = false
   let walkedCategories = false
+  // IS API reports the TOTAL number of active products matching the filter,
+  // even when capped by pagination. We capture this as our oracle for the
+  // end-of-sync completeness check (Issue 0006 root-cause-1 instrumentation).
+  let expectedTotal: number | null = null
 
   // First try flat pagination — fastest if catalog < 2500
   for await (const page of search.streamAllProducts({
     pageSize: 50,
     hideUnavailable: options.hideUnavailable,
   })) {
+    if (expectedTotal === null) {
+      expectedTotal = page.recordsFiltered
+    }
+
     for (const p of page.products) {
       if (!seenIds.has(p.productId)) {
         seenIds.add(p.productId)
@@ -122,7 +131,7 @@ async function discoverActiveProducts(
     process.stdout.write('\n')
   }
 
-  return { products: collected, hitCap, walkedCategories }
+  return { products: collected, hitCap, walkedCategories, expectedTotal }
 }
 
 // ─── Main sync ─────────────────────────────────────────────────
@@ -262,15 +271,44 @@ export async function runSync(config: Config, options: SyncOptions = {}): Promis
 
     progress.finish()
 
+    // ─── Completeness validation (Issue 0006 instrumentation) ────
+    // Compare what we collected to what IS reported as the total. If we
+    // collected fewer products than IS claimed exist, surface the gap so
+    // the operator knows the index is incomplete.
+    const expected = discovery.expectedTotal
+    const actual = state.allProductIds.length
+    let coverageLine = ''
+    let coverageWarning = ''
+    if (expected !== null && !options.limit) {
+      const delta = expected - actual
+      const pct = expected > 0 ? ((actual / expected) * 100).toFixed(1) : '0.0'
+      coverageLine = `  Coverage:          ${pct}% of IS-reported total`
+      if (delta > 0) {
+        coverageWarning =
+          `  ⚠ ${delta.toLocaleString()} products are MISSING from the index (expected ${expected.toLocaleString()} per IS, collected ${actual.toLocaleString()}).\n` +
+          `    Likely causes: a leaf category exceeded the 2500-cap (see warnings above), products live at non-leaf nodes, or some category-walk pages 400-d.`
+      } else if (delta < 0) {
+        coverageLine += ` (collected MORE than IS flat reported — category walk surfaced ${(-delta).toLocaleString()} products beyond the 2500 cap, which is the expected reason)`
+      }
+    }
+
     console.log()
     console.log('═══════════════════════════════════════════════════════════')
     console.log('  Sync Complete')
     console.log('═══════════════════════════════════════════════════════════')
-    console.log(`  Active products:   ${state.allProductIds.length.toLocaleString()}`)
+    console.log(`  Active products:   ${actual.toLocaleString()}`)
+    if (expected !== null && !options.limit) {
+      console.log(`  IS reported total: ${expected.toLocaleString()}`)
+      console.log(coverageLine)
+    }
     console.log(`  Embedded:          ${state.processedProductIds.length.toLocaleString()}`)
     console.log(`  Errors:            ${errorQueue.size}`)
     console.log(`  Sync ID:           ${state.syncId}`)
     console.log(`  Logs:              ${logger.getLogPath()}`)
+    if (coverageWarning) {
+      console.log()
+      console.log(coverageWarning)
+    }
     if (errorQueue.size > 0) {
       console.log()
       console.log(`  Retry failed products with: tsx index.ts --retry`)
@@ -278,9 +316,11 @@ export async function runSync(config: Config, options: SyncOptions = {}): Promis
     console.log('═══════════════════════════════════════════════════════════')
 
     logger.info('sync_complete', {
-      total: state.allProductIds.length,
+      total: actual,
       processed: state.processedProductIds.length,
       errors: errorQueue.size,
+      expectedTotal: expected,
+      coverageDelta: expected !== null ? expected - actual : null,
     })
   } finally {
     await logger.close()
