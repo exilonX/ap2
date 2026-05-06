@@ -133,10 +133,50 @@ Surfaced 2026-05-06 during the Issue 0002 cleanup grilling, alongside ADR-0002 (
 
 ## 0004 — LLM contradicts its own variant list across turns
 
-- **Status:** needs-triage
+- **Status:** in-flight (prompt-side fix shipped 2026-05-06, awaiting live verification)
 - **Created:** 2026-05-06
+- **Last updated:** 2026-05-06 (grilled, root causes identified, prompt fix applied)
 - **Demo-blocking:** Yes (this is a visible regression in the chat surface that ruins demo recordings)
 - **GitHub:** _(filled when promoted)_
+
+### Diagnosis (2026-05-06 grilling)
+
+Root causes 1+3 from the original list, confirmed via code reading. Causes 2+4 ruled out:
+
+- **Cause 3 (history dropped relevant turn) is structural.** The widget's `buildHistory` (`apps/acg-chat-widget/react/components/ChatWidget/api.ts:34-43`) only sends `{ role, content }` for prior turns — tool calls and tool results don't survive across chat calls. By design (stateless server). The LLM on turn 3 has no SKU data from the turn-1 `get_product_details` call.
+- **Cause 1 (rule didn't fire) is the symptom.** The system prompt's variant-refetch rule (`chat.ts:401-414`) was triggered by *"i-ai oferit chips și clientul răspunde cu..."* — the example assumed chips. In the failing transcript variants were offered as bulleted prose, not chips, so the LLM may have judged the rule didn't apply.
+- **Cause 2 (tool returned different data) ruled out.** Would require the tool to have actually been called on turn 3 — but lost-context (cause 3) means the LLM didn't have the SKUs to ground a refetch decision either way.
+- **Cause 4 (corrective rounds overwriting context) ruled out.** Empty-response and hallucination guards at `chat.ts:1416,1430` only fire on empty replies or claimed-but-not-executed cart actions. The bug response was non-empty and didn't claim a cart action.
+
+Fixing cause 3 properly is a multi-day refactor (server-side conversation state OR widget plumbing of tool calls/results). Fixing cause 1 — broadening the rule's trigger so the LLM reliably refetches — is a prompt edit and addresses the same observable bug for the demo.
+
+### Fix shipped (prompt-side, 2026-05-06)
+
+Edit to the `## DUPĂ CE CLIENTUL ALEGE O VARIANTĂ SAU CONFIRMĂ` section in `chat.ts:401`:
+
+1. Trigger broadened: *"Indiferent cum ai prezentat variantele (chips, listă în text, sau ambele)"* + new bullet covering "any short reply that looks like a variant pick."
+2. Sharper framing of why refetch matters: *"Tool result-urile din turnurile anterioare NU sunt în contextul tău acum — refetch e obligatoriu, nu opțional."*
+3. New step 5 — explicit anti-fabrication rule: *"Dacă în acest turn NU vezi un tool result de la get_product_details, NU AI VOIE să afirmi nimic despre variantele disponibile. Ori apelezi tool-ul, ori ceri clientului să clarifice. NU FABRICA variante."*
+
+~80 tokens added per chat call (cost trade-off acknowledged; demo recordability wins).
+
+### Verification protocol
+
+1. `vtex link` from `packages/vtex-io-adapter/`.
+2. Reproduce the original flow on the storefront:
+   - Search for a product with multiple variants (the screenshot used a Romanian fashion item)
+   - Trigger the variant-list response from the LLM (in prose, not chips)
+   - Reply with just `"M"` (or any short variant-shaped string)
+3. Check server logs for the chat round on turn 3: `[ACG Chat] Tool call: get_product_details` MUST appear before any add_to_cart or text reply.
+4. The LLM's text reply should NOT mention any variant the prior turn didn't list. If it claims a fabricated variant, the fix is insufficient — escalate.
+
+### If still broken after verification
+
+Escalation options (in order of cost):
+
+- **A.** Move the rule out of the conditional section into top-level `## REGULI DE GRUNDARE` so it always primes the LLM, not just on the matched section.
+- **B.** Server-side variant-shape detection: handler intercepts variant-shaped user messages and pre-injects a `get_product_details` call before the LLM round. Reliable but requires the handler to know the productId from history (which it may not).
+- **C.** Persist conversation state server-side per session, including tool calls/results — fixes cause 3 directly. Multi-day refactor; out of demo scope.
 
 ### Context
 
