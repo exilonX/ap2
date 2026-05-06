@@ -674,22 +674,20 @@ The case study should mention this honestly: *"For the prototype, AP2 routes are
 - **Demo-blocking:** Yes (recording can't complete reliably if half the product widgets don't render)
 - **GitHub:** _(filled when promoted)_
 
-### Fix shipped (option (a), 2026-05-07)
+### Fix shipped (option (a) → revised, 2026-05-07)
 
-Dropped the `Promise.all(imageToDataUri)` step entirely from `mcp-server/src/tools/search.ts`. The tool now returns the original `*.vteximg.com.br` CDN URLs (still upscaled from -55-55 to -500-500). The iframe loads `<img src="https://miniprix.vteximg.com.br/...">` directly — CSP `_meta.ui.csp.resourceDomains` already allow-lists `*.vteximg.com.br`.
+**First attempt (commit `c4924a8`):** dropped image base64 embedding entirely; tool returned CDN URLs directly, iframe rendered `<img src="https://...">`. Result: stuck "Loading products..." bug fixed, but images showed as broken icons. Diagnosis: the MCP App iframe's runtime CSP blocks external image URLs regardless of the `_meta.ui.csp.resourceDomains` advisory. Base64 was load-bearing.
 
-Tool return time drops from ~1-25s (the slow tail of axios fetches) to ~300ms (just the `/search` round-trip). The MCP App iframe receives the result well before its initialization window closes.
+**Second attempt (current):** brought back base64 embedding but with the actual race fixed — `Promise.allSettled` instead of `Promise.all`, **1.5s** per-image timeout instead of 5s. One slow image can't block the rest; total tool time is bounded to ~1.5s; failed images fall through to `undefined` and render as cards without an image (no broken icon). Best of both: widgets render reliably AND images embed correctly.
 
-Trade-offs accepted:
-- **Image loading is now async in the iframe.** Cards render immediately with the product name/price/SKU; images fade in as they load. Better perceived UX than waiting for the whole iframe to populate.
-- **CSP must cover the CDN.** Today `*.vteximg.com.br` covers all VTEX EU merchants. A merchant on a different CDN would need their domain added to `csp.resourceDomains`.
+Cart-side equivalents (`cart.ts:embedCartImages` for `addToCart` / `getCart`, `checkout.ts` for `checkoutInChat`) still use the original 5s `Promise.all` pattern but haven't shown the race because they typically operate on smaller N (1-4 cart items vs 5 search results) and tail-latency is less likely to trip. Worth aligning post-demo if the symptom recurs there.
 
 ### Verification protocol
 
 1. Restart Claude Desktop (MCP server is rebuilt from `dist/`; force reload).
-2. Reproduce yesterday's flow: *"caut o tinuta pentru barbati"*, then a few searches that span product types.
-3. Expected: every `browseProducts` widget renders product cards reliably (no stuck "Loading products..."). Images may fade in slightly after card paint — acceptable.
-4. If stuck widgets recur → fall back to (a)+(c) from the original spec (add `onerror` placeholder + structured logging) and escalate diagnosis.
+2. Reproduce: *"caut o tinuta pentru barbati"*, several searches that span product types.
+3. Expected: widgets render reliably AND product images load.
+4. Edge case: if a product image is genuinely slow (>1.5s), the card renders without an image — gray box with name/price visible. That's the designed fallback.
 
 ### Context
 

@@ -8,8 +8,37 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import axios from 'axios'
 import { VtexClient } from '../client'
 import type { ProductSearchResult, ProductDetail } from '@acg/shared/product'
+
+/**
+ * Issue 0011 — fetch image, embed as base64 data URI, but with a STRICT
+ * per-image timeout. The MCP App iframe CSP blocks `<img src=https://…>`
+ * to external CDNs at runtime (the `_meta.ui.csp.resourceDomains` field
+ * is advisory, not enforcing) — so we *must* embed images for them to
+ * render. The original implementation used a 5s timeout and `Promise.all`,
+ * which let one slow image block the entire tool result past the
+ * iframe's tool-result delivery window. This version uses 1.5s per
+ * image plus `Promise.allSettled` — one slow image can't block the
+ * others, total tool time is bounded to ~1.5s, and failed images become
+ * `undefined` (card renders without an image, no broken icon).
+ */
+const IMAGE_TIMEOUT_MS = 1500
+
+async function imageToDataUri(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: IMAGE_TIMEOUT_MS,
+    })
+    const contentType = (response.headers['content-type'] || 'image/jpeg').split(';')[0]
+    const base64 = Buffer.from(response.data).toString('base64')
+    return `data:${contentType};base64,${base64}`
+  } catch {
+    return null
+  }
+}
 
 const PRODUCTS_APP_URI = 'ui://acg-products/index.html'
 
@@ -50,23 +79,30 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
         }
         const result = await client.get<ProductSearchResult>('/search', searchParams)
 
-        // Issue 0011 fix — return CDN URLs directly. The previous
-        // base64-embedding loop (per-product axios fetch + Promise.all)
-        // was blocking the tool result past the MCP App iframe's
-        // delivery window for some calls, leaving widgets stuck on
-        // "Loading products...". The iframe loads `<img>` tags
-        // straight from `*.vteximg.com.br` (allow-listed in
-        // `_meta.ui.csp.resourceDomains` below). We still upscale the
-        // CDN path from -55-55 thumbnails to -500-500 for layout.
-        const productsWithUpscaledImages = result.products.map((p) => {
-          const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
-          return { ...p, image: imageUrl }
+        // Issue 0011 — embed images as base64 with strict per-image
+        // timeout (allSettled: one slow image can't block the rest;
+        // 1.5s cap: total tool time bounded). MCP App iframe CSP
+        // blocks external `<img src=https://…>` at runtime, so embedding
+        // is load-bearing. Failed images fall through to undefined and
+        // the iframe renders the card without an image (no broken icon).
+        const settled = await Promise.allSettled(
+          result.products.map(async (p) => {
+            const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
+            const dataUri = imageUrl ? await imageToDataUri(imageUrl) : null
+            return { ...p, image: dataUri || undefined }
+          })
+        )
+        const productsWithImages = settled.map((outcome, i) => {
+          if (outcome.status === 'fulfilled') return outcome.value
+          // Defensive — imageToDataUri swallows its own errors so this
+          // branch shouldn't fire, but if it does, drop the image.
+          return { ...result.products[i], image: undefined }
         })
 
         return {
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ ...result, products: productsWithUpscaledImages }),
+            text: JSON.stringify({ ...result, products: productsWithImages }),
           }],
         }
       } catch (error) {
