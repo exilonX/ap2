@@ -663,3 +663,162 @@ Pairs with item 1 — if the chat endpoint requires either an agent API key OR a
 Surfaced 2026-05-06 during the MCP parity work, when the user noticed `VTEX_APP_KEY` / `VTEX_APP_TOKEN` aren't required for MCP server operation. Correct observation — they aren't, *because* every route is public — and that's the structural shape that needs guardrails before production.
 
 The case study should mention this honestly: *"For the prototype, AP2 routes are open to any caller — the trust model assumes the Shopping Agent has authority. Production deployments would gate this with IntentMandate verification and rate-limited per-agent API keys."*
+
+---
+
+## 0011 — `browseProducts` iframe stuck on "Loading products..." (intermittent)
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** Yes (recording can't complete reliably if half the product widgets don't render)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Surfaced 2026-05-06 testing Claude Desktop with the MCP server pointed at `acg--miniprix`. The user typed several queries; Claude's native LLM fanned out and called `browseProducts` ~6 times across the session. Result:
+
+- 2 widgets rendered products correctly (`camasa barbat`, `pantaloni barbat`).
+- 1 widget rendered "Found 0 products for adidasi barbat" cleanly (zero-state works).
+- 3 widgets stuck on initial "Loading products..." indefinitely.
+
+Pattern is intermittent — same MCP server, same iframe code, same merchant data. Some calls render, some don't.
+
+### Most likely root cause
+
+`packages/mcp-server/src/tools/search.ts:69-76` — the tool fetches each product's image and embeds it as a base64 data URI before returning the tool result:
+
+```ts
+const productsWithImages = await Promise.all(
+  result.products.map(async (p) => {
+    const imageUrl = p.image?.replace(/-\d+-\d+\//, '-500-500/') || p.image
+    const dataUri = imageUrl ? await imageToDataUri(imageUrl) : null
+    return { ...p, image: dataUri || undefined }
+  })
+)
+```
+
+`imageToDataUri` is an axios GET with 5s timeout. `Promise.all` blocks until ALL succeed/timeout. With 5 products per call, that's up to 25s in the worst case. The MCP App protocol's tool-result delivery to the iframe has its own timing assumptions; if the iframe finishes initializing and is ready for results before the result actually arrives, the result may be delivered too late and missed.
+
+Two distinct sub-hypotheses inside this:
+1. **Slow path:** at least one image takes >5s, blocking the whole result, iframe times out / gives up.
+2. **Race condition:** even with fast images (~200ms each), the iframe's `ui/notifications/initialized` may not have been received by the host before the tool returns. The first `ui/notifications/tool-result` notification is sent before the iframe's listener is attached. Subsequent calls work because the iframe is already initialized from the prior session.
+
+### Acceptance — diagnosis
+
+1. **Add per-image timing logs** to `imageToDataUri` (start, end, status). One stderr line per image. After a Claude Desktop session, count how many images were >2s, >5s, failed.
+2. **Add a tool-level timing log:** total elapsed from `browseProducts` invocation to return. Compare against widgets that rendered vs. stuck.
+3. **Compare two stuck widgets vs. two working widgets** to identify the differentiating factor.
+
+### Acceptance — fix candidates (decided in grilling)
+
+- **(a) Drop the base64 step entirely.** Return the original CDN URLs. Update the iframe's CSP `resourceDomains` to allow `*.vteximg.com.br` (already there). Iframe loads images directly from CDN. Fastest tool return; relies on iframe being able to fetch images post-render.
+- **(b) Parallelize with timeout-per-image, return what we have.** Each image fetch races a 1.5s timeout; failures fall through to `undefined`. Iframe handles missing images gracefully (placeholder). Bounds total tool time to ~1.5s.
+- **(c) Lazy load:** tool returns URLs immediately, iframe lazy-loads images via fetch + canvas → base64 (or just `<img src=URL>` if CSP allows).
+- **(d) Combination.**
+
+### What this is NOT
+
+- Not a VTEX adapter bug. The adapter's `/_v/acg/search` returns fast (~300ms per the curl test).
+- Not a Claude Desktop bug. Other MCP App iframes (e.g., the new `checkout.html` Pay-Now flow) work fine because they don't do per-product image embedding.
+
+### Comments
+
+Surfaced 2026-05-06 during MCP parity testing. Demo-blocker — file priority.
+
+---
+
+## 0012 — `addToCart` accepts SKU with `available: false` silently (cart subtotal/total split)
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** Medium (visible in checkout flow; VTEX rejects the OOS line on redirect)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Observed 2026-05-06 in Claude Desktop. Claude added a `Geaca subtire sOliver` jacket via `addToCart`. Server accepted, returned `available: false`. Cart preview then showed:
+- Subtotal: 423 RON (includes the unavailable jacket at 198 RON)
+- Total: 225 RON (excludes the unavailable jacket — subtotal of the *purchasable* items only)
+
+The user (and the LLM, and the iframe) had no clear signal that the jacket was OOS until the *total* didn't match the *subtotal*. Following a `redirectToNativeCheckout` then surfaced VTEX's hard rejection: `Articolul Geaca subtire ... nu are stoc`.
+
+Three distinct issues colocated:
+1. `addToCart` shouldn't accept a SKU that has zero stock for the chosen variant. Current `Cart.addItem` (Issue 02) checks for the silent-success bug and ORD003 retries, but doesn't probe stock first.
+2. `mapOrderFormToCart` returns items with `available: false` — chat / iframe consumers don't visibly mark them as such.
+3. The subtotal-vs-total discrepancy isn't explained anywhere.
+
+### Acceptance
+
+- **Server-side stock check in `Cart.addItem`** — before adding, fetch product details, fail-fast if the chosen SKU's `AvailableQuantity` is 0. Throw a typed `ItemOutOfStockError` similar to `ItemNotAddedError`.
+- **`SimpleCartItem.available` already exists** (per `mapOrderFormToCart`). Iframe renderers should mark unavailable items with a strikethrough, badge, or warning. Same for the chat widget's cart preview.
+- **Reconcile subtotal/total in the cart shape** — either explicitly split into `purchasableSubtotal` / `unavailableTotal`, or surface the discrepancy as a structured warning the LLM/iframe can show.
+
+### What this is NOT
+
+- Not Issue 02's Cart module bug. Issue 02 was about cart correctness; this is about pre-add validation. Adjacent.
+- Not blocking the recorded demo IF the storyboard avoids OOS items (curate test data).
+
+### Comments
+
+Surfaced 2026-05-06 during MCP parity testing. Both user-visible bugs (the silent OOS, the total/subtotal split) reported in the same flow.
+
+---
+
+## 0013 — Multi-variant SKU added without confirmation in Claude Desktop
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** Low (UX awkwardness, not visible failure)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Observed 2026-05-06. Claude Desktop's native LLM, on receiving a request like *"add a shirt and shorts"*, called `addToCart` directly with a chosen SKU — picking a size without asking the user. The chat widget's system prompt (Issue 0004) explicitly enforces variant confirmation; that prompt **does not apply to Claude Desktop's LLM**, which runs Anthropic's models with no system prompt from us.
+
+Mechanisms to enforce variant confirmation in MCP:
+- **Tool description** — append to `addToCart` tool description: *"If the product has multiple sizes/colors and the user hasn't specified one, return an error asking the LLM to confirm with the user first."*
+- **Server-side guard** — when `addToCart` fires for a SKU whose product has multiple available variants AND the user message doesn't specify one, return ERROR result asking for clarification. Same shape as Issue 0008's guard.
+- **Iframe-side** — the products iframe's "Add to Cart" button could surface a variant picker before invoking the tool.
+
+### Acceptance — recommended
+
+Server-side guard: in `addToCart` REST handler (or wrapper), if the product has >1 in-stock variants AND the request doesn't carry an explicit variant signal (size/color in request body), return a structured ERROR with the variant list. The LLM sees the variants and asks the user.
+
+Mirrors how Issue 0008 enforces SKU validation. Lands at the same seam.
+
+### What this is NOT
+
+- Not a bug in the chat widget. The widget's prompt-side enforcement works fine post-Issue-0004.
+- Not blocking the demo recording IF the storyboard uses single-variant products or asks Claude to confirm explicitly.
+
+### Comments
+
+Surfaced 2026-05-06 during MCP parity testing. Real concern for production but recordable around for the demo.
+
+---
+
+## 0014 — MCP demo polish notes (small UX / aspirational items)
+
+- **Status:** notes
+- **Created:** 2026-05-06
+- **Demo-blocking:** No
+- **GitHub:** _(filled when promoted)_
+
+Bundle of smaller items surfaced 2026-05-06 during Claude Desktop MCP testing. Each is a one-paragraph polish concern, not large enough to warrant individual issues.
+
+### 0014.a — Pre-checkout readiness check
+
+Today: `checkoutInChat` opens the iframe regardless of whether shipping address / customer profile are set. The iframe shows `isReadyForCheckout: false` but the visual cue is subtle (small grey pill). User may try Pay-Now and hit a confusing failure.
+
+Fix: in the MCP `checkoutInChat` tool, query cart readiness state first. If missing fields, return a structured response listing what's needed. The LLM prompts the user before opening the iframe.
+
+### 0014.b — Search-quality observation (case study material)
+
+Claude Desktop's native LLM does **query expansion** when the first search returns 0 or wrong-category results — *"pantaloni"* fails, retries *"pantaloni barbat"*, succeeds. This is BETTER behavior than the chat widget's LLM, which currently just reports "no results." Worth two things:
+
+1. **Borrow the pattern for the chat widget:** add a system prompt rule like *"if `search_products` returns 0 results, retry with broader terms before reporting failure."* Free improvement.
+2. **Mention in the case study:** Claude Desktop demonstrates that surfaces with fewer constraints (no system prompt, no profile) sometimes outperform — argues for the AgentTool catalogue convergence (Issue 04) so we can lift good behaviors to all surfaces.
+
+### 0014.c — Real in-chat payment (already supported, no work needed)
+
+User asked if we can do a real payment without VTEX redirect. Answer: we already do — Path B via the iframe's "Pay Now" button (Step 5 parity work, commit `5ba6c55`). The iframe runs `verifyAgainstCart` server-side and renders success/drift states. The "Or use VTEX standard checkout" link is the secondary Path A. No additional work; just storyboard around Path B for the recording.
