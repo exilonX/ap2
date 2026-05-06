@@ -668,11 +668,41 @@ The case study should mention this honestly: *"For the prototype, AP2 routes are
 
 ## 0011 — `browseProducts` iframe stuck on "Loading products..." (intermittent)
 
-- **Status:** in-flight (option (a) fix shipped 2026-05-07; awaiting Claude Desktop verification)
+- **Status:** shipped (verified live 2026-05-07)
 - **Created:** 2026-05-06
-- **Last updated:** 2026-05-07 (grilled, base64 image embedding dropped)
-- **Demo-blocking:** Yes (recording can't complete reliably if half the product widgets don't render)
+- **Last updated:** 2026-05-07 (verified — all widgets render, all images load, ≤1.5s tool time)
+- **Shipped:** commits `c4924a8` → `4bf1f1e` → `7642633` (three iterations to converge)
+- **Demo-blocking:** No (resolved)
 - **GitHub:** _(filled when promoted)_
+
+### Verification (2026-05-07)
+
+Storefront test on `acg--miniprix.myvtex.com` via Claude Desktop:
+
+```
+21:54:25 browseProducts "pantaloni barbati" maxResults=3 → 1.3s ✓
+21:54:29 browseProducts "camasa barbati"    maxResults=3 → 1.2s ✓
+21:54:40 addToCart sku=593316               → 1.0s ✓
+21:54:42 addToCart sku=589315               → 0.5s ✓
+21:54:55 getCart                            → 0.5s ✓
+21:55:14 checkoutInChat                     → 1.1s ✓
+```
+
+All widgets rendered cleanly with images. Checkout iframe shows the AP2 mandate panel verified end-to-end (mandate id, DID, cart hash, signing time, View Mandate Proof + Verify Merchant Identity links). User confirmation: *"rendered fine this time, faster."*
+
+### What ultimately fixed it (three iterations)
+
+Stuck "Loading products..." had three root causes that surfaced sequentially:
+
+1. **Iteration 1 (commit `c4924a8`):** `Promise.all` blocked tool result on slowest image fetch (5s timeout × N images). Fix attempted: drop image base64 entirely, return CDN URLs. Result: stuck-widget bug fixed, but iframe CSP blocks external `<img src>` so images showed broken.
+2. **Iteration 2 (commit `4bf1f1e`):** brought back base64 with `Promise.allSettled` + 1.5s per-image timeout. Result: better, but full-resolution images (200KB-1MB each) still made tool payloads huge (~1.2MB) and clogged the MCP stdio pipe — second/third widgets in a session sometimes still stuck.
+3. **Iteration 3 (commit `7642633`):** discovered the regex `/-\d+-\d+\//` only *replaced* dimensions — for URLs without dimensions (miniprix shape: `/ids/2042166/`) it was a no-op, so we fetched full-size. New regex `/\/ids\/(\d+)(?:-\d+-\d+)?\//` injects `-150-150` (search) or `-100-100` (cart/checkout) regardless. Image payload drops 10-20×; tool time bounded under 1.5s; pipe stays drained.
+
+### Lessons captured
+
+- **MCP App iframe CSP enforces `img-src` 'self' data:** by default. The `_meta.ui.csp.resourceDomains` field appears not to extend it (or only extends `connect-src`). Base64 embedding is the working contract for any external resource an MCP iframe needs to display.
+- **VTEX CDN's on-the-fly resize via URL path is the right primitive.** `/arquivos/ids/{id}-{w}-{h}/file.jpg` is cached per dimension. Always inject the smallest size that's visually adequate.
+- **MCP stdio pipe payloads matter.** A 1MB tool result is structurally different from a 100KB one — the iframe-rendering window has limits we didn't measure, but stayed under by keeping payloads tight.
 
 ### Fix shipped (option (a) → revised, 2026-05-07)
 
@@ -838,3 +868,73 @@ Claude Desktop's native LLM does **query expansion** when the first search retur
 ### 0014.c — Real in-chat payment (already supported, no work needed)
 
 User asked if we can do a real payment without VTEX redirect. Answer: we already do — Path B via the iframe's "Pay Now" button (Step 5 parity work, commit `5ba6c55`). The iframe runs `verifyAgainstCart` server-side and renders success/drift states. The "Or use VTEX standard checkout" link is the secondary Path A. No additional work; just storyboard around Path B for the recording.
+
+---
+
+## 0015 — `removeFromCart` returns "undefined undefined" on errors
+
+- **Status:** needs-triage
+- **Created:** 2026-05-07
+- **Demo-blocking:** No (LLM and user both see the bad message but flow continues)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Observed 2026-05-06 in MCP server logs:
+
+```
+21:06:10 result: "Error removing item: VTEX API error: undefined undefined"
+21:06:18 result: "Error removing item: VTEX API error: undefined undefined"
+```
+
+vs. `updateCartItemQuantity` in the same session returning a clean error:
+
+```
+21:06:40 result: "Error updating item: VTEX API error: 404 SKU 594712 not in cart"
+```
+
+Different error-parsing paths in `mcp-server/src/tools/cart.ts` between sibling cart tools. The `removeFromCart` handler probably formats `${err.response?.status} ${err.response?.data}` or similar without null-checking, while `updateCartItemQuantity` does it correctly.
+
+### Acceptance
+
+- Audit `cart.ts` error paths. Find the divergent message construction.
+- Align all cart tools on a single error-formatter helper.
+- One small refactor; ~20 lines.
+
+### Comments
+
+Surfaced 2026-05-06 by Claude Desktop's native LLM (it noticed the inconsistency and flagged it in the chat reply — *"removeFromCart are același bug undefined undefined în error handling pe care îl avea și browseProducts la început"*). Claude was right.
+
+---
+
+## 0016 — Gender-clarification UX for ungendered apparel queries
+
+- **Status:** needs-triage
+- **Created:** 2026-05-07
+- **Demo-blocking:** No (Claude Desktop self-corrects mid-conversation)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Surfaced 2026-05-06 in Claude Desktop. User typed *"caut sa cumpar o camasa, pantaloni si geaca"* without specifying gender. The native LLM searched `"camasa"` first → catalog returned women's shirts (more women's apparel in index → semantic top-K leans female). LLM then retried `"camasa barbat"` → got men's shirts. Repeated for `"geaca"` / `"geaca barbati"`.
+
+The LLM **did** self-correct, but the user-visible artifact (4 widgets, 2 of which show wrong-gender results) is awkward. The chat widget's system prompt would catch this upfront with a clarifying question — Claude Desktop's native LLM has no system prompt from us.
+
+### Same root cause as 0009
+
+Catalog imbalance + cross-category bleed in 512d embeddings. The fix paths from 0009 apply (post-search reranking by query-noun match, embedding-text quality, etc.), with one additional surface-agnostic option:
+
+### Acceptance — recommended
+
+**Tool description nudge:** extend `browseProducts` description to encourage upfront clarification:
+
+> "If the customer's request is for a gendered apparel item without an explicit gender modifier, ASK before searching ('Pentru femei sau pentru bărbați?') rather than guessing."
+
+Surface-agnostic — works for Claude Desktop, future MCP clients, and via Issue 04 convergence eventually for the chat widget too. ~30-second edit.
+
+Heavier alternatives (server-side gender-mismatch guard, post-search rerank) are filed under 0009. This issue is specifically the lightweight nudge.
+
+### What this is NOT
+
+- Not Issue 0013 (multi-variant SKU added without confirmation). 0013 is about size/color confirmation post-product-pick. This is about gender confirmation pre-search.
+- Not blocking the demo. Storyboard around it (use queries with explicit gender from the start).
