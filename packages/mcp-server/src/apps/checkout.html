@@ -158,9 +158,94 @@
     display: block;
     text-align: center;
   }
-  .checkout-btn:hover {
+  .checkout-btn:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(102,126,234,0.4);
+  }
+  .checkout-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .pay-now-btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, #2ea043 0%, #238636 100%);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-bottom: 8px;
+    font-family: inherit;
+  }
+  .pay-now-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(46,160,67,0.4);
+  }
+  .pay-now-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .native-checkout-link {
+    text-align: center;
+    margin-top: 12px;
+  }
+  .native-checkout-link a {
+    font-size: 12px;
+    color: #888;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .result-panel {
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 12px;
+    font-size: 14px;
+  }
+  .result-panel.success {
+    background: linear-gradient(180deg, #f0f9f1 0%, #e8f5ea 100%);
+    border: 2px solid #2ea043;
+    color: #1a5028;
+  }
+  .result-panel.drift {
+    background: linear-gradient(180deg, #fdf3f3 0%, #fbe9e9 100%);
+    border: 2px solid #cf222e;
+    color: #6e1117;
+  }
+  .result-panel .result-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: white;
+    font-weight: 700;
+    margin-right: 8px;
+  }
+  .result-panel.success .result-icon { background: #2ea043; }
+  .result-panel.drift .result-icon { background: #cf222e; }
+  .result-panel .result-headline {
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+  }
+  .result-panel .result-detail {
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .result-panel .result-meta {
+    margin-top: 10px;
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.85;
   }
 
   .secure-note {
@@ -204,13 +289,23 @@
   </div>
 </div>
 
-<a class="checkout-btn" id="checkout-btn" href="#" onclick="openLink('checkout-btn'); return false;">Proceed to Checkout</a>
+<div id="action-area">
+  <button class="pay-now-btn" id="pay-now-btn" type="button" onclick="payNow(); return false;">
+    Pay Now
+  </button>
+  <div class="native-checkout-link">
+    <a id="checkout-btn" href="#" onclick="openLink('checkout-btn'); return false;">Or use VTEX standard checkout</a>
+  </div>
+</div>
+
+<div id="result-area" style="display:none"></div>
 
 <div class="secure-note">Secured by AP2 Protocol v0.1.0 &bull; EdDSA (Ed25519) &bull; JWT signed mandate</div>
 
 <script>
   var rpcId = 1;
   var pendingRequests = {};
+  var currentMandateId = null;
 
   function sendToHost(msg) { window.parent.postMessage(msg, '*'); }
 
@@ -297,6 +392,7 @@
 
     // AP2 Mandate
     if (data.mandate && data.mandate.id) {
+      currentMandateId = data.mandate.id;
       document.getElementById('ap2-section').style.display = 'block';
       document.getElementById('mandate-id').textContent = data.mandate.id;
       document.getElementById('mandate-did').textContent = data.mandate.merchantDid || '';
@@ -311,20 +407,123 @@
       }
     }
 
-    // Checkout button
-    var btn = document.getElementById('checkout-btn');
-    btn.textContent = 'Proceed to Checkout — ' + cart.total.toFixed(2) + ' ' + cart.currency;
-    if (data.checkoutUrl) {
-      btn.href = data.checkoutUrl;
-      btn.onclick = function() {
-        // Try to open via MCP App protocol first
+    // Pay-now button reflects the cart total
+    var payBtn = document.getElementById('pay-now-btn');
+    if (payBtn) {
+      payBtn.textContent = 'Pay Now — ' + cart.total.toFixed(2) + ' ' + cart.currency;
+      payBtn.disabled = !currentMandateId;
+    }
+
+    // Path A — VTEX native checkout link (secondary action)
+    var nativeBtn = document.getElementById('checkout-btn');
+    if (nativeBtn && data.checkoutUrl) {
+      nativeBtn.href = data.checkoutUrl;
+      nativeBtn.onclick = function() {
         rpcRequest('ui/open-link', { url: data.checkoutUrl }).catch(function() {
           window.open(data.checkoutUrl, '_blank');
         });
+        return false;
       };
     }
 
     notifySize();
+  }
+
+  // Pay-now flow — call executePayment via MCP, then render success / drift state.
+  // The cryptographic ceremony lives server-side: verifyAgainstCart against the
+  // mandate the iframe was rendered with. If the cart drifted since signing,
+  // payment is rejected and the user is told why.
+  window.payNow = function() {
+    if (!currentMandateId) return;
+    var btn = document.getElementById('pay-now-btn');
+    btn.disabled = true;
+    btn.textContent = 'Verifying mandate against cart...';
+
+    rpcRequest('tools/call', {
+      name: 'executePayment',
+      arguments: { mandateId: currentMandateId },
+    })
+      .then(function(result) {
+        var payload = parseToolResult(result);
+        renderPaymentResult(payload);
+      })
+      .catch(function(err) {
+        renderPaymentResult({
+          success: false,
+          reason: 'Payment ceremony failed: ' + (err && err.message ? err.message : 'unknown error'),
+          drifted: false,
+        });
+      });
+  };
+
+  function parseToolResult(result) {
+    try {
+      if (result && result.content) {
+        for (var i = 0; i < result.content.length; i++) {
+          if (result.content[i].type === 'text') {
+            return JSON.parse(result.content[i].text);
+          }
+        }
+      }
+    } catch (e) {}
+    return { success: false, reason: 'Could not parse payment result', drifted: false };
+  }
+
+  function renderPaymentResult(payload) {
+    var actionArea = document.getElementById('action-area');
+    var resultArea = document.getElementById('result-area');
+    if (actionArea) actionArea.style.display = 'none';
+    if (!resultArea) return;
+
+    if (payload.success) {
+      resultArea.innerHTML =
+        '<div class="result-panel success">' +
+          '<div class="result-headline">' +
+            '<span class="result-icon">&#10004;</span>' +
+            'Payment authorized · Order placed' +
+          '</div>' +
+          '<div class="result-detail">' +
+            'The merchant verified the signed mandate against the live cart at pay time and honored it. Order ' +
+            '<strong>' + escapeHtml(payload.orderId || '') + '</strong> has been placed.' +
+          '</div>' +
+          '<div class="result-meta">' +
+            'Mandate: ' + escapeHtml(payload.mandateId || '') + '<br>' +
+            'Signed by: ' + escapeHtml(payload.signedBy || '') +
+          '</div>' +
+        '</div>';
+    } else {
+      var headline = payload.drifted
+        ? 'Payment rejected · Cart drifted from signed mandate'
+        : 'Payment rejected';
+      var followup = payload.drifted
+        ? 'Sign a new CartMandate so the merchant commits to the updated cart, then try paying again.'
+        : 'Inspect the mandate or contact support.';
+      resultArea.innerHTML =
+        '<div class="result-panel drift">' +
+          '<div class="result-headline">' +
+            '<span class="result-icon">&#10005;</span>' +
+            escapeHtml(headline) +
+          '</div>' +
+          '<div class="result-detail">' +
+            '<strong>Reason:</strong> ' + escapeHtml(payload.reason || 'unknown') + '<br><br>' +
+            escapeHtml(followup) +
+          '</div>' +
+          (payload.mandateId
+            ? '<div class="result-meta">Mandate: ' + escapeHtml(payload.mandateId) + '</div>'
+            : '') +
+        '</div>';
+    }
+    resultArea.style.display = 'block';
+    notifySize();
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function notifySize() {

@@ -65,6 +65,10 @@
       "path": "/_v/acg/checkout/execute/:sessionId",
       "public": true
     },
+    "executePayment": {
+      "path": "/_v/acg/payment/execute",
+      "public": true
+    },
     "orderStatus": {
       "path": "/_v/acg/orders/:orderId",
       "public": true

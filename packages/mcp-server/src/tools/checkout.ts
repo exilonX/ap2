@@ -140,31 +140,70 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
   } as any
 
   // ─── executePayment (called from the iframe) ──────────────────
+  //
+  // Mandate-aware payment ceremony. Calls /payment/execute on the
+  // Adapter, which runs MandateOrchestration.verifyAgainstCart against
+  // the current cart and either places a mock order or rejects with a
+  // drift reason.
+  //
+  // customerData / paymentData are still validated for the iframe's
+  // form UX (theater for the demo recording) but ignored server-side
+  // — the cryptographic beat happens via mandateId, not card data.
+  // Issue 04 (post-demo) reconciles this with the chat-side
+  // execute_payment AgentTool.
   server.tool(
     'executePayment',
     {
+      mandateId: z.string().describe('The CartMandate id returned by checkoutInChat. Required.'),
       customerData: z.object({
         email: z.string(),
         firstName: z.string(),
         lastName: z.string(),
         phone: z.string().optional(),
-      }).describe('Customer information'),
+      }).optional().describe('Customer information (theater — not used server-side)'),
       paymentData: z.object({
         cardNumber: z.string(),
         cardHolder: z.string(),
         cardExpiration: z.string(),
         cardCvv: z.string(),
-      }).describe('Payment card details'),
+      }).optional().describe('Payment card details (theater — not used server-side)'),
     },
-    async () => {
+    async (params) => {
       try {
-        const orderId = `ACG-${Date.now()}`
+        const result = await client.post<
+          | {
+              success: true
+              orderId: string
+              mandateId: string
+              signedBy: string
+              cartTotal: number
+              cartCurrency: string
+            }
+          | {
+              success: false
+              reason: string
+              drifted: boolean
+              mandateId: string | null
+            }
+        >('/payment/execute', { mandateId: params.mandateId })
+
         return {
-          content: [{ type: 'text' as const, text: `Order confirmed! Order ID: ${orderId}. Thank you for your purchase.` }],
+          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
         }
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
         return {
-          content: [{ type: 'text' as const, text: `Payment error: ${error instanceof Error ? error.message : 'Unknown error'}` }],
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                success: false,
+                reason: `Payment error: ${message}`,
+                drifted: false,
+                mandateId: params.mandateId ?? null,
+              }),
+            },
+          ],
           isError: true,
         }
       }

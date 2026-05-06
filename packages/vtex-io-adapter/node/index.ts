@@ -14,6 +14,7 @@ import {
 } from './handlers/checkout'
 import { serveDIDDocument } from './handlers/did'
 import { getMandate } from './handlers/mandate'
+import { executePayment } from './handlers/payment'
 import { chatHandler } from './handlers/chat'
 import { getConfig } from './handlers/config'
 import { getSyncStatus } from './handlers/rag'
@@ -102,6 +103,9 @@ export default new Service({
     }),
     executeCheckout: method({
       POST: [executeCheckout],
+    }),
+    executePayment: method({
+      POST: [executePayment],
     }),
     orderStatus: method({
       GET: [getOrderStatus],
