@@ -392,10 +392,37 @@ Surfaced 2026-05-06 immediately after the 0006 instrumentation landed. The two c
 
 ## 0008 — LLM fabricates SKU via productId offset on confirmation turn
 
-- **Status:** needs-triage
+- **Status:** in-flight (server-side guard shipped 2026-05-06, awaiting live verification)
 - **Created:** 2026-05-06
+- **Last updated:** 2026-05-06 (grilled, server-side guard implemented)
 - **Demo-blocking:** Yes (this puts wrong items in the customer's cart silently)
 - **GitHub:** _(filled when promoted)_
+
+### Fix shipped (server-side guard, 2026-05-06)
+
+Two helpers in `chat.ts` near `detectCartHallucination` (line 1254 in pre-fix code):
+
+- `extractValidSkuSet(messages)` — scans `messages.toolResults` for `get_product_details` results, extracts every SKU surfaced via `/\\bSKU\\s+(\\d+)/g`. Returns the set of SKUs the LLM legitimately could have seen this chat call.
+- `validateAddToCart(sku, userMessage, messages)` — gated by `CONFIRMATION_REGEX` matching `^\\s*(da|yes|ok|adaug[ăa]|sigur|confirm|prima|a doua|a treia|primul|al doilea|al treilea)\\b`. When the user message looks like a confirmation AND the SKU is NOT in the valid set, returns the corrective ERROR string. Otherwise returns null (allow).
+
+Hooked into `case 'add_to_cart':` at the top, before `Cart.addItem` runs. Returns `{ result: validationError }` on detection — `Cart.addItem` never runs, the LLM sees the ERROR on the next round and corrects.
+
+Trade-offs accepted:
+- **Confirmation-regex gate, not unconditional.** Free-form `"add SKU 593657"` requests pass through unblocked (correct — the user explicitly typed the SKU). Variant-shape replies like `"Bej, 38"` aren't currently in the regex; if the LLM fabricates after a variant pick, the guard misses. Issue 0004's prompt fix is supposed to ensure `get_product_details` fires on variant picks anyway, so the valid set should be populated. Add coverage to the regex if a variant-pick fabrication surfaces.
+- **No SKU-offset-pattern detection** (the issue's optional defense-in-depth). The structural fix subsumes it.
+- **No unit tests yet.** The helper is pure logic (no I/O). Should be tested once `node/handlers/chat-guards.ts` is extracted post-demo.
+
+### Verification protocol
+
+1. `vtex link` from `packages/vtex-io-adapter/`.
+2. Reproduce the original transcript shape on the storefront:
+   - Search for any product with multiple variants
+   - Click a card → `Vreau X (SKU referință: ...)` → variant pick → bot offers "Da, adaugă"
+   - Reply `"Da, adaugă"`
+3. Watch server logs for the chat round on the confirmation turn:
+   - Expected: `get_product_details` fires (Issue 0004 prompt fix), then `add_to_cart` with a real SKU. Cart receives the right product.
+   - If the LLM tries to skip get_product_details and fabricate: `[ACG Chat] add_to_cart blocked — SKU <X> not in valid set (issue 0008)` log line + ERROR returned to LLM + LLM forced to retry with `get_product_details` before adding.
+4. The cart should never visibly contain a fabricated SKU's product, even briefly.
 
 ### Context
 

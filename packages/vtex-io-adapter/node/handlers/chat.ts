@@ -427,7 +427,9 @@ async function executeTool(
   ctx: Context,
   toolCall: LLMToolCall,
   orderFormId: string | null,
-  config: ClientConfig
+  config: ClientConfig,
+  messages: LLMMessage[],
+  userMessage: string
 ): Promise<ToolEffect> {
   const args = toolCall.arguments
 
@@ -673,6 +675,17 @@ async function executeTool(
     case 'add_to_cart': {
       const sku = args.sku as string
       const quantity = (args.quantity as number) || 1
+
+      // Issue 0008 — block SKU fabrication via productId offset / hallucination.
+      // Only fires when the user's last message looks like a confirmation
+      // ("Da, adaugă", "OK", "prima", etc.) AND the SKU isn't one returned
+      // by any get_product_details tool result this chat call.
+      const validationError = validateAddToCart(sku, userMessage, messages)
+      if (validationError) {
+        console.warn(`[ACG Chat] add_to_cart blocked — SKU ${sku} not in valid set (issue 0008)`)
+        return { result: validationError }
+      }
+
       const cart = new Cart({ checkout: ctx.clients.checkout })
       const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
 
@@ -1248,6 +1261,69 @@ function extractVariantLabel(fullName: string): string {
   return cleaned.join(', ')
 }
 
+// ─── Issue 0008: SKU-fabrication guard ────────────────────────────
+//
+// The LLM occasionally calls add_to_cart with a SKU it computed from
+// productId (e.g. productId - 1) instead of one returned by
+// get_product_details. VTEX SKU IDs are sequential, so the fabricated
+// SKU lands on a real but unrelated product (e.g. customer asks for
+// shoes, gets socks). This guard enforces the invariant: the SKU passed
+// to add_to_cart MUST be one that some get_product_details tool result
+// surfaced in this chat call.
+
+const CONFIRMATION_REGEX = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm|prima|a doua|a treia|primul|al doilea|al treilea)\b/i
+
+function extractValidSkuSet(messages: LLMMessage[]): Set<string> {
+  const skus = new Set<string>()
+  const skuPattern = /\bSKU\s+(\d+)/g
+  for (const m of messages) {
+    if (!m.toolResults) continue
+    for (const tr of m.toolResults) {
+      if (tr.name !== 'get_product_details') continue
+      let match: RegExpExecArray | null
+      while ((match = skuPattern.exec(tr.result)) !== null) {
+        skus.add(match[1])
+      }
+    }
+  }
+  return skus
+}
+
+/**
+ * Returns null if add_to_cart is allowed, or an ERROR string to surface
+ * as the tool result if the SKU looks fabricated. Only fires when the
+ * user's last message looks like a confirmation/short pick (the failure
+ * mode we observed). Free-form requests like "add SKU 593657" pass
+ * through unblocked.
+ */
+function validateAddToCart(
+  sku: string,
+  userMessage: string,
+  messages: LLMMessage[]
+): string | null {
+  if (!CONFIRMATION_REGEX.test(userMessage.trim())) {
+    return null
+  }
+  const validSkus = extractValidSkuSet(messages)
+  if (validSkus.has(sku)) {
+    return null
+  }
+  return [
+    `ERROR: SKU ${sku} is not a valid variant of any product in this conversation.`,
+    `Valid SKUs come from get_product_details tool results — not from prior conversation history`,
+    `(those tool results are NOT in your context now).`,
+    ``,
+    `To recover: identify the productId of the product the customer is asking about`,
+    `(look for "SKU referință: <productId>" in the user's message, or a product code in`,
+    `the prior search result). Call get_product_details(<productId>), copy the EXACT SKU`,
+    `of the variant the customer chose from its output ("SKU XXXXX: <variant>"), then`,
+    `call add_to_cart with that SKU.`,
+    ``,
+    `Do NOT compute SKUs by adding/subtracting from a productId — VTEX assigns SKU IDs`,
+    `internally; offsets land on unrelated products.`,
+  ].join('\n')
+}
+
 // Detect when the LLM claims a cart action it didn't actually perform.
 // Haiku-class models occasionally fabricate "Am adăugat..." messages without
 // firing add_to_cart. This catches that and triggers a corrective round.
@@ -1482,7 +1558,7 @@ export async function chatHandler(ctx: Context) {
         calledTools.push(toolCall.name)
 
         try {
-          const toolResult = await executeTool(ctx, toolCall, orderFormId, config)
+          const toolResult = await executeTool(ctx, toolCall, orderFormId, config, messages, body.message)
 
           // Only count cart actions as successful if the tool didn't return
           // an ERROR result. Otherwise the hallucination guard would skip
