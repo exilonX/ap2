@@ -272,3 +272,57 @@ The AgentTool work in Issue 03 already opens a clean seam — `ToolContext` is t
 Surfaced 2026-05-06 during the Issue 03 commit when the pre-commit hook flagged 10 pre-existing eslint errors in `chat.ts` (4 `no-console` + others). Bypassed with `--no-verify` matching prior precedent, but the pattern is unsustainable — the lint hook protects nothing it should be protecting in this file. Filed so the cleanup doesn't get forgotten post-demo.
 
 Sized for a single half-day pass once the demo ships. Not on the critical path; explicitly post-demo per `feedback_demo_first`.
+
+---
+
+## 0006 — RAG/search returns stale or mislabeled products
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** Partially (the card-click flow works; text-shorthand references like "prima varianta" hit the bug)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+Surfaced 2026-05-06 during tier-3 testing AFTER Issue 0004's variant-fabrication fix shipped. The 0004 fix is verified working — variant flows via product cards add cleanly. But a different bug class now visible: `search_products` returns products whose data contradicts what `get_product_details` reveals.
+
+Three concrete examples from the 10:43-10:46 transcript on `acg--miniprix.myvtex.com`:
+
+1. **Wrong product type per name.** Search returned `Pantofi sport de dama 243YY12-243-243 (SKU 590776)` for query "pantofi mărimea 40". `get_product_details(590776)` returned variants `W29 L30 / W29 L32 / ...` — pant sizes. The product is actually pantaloni cargo bărbați. The LLM correctly caught the mismatch ("Produsul este de fapt o pereche de pantaloni cargo pentru bărbați").
+2. **Out-of-stock items returned as available.** Search returned `Pantofi Dama 26MEX11623 (SKU 595701)`, `Adidasi albi pentru femei (SKU 590551)`, and `Adidasi albi cu detalii roz (SKU 590554)` — all reported as out-of-stock when `get_product_details` ran. `semanticSearch` is called with `{ available: true }` (chat.ts:468) but the filter doesn't appear to honor SKU-level stock.
+3. **Variant SKUs surfaced as distinct products.** SKUs 590776/777/778/779 all named "Pantofi sport de dama 243YY12-243-243" returned as 4 separate hits. These are likely 4 size/color variants of one product that should be collapsed into one card.
+
+### Likely root causes (any combination)
+
+1. **RAG index drift.** Pinecone embeddings were generated at last `scripts/sync-catalog/` run; products renamed/repurposed since. Catalog requires a re-sync.
+2. **`available: true` filter is product-level, not SKU-level.** A product is "available" if at least one variant is in stock — but search returns *that product*, and `get_product_details` may then surface only the out-of-stock variant for the user's stated size. Filter semantics need review.
+3. **Variant SKUs indexed as products.** The `sync-catalog` script may be creating one Pinecone vector per SKU rather than per product. Need to verify which it does and decide which is correct.
+4. **Embedding text quality.** The semantic match may have hit a product because its description mentions "pantofi sport" (e.g., "merge cu pantofi sport") even though the product itself is pantaloni. Embedding-text construction needs review.
+5. **Catalog data integrity.** Some products may have wrong names in VTEX itself (e.g., a "Pantofi sport" labelled product that's been re-skinned as pantaloni cargo without renaming). Source-of-truth check.
+
+### Acceptance — diagnosis path
+
+1. **Verify the RAG index state.** Run `cd scripts/sync-catalog && npm run estimate` to see counts; check `.sync-state/` for last successful sync timestamp and resume state.
+2. **Pull a sample of matching vectors directly from Pinecone** for the failing SKUs (590776, 595701, 590551, 590554). Inspect their embedding text and metadata. Confirms whether stored data matches catalog reality or has drifted.
+3. **Compare against VTEX search API and Catalog API directly.** Query `/api/catalog_system/pub/products/search/?fq=skuId:590776` for ground truth. If VTEX agrees with Pinecone but disagrees with `get_product_details`, the bug is in the adapter's product mapping. If VTEX disagrees with Pinecone, the bug is in the sync.
+4. **Re-sync and retest.** A fresh `npm run sync` may resolve drift. If the same bugs recur post-resync, the bug is structural (cause 2/3/4) not stale-data (cause 1).
+
+### Acceptance — fixes (depend on which root cause fires)
+
+- **Cause 1 (drift):** schedule periodic syncs (see Step 2c in `docs/SHOWCASE_PLAN.md` — incremental updates via Broadcaster, currently deferred).
+- **Cause 2 (filter semantics):** push availability filter from product-level to SKU-level. May require switching to VTEX Intelligent Search hybrid backend.
+- **Cause 3 (SKUs as products):** re-design `sync-catalog`'s unit of work — per-product with variants stored as metadata, vs. per-SKU. See sibling grilling session 2026-05-06 on the sync-catalog architecture.
+- **Cause 4 (embedding text):** revisit the trimmed embedding text construction in `scripts/sync-catalog`. Drop fields that pollute semantic matches (descriptions referencing other product types).
+- **Cause 5 (catalog integrity):** out of scope — merchant data hygiene, not our bug.
+
+### What this is NOT
+
+- Not an LLM bug. The LLM is doing the right thing — it called `get_product_details`, caught the mismatch, surfaced it to the user. The bug is upstream in what search returned.
+- Not Issue 0004. That issue (variant fabrication) is fixed and verified.
+- Not blocking the card-click demo path. Reproducible only via text-shorthand product references.
+
+### Comments
+
+Surfaced 2026-05-06 during tier-3 verification of Issue 0004's fix. Card-clicked flows (rochie example at 10:44) worked perfectly; text-shorthand flows ("prima varianta") exposed the search-data integrity gap.
+
+Coordination with the active grilling session on `scripts/sync-catalog/` architecture (also 2026-05-06): the answers there directly determine causes 3 and 4 above. Land the sync-catalog clarification first.
