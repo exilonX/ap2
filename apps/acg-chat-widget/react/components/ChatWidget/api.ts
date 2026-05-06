@@ -1,4 +1,4 @@
-import type { CartPreview, Message, ProductCard } from './types'
+import type { CartPreview, Mandate, Message, ProductCard } from './types'
 import { getMockResponse } from './mockResponses'
 
 interface ChatAPIResponse {
@@ -18,6 +18,7 @@ interface ChatAPIResponse {
   suggestions?: string[]
   cartPreview?: CartPreview
   cartUpdated?: boolean
+  mandate?: Mandate
   error?: string
 }
 
@@ -112,6 +113,7 @@ export async function sendChatMessage(
   suggestions?: string[]
   cartPreview?: CartPreview
   cartUpdated?: boolean
+  mandate?: Mandate
 }> {
   const baseUrl = getBaseUrl()
   const orderFormId = getOrderFormIdFromCookie()
@@ -173,6 +175,7 @@ export async function sendChatMessage(
       suggestions: data.suggestions,
       cartPreview: data.cartPreview,
       cartUpdated: data.cartUpdated,
+      mandate: data.mandate,
     }
   } catch (error) {
     // JSON parse failure on a 200 response — server returned malformed body.

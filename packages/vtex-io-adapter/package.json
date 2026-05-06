@@ -5,7 +5,7 @@
   "scripts": {
     "lint": "eslint --ext js,jsx,ts,tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json}\"",
-    "test": "node --import tsx --test node/cart/**/*.test.ts node/identity/**/*.test.ts node/mandates/**/*.test.ts"
+    "test": "node --import tsx --test node/cart/**/*.test.ts node/identity/**/*.test.ts node/mandates/**/*.test.ts node/agent-tools/**/*.test.ts"
   },
   "husky": {
     "hooks": {

@@ -112,7 +112,8 @@ export function createMessage(
   content: string,
   products?: ProductCard[],
   suggestions?: string[],
-  cartPreview?: import('./types').CartPreview
+  cartPreview?: import('./types').CartPreview,
+  mandate?: import('./types').Mandate
 ): Message {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -122,5 +123,6 @@ export function createMessage(
     products,
     suggestions,
     cartPreview,
+    mandate,
   }
 }

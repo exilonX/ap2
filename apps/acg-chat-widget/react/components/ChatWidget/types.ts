@@ -16,6 +16,15 @@ export interface CartPreview {
   checkoutUrl: string
 }
 
+export interface Mandate {
+  mandateId: string
+  retrievalUrl: string
+  cartHash: string
+  signedBy: string         // merchant DID at sign time
+  signedAt: string         // ISO timestamp
+  didDocumentUrl: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -25,6 +34,7 @@ export interface Message {
   suggestions?: string[]  // quick-reply chips shown under the message
   cartPreview?: CartPreview // inline cart preview card
   cartUpdated?: boolean
+  mandate?: Mandate         // present when the merchant signed a CartMandate
 }
 
 export interface ProductCard {

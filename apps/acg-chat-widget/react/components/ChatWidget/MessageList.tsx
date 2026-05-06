@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 
 import type { Message } from './types'
 import CartPreviewCard from './CartPreviewCard'
+import MandateBadge from './MandateBadge'
 import ProductGroup from './ProductGroup'
 import QuickReplies from './QuickReplies'
 import RichText from './RichText'
@@ -128,6 +129,7 @@ function MessageList({ messages, isTyping, onAddToCart, onQuickReply }: MessageL
             <ProductGroup products={msg.products} onAddToCart={onAddToCart} />
           )}
           {msg.cartPreview && <CartPreviewCard cart={msg.cartPreview} />}
+          {msg.mandate && <MandateBadge mandate={msg.mandate} />}
         </div>
       ))}
 

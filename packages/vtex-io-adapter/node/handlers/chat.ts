@@ -12,12 +12,20 @@ import { ClaudeClient, GeminiClient, OpenAIClient } from '../clients/llm'
 import type { LLMMessage, LLMTool, LLMToolCall, LLMResponse, LLMProvider } from '../clients/llm'
 import { loadConfigForAccount } from '../config/load'
 import type { ClientConfig } from '../config/types'
-import { MandateOrchestration } from '../mandates/mandate-orchestration'
 import { mapOrderFormToCart } from '../mappers/cart'
 import { mapProduct } from '../mappers/product'
 import { getOrderFormIdFromRequest, resolveOrderFormId } from '../utils/session'
-import { buildMerchantIdentity } from './did'
 import { semanticSearch } from './rag'
+
+// Importing this module registers all AgentTools (Issue 03 — AP2 ceremony).
+import '../agent-tools'
+import { dispatch as dispatchAgentTool, getDefinitions as getAgentToolDefinitions } from '../agent-tools/registry'
+import type {
+  CartPreviewData,
+  MandateInfo,
+  ProductCardData,
+  ToolEffect,
+} from '../agent-tools/types'
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -27,36 +35,10 @@ interface ChatRequest {
   orderFormId?: string
 }
 
-interface ProductCardData {
-  productId: string
-  name: string
-  imageUrl: string
-  price: number
-  listPrice?: number
-  discountPct?: number
-  onSale?: boolean
-  currency: string
-  url: string
-  groupLabel?: string // e.g. "Cămăși", "Pantaloni" — the search query that found it
-}
-
-interface CartPreviewItem {
-  sku: string
-  name: string
-  quantity: number
-  unitPrice: number
-  totalPrice: number
-  image: string
-}
-
-interface CartPreviewData {
-  items: CartPreviewItem[]
-  subtotal: number
-  total: number
-  itemCount: number
-  currency: string
-  checkoutUrl: string
-}
+// ProductCardData, CartPreviewItem, CartPreviewData, MandateInfo —
+// shared with the AgentTool surface (`node/agent-tools/types.ts`).
+// Keeping the source of truth there lets future industry tool bundles
+// stay aligned with the chat handler's accumulator without drift.
 
 interface ChatResponse {
   reply: string
@@ -64,6 +46,7 @@ interface ChatResponse {
   suggestions?: string[]    // quick-reply chips to render after the reply
   cartPreview?: CartPreviewData  // structured cart snapshot to render inline
   cartUpdated?: boolean
+  mandate?: MandateInfo     // present when the checkout tool signed a CartMandate
 }
 
 interface AppSettings {
@@ -209,11 +192,14 @@ const CHAT_TOOLS: LLMTool[] = [
   },
 
   // ── Checkout ──
-  {
-    name: 'checkout',
-    description: 'Generate a checkout link so the customer can complete their purchase. Only use when the customer explicitly wants to checkout or pay.',
-    parameters: { type: 'object', properties: {} },
-  },
+  // Issue 03 split the legacy `checkout` tool into 3 AP2-ceremony tools
+  // that live as AgentTools under `node/agent-tools/`:
+  //   - create_cart_mandate            (sign-only, the demo's first beat)
+  //   - execute_payment                (verify drift + mock-place order)
+  //   - redirect_to_native_checkout    (Path A handoff)
+  // They are appended to the LLM-facing tool list at chat-time via
+  // `getAgentToolDefinitions()`. See the `[...CHAT_TOOLS, ...]` site below.
+
   {
     name: 'check_order_status',
     description: 'Check the status of an existing order by order ID.',
@@ -342,7 +328,10 @@ ${customRulesSection}
 Spune DOAR ce ai primit din tool-uri. Nu inventa: nume, SKU-uri, prețuri, stoc, mărimi, culori, descrieri, conținut coș, costuri/timpi livrare. Dacă tool-ul întoarce gol/eroare, spune onest. Dacă întoarce mai puțin decât s-a cerut, "am găsit doar X".
 
 ## STIL
-Concis (1-3 fraze). Card-urile apar automat — NU enumera produsele în text. Checkout doar la cerere explicită.
+Concis (1-3 fraze). Câmpurile structurate din tool results (produse, coș, mandat) apar automat — NU le repeta în text. Checkout doar la cerere explicită.
+
+## CHECKOUT FLOW
+Default: create_cart_mandate → clientul revizuiește → execute_payment(mandateId) cu mandateId-ul primit. Folosește redirect_to_native_checkout DOAR când clientul cere explicit checkout VTEX standard.
 
 ${multiStepSection}
 
@@ -437,22 +426,22 @@ async function executeTool(
   toolCall: LLMToolCall,
   orderFormId: string | null,
   config: ClientConfig
-): Promise<{
-  result: string
-  products?: ChatResponse['products']
-  cartUpdated?: boolean
-  suggestions?: string[]
-  cartPreview?: CartPreviewData
-  mandate?: {
-    mandateId: string
-    retrievalUrl: string
-    cartHash: string
-    signedBy: string
-    signedAt: string
-    didDocumentUrl: string
-  }
-}> {
+): Promise<ToolEffect> {
   const args = toolCall.arguments
+
+  // Issue 03 — try the AgentTool registry first; fall through to the
+  // legacy switch when the tool isn't migrated yet. The 3 AP2 ceremony
+  // tools (create_cart_mandate, execute_payment, redirect_to_native_checkout)
+  // live behind this dispatch.
+  const agentEffect = await dispatchAgentTool(toolCall.name, args, {
+    vtex: ctx.vtex,
+    clients: ctx.clients,
+    config,
+    orderFormId,
+  })
+  if (agentEffect !== null) {
+    return agentEffect
+  }
 
   switch (toolCall.name) {
     case 'search_products': {
@@ -1062,69 +1051,11 @@ async function executeTool(
       return { result: `Deal suggestions:\n${suggestions.map((s) => `- ${s}`).join('\n')}` }
     }
 
-    case 'checkout': {
-      if (!orderFormId) {
-        return { result: 'Your cart is empty. Add some products first!' }
-      }
-
-      const cart = new Cart({ checkout: ctx.clients.checkout })
-      let snapshot
-      try {
-        snapshot = await cart.getCart(orderFormId)
-      } catch (err) {
-        if (err instanceof OrderFormSubstitutedError) {
-          return {
-            result: `ERROR: cart session was reset by VTEX. Ask the customer to refresh and try again.`,
-          }
-        }
-        throw err
-      }
-
-      if (snapshot.items.length === 0) {
-        return { result: 'Your cart is empty. Add some products first!' }
-      }
-
-      const workspace = ctx.vtex.workspace || 'master'
-      const host =
-        workspace === 'master'
-          ? `${ctx.vtex.account}.myvtex.com`
-          : `${workspace}--${ctx.vtex.account}.myvtex.com`
-
-      // Sign a CartMandate via MandateOrchestration. This is the
-      // demo's punchline beat: the merchant just signed *this exact*
-      // cart and committed to it.
-      const identity = buildMerchantIdentity(ctx)
-      const orchestration = new MandateOrchestration({
-        identity,
-        vbase: ctx.clients.vbase,
-      })
-      const bundle = await orchestration.signAndPersist(snapshot, {
-        orderFormId,
-        source: 'chat-tool',
-      })
-
-      const checkoutUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`
-      const retrievalUrl = `https://${host}/_v/acg/mandates/${bundle.mandateId}`
-      const didDocumentUrl = `https://${host}/_v/acg/.well-known/did.json`
-
-      return {
-        result: [
-          `Your cart total is ${snapshot.total} ${snapshot.currency} (${snapshot.itemCount} items).`,
-          `The merchant signed this cart with AP2 mandate ${bundle.mandateId}.`,
-          `Mandate proof: ${retrievalUrl}`,
-          `Merchant identity (DID): ${didDocumentUrl}`,
-          `Checkout: ${checkoutUrl}`,
-        ].join('\n'),
-        mandate: {
-          mandateId: bundle.mandateId,
-          retrievalUrl,
-          cartHash: bundle.cartHash,
-          signedBy: bundle.signedBy,
-          signedAt: bundle.signedAt,
-          didDocumentUrl,
-        },
-      }
-    }
+    // The legacy `case 'checkout'` block was deleted by Issue 03 — its
+    // logic is now split across three AgentTools under
+    // `node/agent-tools/`: create_cart_mandate, execute_payment,
+    // redirect_to_native_checkout. The dispatcher at the top of this
+    // function routes to them via the registry before falling through.
 
     case 'check_order_status': {
       const orderId = args.orderId as string
@@ -1438,6 +1369,7 @@ export async function chatHandler(ctx: Context) {
     const productMap = new Map<string, ProductCardData>()
     let suggestions: string[] | undefined
     let cartPreview: CartPreviewData | undefined
+    let mandate: MandateInfo | undefined
     let cartUpdated = false
     let addedSuccessfully = false
     let removedSuccessfully = false
@@ -1449,10 +1381,14 @@ export async function chatHandler(ctx: Context) {
     // said its piece earlier — use the last meaningful text as final reply.
     let lastAssistantText = ''
 
+    // Merge the legacy switch-based CHAT_TOOLS with the new AgentTool
+    // registry definitions (Issue 03). The LLM sees them as one list.
+    const allTools: LLMTool[] = [...CHAT_TOOLS, ...getAgentToolDefinitions()]
+
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const response: LLMResponse = await llm.chat(
         messages,
-        CHAT_TOOLS,
+        allTools,
         TOKEN_BUDGET.maxResponseTokens
       )
 
@@ -1517,6 +1453,7 @@ export async function chatHandler(ctx: Context) {
           suggestions,
           cartPreview,
           cartUpdated,
+          mandate,
         } as ChatResponse
 
         return
@@ -1579,6 +1516,10 @@ export async function chatHandler(ctx: Context) {
             cartPreview = toolResult.cartPreview
           }
 
+          if (toolResult.mandate) {
+            mandate = toolResult.mandate
+          }
+
           roundToolResults.push({
             name: toolCall.name,
             result: truncateToolResult(toolResult.result),
@@ -1626,6 +1567,7 @@ export async function chatHandler(ctx: Context) {
       suggestions,
       cartPreview,
       cartUpdated,
+      mandate,
     } as ChatResponse
   } catch (error) {
     console.error('[ACG Chat] Error:', error)
