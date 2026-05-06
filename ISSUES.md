@@ -326,3 +326,55 @@ Three concrete examples from the 10:43-10:46 transcript on `acg--miniprix.myvtex
 Surfaced 2026-05-06 during tier-3 verification of Issue 0004's fix. Card-clicked flows (rochie example at 10:44) worked perfectly; text-shorthand flows ("prima varianta") exposed the search-data integrity gap.
 
 Coordination with the active grilling session on `scripts/sync-catalog/` architecture (also 2026-05-06): the answers there directly determine causes 3 and 4 above. Land the sync-catalog clarification first.
+
+---
+
+## 0007 — Subcategory walk for high-volume capped leaves in catalog sync
+
+- **Status:** needs-triage
+- **Created:** 2026-05-06
+- **Demo-blocking:** No (96.1% coverage acceptable for demo)
+- **GitHub:** _(filled when promoted)_
+
+### Context
+
+After landing the completeness validation (commit `42c0d6d`, Issue 0006 instrumentation), a fresh sync against `miniprix` revealed:
+
+```
+Active products:   18,977
+IS reported total: 19,738
+Coverage:          96.1% of IS-reported total
+
+⚠ Leaf "femei > imbracaminte > bluze---camasi > bluze" hit IS 2500-cap on page 50 with full page
+⚠ Leaf "femei > imbracaminte > rochii > rochii-midi" hit IS 2500-cap on page 50 with full page
+```
+
+Two specific leaf categories exceed the VTEX Intelligent Search 2500-result hard cap. Each contributes only the first 2500 products of its full inventory; the rest are silently truncated. The 761-product gap (3.9%) is the cumulative miss across both leaves (some overlap with other categories means net-missing < 5000).
+
+The dedup logic (`seenIds` Set keyed on `productId` in `sync.ts`) is correct; the gap is purely from these two leaves' tail products never being yielded by the IS API.
+
+### Acceptance — fix shapes
+
+**Option A — Subcategory facet walking (recommended).** When a leaf hits the 2500 cap with a full page on page 50, recursively walk by an additional facet (brand, price-band, or size) to slice the leaf into sub-2500 slices. Concretely: the catch-all `if (page >= 50) break` at `intelligent-search.ts:334-345` becomes a trigger to invoke a sub-walk, e.g. by iterating each brand in that leaf, querying `facets=category-X/.../brand=BrandName&page=...&count=50`. Yields the same product shape; existing dedup handles overlaps.
+
+**Option B — Sort-direction merge.** Re-query the same leaf with reverse sort (price descending instead of ascending). IS still returns at most 2500, but if natural ordering puts ~3000 products in the leaf, the union of asc-2500 + desc-2500 covers all 3000. Cheap; tops out at ~5000 per leaf.
+
+**Option C — Catalog API fallback.** For leaves flagged as capped, fall through to the VTEX Catalog API (`/api/catalog_system/pub/products/search?fq=C:/leaf-id/&_from=...&_to=...`) which has a different (often higher) cap. More fragile per known VTEX inconsistencies between IS and Catalog API representations of the same products.
+
+**Option D — Accept the gap; mark capped leaves explicitly in the case study.** Validation tells the operator the gap exists and which leaves; production deployment can implement A/B/C when needed.
+
+### Recommendation
+
+For the 2026-05-14 demo cycle: **D**. 96.1% coverage is honest and instrumented. The case study's narrative gains from the transparency: *"We instrumented coverage validation, identified a 4% gap from per-leaf cap on two high-volume leaves; production deployment would address with subcategory walking — not implemented for this prototype."*
+
+Post-demo: implement **A** (subcategory facet walking) — most general, integrates cleanly with the existing per-leaf flow.
+
+### What this is NOT
+
+- Not Issue 0006 directly. 0006 was about wrong/stale data in the index. This issue is about completeness — products that *should* be in the index but aren't.
+- Not blocking the demo recording. The two capped leaves (`bluze`, `rochii-midi`) aren't on any storyboard's critical path.
+- Not a generic "VTEX is flaky" issue. The 504/500 retries during the 2026-05-06 sync were handled correctly by the existing retry logic; errors count was 0.
+
+### Comments
+
+Surfaced 2026-05-06 immediately after the 0006 instrumentation landed. The two capped leaves are deterministic — same merchant, same query patterns will repro the cap each sync. Good acceptance test fixture for whichever option (A/B/C) is picked post-demo.
