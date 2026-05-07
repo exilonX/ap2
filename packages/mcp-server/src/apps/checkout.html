@@ -770,17 +770,35 @@
           renderArtifactLinks(payload, 'success') +
         '</div>';
     } else {
+      var headline = payload.drifted
+        ? 'Payment rejected · Cart drifted from signed mandate'
+        : 'Payment rejected';
+      var detail;
+      if (payload.drifted) {
+        detail =
+          'Sign a new CartMandate so the merchant commits to the updated cart, then try paying again. ' +
+          'No PaymentReceipt is emitted for drift — the request never reached the network.';
+      } else if (payload.paymentReceipt) {
+        // Always-emit invariant: the network signs every decision, even rejections.
+        // This is the AP2 punchline — a rejection becomes auditable evidence,
+        // not just a hearsay decline code from the acquirer.
+        detail =
+          'The network signed this rejection. The PaymentReceipt below is ' +
+          'cryptographically valid evidence — anyone can verify the network\'s ' +
+          'signature against its published DID document and prove this decision ' +
+          'was reached. This is the always-emit invariant: every decision the ' +
+          'network makes, approve <em>or</em> reject, becomes a non-repudiable artifact.';
+      } else {
+        detail = 'Inspect the signed receipt for the failing check, or contact support.';
+      }
       panel.innerHTML =
         '<div class="result-panel drift">' +
           '<div class="result-headline">' +
-            '<span class="result-icon">&#10005;</span>' +
-            (payload.drifted ? 'Payment rejected · Cart drifted from signed mandate' : 'Payment rejected') +
+            '<span class="result-icon">&#10005;</span>' + escapeHtml(headline) +
           '</div>' +
           '<div class="result-detail">' +
             '<strong>Reason:</strong> ' + escapeHtml(payload.reason || 'unknown') + '<br><br>' +
-            (payload.drifted
-              ? 'Sign a new CartMandate so the merchant commits to the updated cart, then try paying again.'
-              : 'Inspect the signed receipt for the failing check, or contact support.') +
+            detail +
           '</div>' +
           renderArtifactLinks(payload, 'drift') +
         '</div>';
