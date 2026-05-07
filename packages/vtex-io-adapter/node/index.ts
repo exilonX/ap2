@@ -3,7 +3,16 @@ import { LRUCache, method, Service } from '@vtex/api'
 
 import { Clients } from './clients'
 import { searchProducts, getProductDetail } from './handlers/search'
-import { getCart, addToCart, removeFromCart, updateCartItem, setCustomerProfile, setShippingAddress, getShippingOptions, applyCoupon } from './handlers/cart'
+import {
+  getCart,
+  addToCart,
+  removeFromCart,
+  updateCartItem,
+  setCustomerProfile,
+  setShippingAddress,
+  getShippingOptions,
+  applyCoupon,
+} from './handlers/cart'
 import { proposeDeal } from './handlers/intelligence'
 import {
   initiateCheckout,
@@ -24,6 +33,24 @@ import {
 import { chatHandler } from './handlers/chat'
 import { getConfig } from './handlers/config'
 import { getSyncStatus } from './handlers/rag'
+import { requireOriginOrSecret } from './middleware/require-origin-or-secret'
+import { rateLimit } from './middleware/rate-limit'
+import { sessionCostCap } from './middleware/session-cost-cap'
+
+// Middleware composition shorthand. Each route declares which guards it
+// wants in front of the handler. The .well-known DID document routes and
+// the artifact retrieval routes (/mandates, /payment-mandates, /receipts)
+// intentionally skip requireOriginOrSecret — they are the AP2 verification
+// surface and must be reachable by anyone holding an id, per the case
+// study's "anyone can verify this themselves" beat. They still get
+// rateLimit('read') so they can't be hammered.
+const guarded = {
+  chat: [requireOriginOrSecret, rateLimit('chat'), sessionCostCap()],
+  mutating: [requireOriginOrSecret, rateLimit('mutating')],
+  read: [requireOriginOrSecret, rateLimit('read')],
+  /** Public verification surface — no origin check, only IP-keyed read limit. */
+  publicRead: [rateLimit('read')],
+}
 
 const TIMEOUT_MS = 5000
 
@@ -60,96 +87,97 @@ export default new Service({
   routes: {
     // Search routes
     search: method({
-      GET: [searchProducts],
+      GET: [...guarded.read, searchProducts],
     }),
     productDetail: method({
-      GET: [getProductDetail],
+      GET: [...guarded.read, getProductDetail],
     }),
 
     // Cart routes
     getCart: method({
-      GET: [getCart],
+      GET: [...guarded.read, getCart],
     }),
     addToCart: method({
-      POST: [addToCart],
+      POST: [...guarded.mutating, addToCart],
     }),
     removeFromCart: method({
-      DELETE: [removeFromCart],
+      DELETE: [...guarded.mutating, removeFromCart],
     }),
     updateCartItem: method({
-      PUT: [updateCartItem],
+      PUT: [...guarded.mutating, updateCartItem],
     }),
     setCustomerProfile: method({
-      POST: [setCustomerProfile],
+      POST: [...guarded.mutating, setCustomerProfile],
     }),
     setShippingAddress: method({
-      POST: [setShippingAddress],
+      POST: [...guarded.mutating, setShippingAddress],
     }),
     getShippingOptions: method({
-      GET: [getShippingOptions],
+      GET: [...guarded.read, getShippingOptions],
     }),
     applyCoupon: method({
-      POST: [applyCoupon],
+      POST: [...guarded.mutating, applyCoupon],
     }),
 
-    // Intelligence routes
+    // Intelligence routes — LLM-backed, hence chat class even though it's GET
     proposeDeal: method({
-      GET: [proposeDeal],
+      GET: [...guarded.chat, proposeDeal],
     }),
 
     // Checkout routes
     initiateCheckout: method({
-      POST: [initiateCheckout],
+      POST: [...guarded.mutating, initiateCheckout],
     }),
     checkoutRedirect: method({
-      GET: [redirectToCheckout],
+      GET: [...guarded.read, redirectToCheckout],
     }),
     paymentPage: method({
-      GET: [renderPaymentPage],
+      GET: [...guarded.read, renderPaymentPage],
     }),
     executeCheckout: method({
-      POST: [executeCheckout],
+      POST: [...guarded.mutating, executeCheckout],
     }),
     executePayment: method({
-      POST: [executePayment],
+      POST: [...guarded.mutating, executePayment],
     }),
     orderStatus: method({
-      GET: [getOrderStatus],
+      GET: [...guarded.read, getOrderStatus],
     }),
+
+    // Verification surface — anyone with an id can fetch + verify, per the
+    // AP2 case study's "anyone can verify" beat. No origin check; rate-limit only.
     getMandate: method({
-      GET: [getMandate],
+      GET: [...guarded.publicRead, getMandate],
     }),
     didDocument: method({
-      GET: [serveDIDDocument],
+      GET: [...guarded.publicRead, serveDIDDocument],
     }),
-
-    // Mock AP2 party DIDs + retrieval (Step 6)
     mockCpDidDocument: method({
-      GET: [serveMockCpDIDDocument],
+      GET: [...guarded.publicRead, serveMockCpDIDDocument],
     }),
     mockNetworkDidDocument: method({
-      GET: [serveMockNetworkDIDDocument],
+      GET: [...guarded.publicRead, serveMockNetworkDIDDocument],
     }),
     getPaymentMandate: method({
-      GET: [getPaymentMandate],
+      GET: [...guarded.publicRead, getPaymentMandate],
     }),
     getPaymentReceipt: method({
-      GET: [getPaymentReceipt],
+      GET: [...guarded.publicRead, getPaymentReceipt],
     }),
 
-    // Chat route
+    // Chat route — chat class includes sessionCostCap on top of IP rate-limit
     chat: method({
-      POST: [chatHandler],
+      POST: [...guarded.chat, chatHandler],
     }),
 
     // Client config (brand, strings, starter chips, etc.)
     acgConfig: method({
-      GET: [getConfig],
+      GET: [...guarded.read, getConfig],
     }),
 
     // RAG status (bulk sync runs via scripts/sync-catalog/, not this endpoint)
     ragStatus: method({
-      GET: [getSyncStatus],
+      GET: [...guarded.read, getSyncStatus],
     }),
   },
 })

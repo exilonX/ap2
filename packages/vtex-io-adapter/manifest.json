@@ -19,11 +19,7 @@
         "title": "LLM Provider",
         "description": "Which AI provider to use for the chat assistant",
         "type": "string",
-        "enum": [
-          "claude",
-          "openai",
-          "gemini"
-        ],
+        "enum": ["claude", "openai", "gemini"],
         "default": "claude"
       },
       "claudeApiKey": {
@@ -68,6 +64,53 @@
         "title": "Pinecone Index Host",
         "description": "Pinecone index host (e.g., acg-products-xxxxx.svc.aped-1234.pinecone.io)",
         "type": "string"
+      },
+      "acgAllowedOrigins": {
+        "title": "Allowed origins (CORS)",
+        "description": "List of origins permitted to call /_v/acg/* from a browser. Storefront URLs only. Empty list denies all browser callers.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "acgAuthToken": {
+        "title": "Server-to-server auth token",
+        "description": "Shared secret callers must send as X-ACG-Auth-Token. Used by the MCP server (no Origin). Generate any 32+ character random string. Empty disables the secret path.",
+        "type": "string"
+      },
+      "acgRateLimits": {
+        "title": "Rate limits per route class",
+        "description": "Override the default per-IP rate limits. Each class accepts perMinute and perDay numbers. Defaults: chat 20/200, mutating 30/500, read 60/2000.",
+        "type": "object",
+        "properties": {
+          "chat": {
+            "type": "object",
+            "properties": {
+              "perMinute": { "type": "number" },
+              "perDay": { "type": "number" }
+            }
+          },
+          "mutating": {
+            "type": "object",
+            "properties": {
+              "perMinute": { "type": "number" },
+              "perDay": { "type": "number" }
+            }
+          },
+          "read": {
+            "type": "object",
+            "properties": {
+              "perMinute": { "type": "number" },
+              "perDay": { "type": "number" }
+            }
+          }
+        }
+      },
+      "acgSessionDailyLimit": {
+        "title": "Per-session daily request cap",
+        "description": "Max requests per orderForm (chat session) over 24h. Catches runaway sessions even from allowlisted origins. Default: 100.",
+        "type": "number",
+        "default": 100
       }
     }
   },
