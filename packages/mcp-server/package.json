@@ -4,7 +4,8 @@
   "description": "MCP Server for Agent Commerce Gateway - connects Claude to VTEX",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy:apps",
+    "copy:apps": "node -e \"const fs=require('fs'),p=require('path');const s=p.join('src','apps'),d=p.join('dist','apps');fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s))if(f.endsWith('.html'))fs.copyFileSync(p.join(s,f),p.join(d,f));\"",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts"
   },
