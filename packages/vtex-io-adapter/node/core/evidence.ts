@@ -13,13 +13,11 @@
  */
 
 import type { CartMandate, MandateJWTPayload } from './mandates';
+import type { PaymentMandate } from './ap2/payment-mandate';
 
-/**
- * Placeholder for the AP2 PaymentMandate type. Defined as `unknown` for
- * now — when the PaymentMandate work lands (post-demo), this becomes a
- * concrete type without breaking the EvidenceBundle shape.
- */
-export type PaymentMandate = unknown;
+// Re-export for callers that previously imported the stub from here.
+// Real v0.2-canonical shape lives in `./ap2/payment-mandate.ts`.
+export type { PaymentMandate };
 
 export interface EvidenceBundle {
   mandateId: string;

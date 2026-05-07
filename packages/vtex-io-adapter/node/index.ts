@@ -15,6 +15,12 @@ import {
 import { serveDIDDocument } from './handlers/did'
 import { getMandate } from './handlers/mandate'
 import { executePayment } from './handlers/payment'
+import {
+  serveMockCpDIDDocument,
+  serveMockNetworkDIDDocument,
+  getPaymentMandate,
+  getPaymentReceipt,
+} from './handlers/mock-parties'
 import { chatHandler } from './handlers/chat'
 import { getConfig } from './handlers/config'
 import { getSyncStatus } from './handlers/rag'
@@ -115,6 +121,20 @@ export default new Service({
     }),
     didDocument: method({
       GET: [serveDIDDocument],
+    }),
+
+    // Mock AP2 party DIDs + retrieval (Step 6)
+    mockCpDidDocument: method({
+      GET: [serveMockCpDIDDocument],
+    }),
+    mockNetworkDidDocument: method({
+      GET: [serveMockNetworkDIDDocument],
+    }),
+    getPaymentMandate: method({
+      GET: [getPaymentMandate],
+    }),
+    getPaymentReceipt: method({
+      GET: [getPaymentReceipt],
     }),
 
     // Chat route

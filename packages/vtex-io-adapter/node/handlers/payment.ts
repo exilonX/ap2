@@ -24,8 +24,38 @@ import { json } from 'co-body';
 import { Cart } from '../cart/cart';
 import { OrderFormSubstitutedError } from '../cart/errors';
 import { MandateOrchestration } from '../mandates/mandate-orchestration';
+import { PaymentOrchestration } from '../payments/payment-orchestration';
+import { VBaseKeyStore } from '../identity/vbase-keystore';
+import {
+  MockCredentialsProvider,
+  MockPaymentNetwork,
+} from '../mock-payment-network';
 import { getOrderFormIdFromRequest } from '../utils/session';
 import { buildMerchantIdentity } from './did';
+import type { PaymentMandate, PaymentReceipt } from '../core';
+
+const MOCK_CP_BUCKET = 'acg-mock-cp';
+const MOCK_CP_KEY = 'cp-did';
+const MOCK_NETWORK_BUCKET = 'acg-mock-network';
+const MOCK_NETWORK_KEY = 'network-did';
+
+/**
+ * Mock CP and Network DID domains. They sit under the same Adapter
+ * host as the merchant (so the DID documents resolve via the new
+ * /_v/acg/mock-{cp,network}/.well-known/did.json routes), but with
+ * distinct path prefixes so each party has its own DID.
+ */
+function buildMockDIDDomains(ctx: Context): { cpDomain: string; networkDomain: string } {
+  const workspace = ctx.vtex.workspace || 'master';
+  const host =
+    workspace === 'master'
+      ? `${ctx.vtex.account}.myvtex.com`
+      : `${workspace}--${ctx.vtex.account}.myvtex.com`;
+  return {
+    cpDomain: `${host}:mock-cp`,
+    networkDomain: `${host}:mock-network`,
+  };
+}
 
 interface ExecutePaymentRequest {
   mandateId?: string;
@@ -38,6 +68,14 @@ interface ExecutePaymentSuccess {
   signedBy: string;
   cartTotal: number;
   cartCurrency: string;
+  paymentMandate: PaymentMandate;
+  paymentReceipt: PaymentReceipt;
+  paymentMandateId: string;
+  paymentReceiptId: string;
+  paymentMandateUrl: string;
+  paymentReceiptUrl: string;
+  mockCpDid: string;
+  mockNetworkDid: string;
 }
 
 interface ExecutePaymentFailure {
@@ -45,6 +83,10 @@ interface ExecutePaymentFailure {
   reason: string;
   drifted: boolean;
   mandateId: string | null;
+  /** Present when the chain reached the network and was rejected there. */
+  paymentReceipt?: PaymentReceipt;
+  paymentReceiptId?: string;
+  paymentReceiptUrl?: string;
 }
 
 export async function executePayment(ctx: Context): Promise<void> {
@@ -129,16 +171,105 @@ export async function executePayment(ctx: Context): Promise<void> {
     return;
   }
 
+  // ── PaymentMandate + PaymentReceipt ceremony (the AP2 punchline) ──
+  //
+  // verifyAgainstCart confirmed the cart hasn't drifted. Now we:
+  //   1. Fetch the actual CartMandate (verdict only carries verification result)
+  //   2. CP signs PaymentMandate
+  //   3. Network verifies the chain + emits signed PaymentReceipt
+  //   4. Persist both
+  //   5. Return everything in the response so the iframe can render the
+  //      multi-step animated reveal (Q10 from 2026-05-07 grilling).
+
+  const bundle = await orchestration.retrieve(mandateId);
+  if (!bundle) {
+    ctx.status = 200;
+    ctx.body = {
+      success: false,
+      reason: 'mandate verified but bundle missing on retrieve — should not happen',
+      drifted: false,
+      mandateId,
+    } as ExecutePaymentFailure;
+    return;
+  }
+
+  const { cpDomain, networkDomain } = buildMockDIDDomains(ctx);
+  const cp = new MockCredentialsProvider({
+    keyStore: new VBaseKeyStore(ctx.clients.vbase, MOCK_CP_BUCKET, MOCK_CP_KEY),
+    domain: cpDomain,
+  });
+  const network = new MockPaymentNetwork({
+    keyStore: new VBaseKeyStore(ctx.clients.vbase, MOCK_NETWORK_BUCKET, MOCK_NETWORK_KEY),
+    domain: networkDomain,
+  });
+
+  const payments = new PaymentOrchestration({
+    identity,
+    cp,
+    network,
+    vbase: ctx.clients.vbase,
+  });
+
+  const { paymentMandate, paymentReceipt } = await payments.signAndSubmit({
+    cartMandate: bundle.cartMandate,
+    // Per Q11 — hardcoded for v1 (interactive flows only). Autonomous
+    // agent flows require IntentMandate; tracked in AP2_COMPLIANCE.md.
+    agentPresence: { agent_involved: true, human_present: true },
+  });
+
+  const baseUrl = await resolveAdapterBaseUrl(ctx);
+  const paymentMandateId = paymentMandate.payment_mandate_contents.payment_mandate_id;
+  const paymentReceiptId = paymentReceipt.contents.receipt_id;
+
+  // The network may have rejected the chain even though our local drift
+  // check passed (e.g. a check we don't replicate locally — like
+  // payment_mandate_not_expired immediately, or hash binding tampering
+  // injected between our sign and the network call). Surface the
+  // rejection with the signed receipt; the iframe still renders the
+  // 7-check checklist with the failing dimensions.
+  if (paymentReceipt.contents.approval_status === 'rejected') {
+    ctx.status = 200;
+    ctx.body = {
+      success: false,
+      reason: paymentReceipt.contents.rejection_reason ?? 'payment network rejected the chain',
+      drifted: false,
+      mandateId,
+      paymentReceipt,
+      paymentReceiptId,
+      paymentReceiptUrl: `${baseUrl}/_v/acg/receipts/${paymentReceiptId}`,
+    } as ExecutePaymentFailure;
+    return;
+  }
+
   const orderId = `ACG-${Date.now()}`;
   ctx.status = 200;
   ctx.body = {
     success: true,
     orderId,
     mandateId,
-    signedBy: verdict.verification.checks.signatureValid
-      ? await identity.getDID()
-      : '',
+    signedBy: await identity.getDID(),
     cartTotal: currentCart.total,
     cartCurrency: currentCart.currency,
+    paymentMandate,
+    paymentReceipt,
+    paymentMandateId,
+    paymentReceiptId,
+    paymentMandateUrl: `${baseUrl}/_v/acg/payment-mandates/${paymentMandateId}`,
+    paymentReceiptUrl: `${baseUrl}/_v/acg/receipts/${paymentReceiptId}`,
+    mockCpDid: await cp.getDID(),
+    mockNetworkDid: await network.getDID(),
   } as ExecutePaymentSuccess;
+}
+
+/**
+ * Compose the public host URL the iframe will use to retrieve mandates
+ * and receipts. Mirrors the pattern in `chat.ts` / `payment-page.ts`.
+ */
+async function resolveAdapterBaseUrl(ctx: Context): Promise<string> {
+  const workspace = ctx.vtex.workspace || 'master';
+  const host =
+    workspace === 'master'
+      ? `${ctx.vtex.account}.myvtex.com`
+      : `${workspace}--${ctx.vtex.account}.myvtex.com`;
+  return `https://${host}`;
 }

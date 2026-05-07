@@ -246,7 +246,120 @@
     font-family: monospace;
     font-size: 11px;
     opacity: 0.85;
+    word-break: break-all;
   }
+
+  /* AP2 ceremony steps — animated reveal */
+  .ceremony-steps {
+    margin-bottom: 12px;
+  }
+  .ceremony-step {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.35s ease, transform 0.35s ease, border-color 0.35s ease;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .ceremony-step.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .ceremony-step.success {
+    border-color: #2ea043;
+    background: linear-gradient(180deg, #f5fbf6 0%, #ecf7ee 100%);
+  }
+  .ceremony-step.failed {
+    border-color: #cf222e;
+    background: linear-gradient(180deg, #fdf3f3 0%, #fbe9e9 100%);
+  }
+  .ceremony-step.pending .step-icon::after {
+    content: '';
+    width: 14px;
+    height: 14px;
+    border: 2px solid #d1d5db;
+    border-top-color: #6b7280;
+    border-radius: 50%;
+    display: inline-block;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .step-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: white;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .ceremony-step.success .step-icon { background: #2ea043; }
+  .ceremony-step.failed .step-icon { background: #cf222e; }
+  .ceremony-step.pending .step-icon { background: transparent; color: transparent; }
+  .ceremony-step .step-body { flex: 1; }
+  .ceremony-step .step-title { font-weight: 600; font-size: 13px; color: #1a1a2e; margin-bottom: 3px; }
+  .ceremony-step .step-detail { font-size: 12px; color: #6b7280; line-height: 1.4; }
+
+  .check-list {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #e5e7eb;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 6px 12px;
+  }
+  .check-item {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .check-item.visible { opacity: 1; transform: translateX(0); }
+  .check-item .check-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .check-item.pass .check-mark { background: #2ea043; }
+  .check-item.fail .check-mark { background: #cf222e; }
+  .check-item .check-label { color: #374151; }
+
+  .artifact-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .artifact-link {
+    font-size: 11px;
+    color: #2ea043;
+    text-decoration: none;
+    padding: 5px 10px;
+    border: 1px solid #c8e6c9;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+  }
+  .result-panel.drift .artifact-link { color: #6e1117; border-color: #f1c0c4; }
 
   .secure-note {
     text-align: center;
@@ -469,52 +582,228 @@
     return { success: false, reason: 'Could not parse payment result', drifted: false };
   }
 
+  // Multi-step animated reveal of the AP2 payment ceremony.
+  //
+  // Steps:
+  //   1. Verify CartMandate against current cart (drift gate)
+  //   2. Credentials Provider signs PaymentMandate
+  //   3. Network verifies the chain — 7 checks animate in
+  //   4. Order placed (or rejection panel on failure)
+  //
+  // The actual cryptographic events happen server-side in one tool call.
+  // The visual sequencing is client-side setTimeout reveals, decorative
+  // — but every artifact shown is real (signed bytes from the server).
   function renderPaymentResult(payload) {
     var actionArea = document.getElementById('action-area');
     var resultArea = document.getElementById('result-area');
     if (actionArea) actionArea.style.display = 'none';
     if (!resultArea) return;
 
+    var driftRejection = !payload.success && payload.drifted;
+    var receipt = payload.paymentReceipt && payload.paymentReceipt.contents;
+    var checks = receipt && receipt.verification_checks;
+
+    // Build the steps DOM up front. All start hidden; we animate them in.
+    resultArea.innerHTML =
+      '<div class="ceremony-steps">' +
+        renderStep('s1', 'Verifying CartMandate against current cart',
+          'Re-checking the signed mandate hasn\'t drifted from the live cart.') +
+        renderStep('s2', 'Credentials Provider signs PaymentMandate',
+          'Binding cart hash + payment hash via transaction_data.') +
+        renderStep('s3', 'Payment Network verifies the chain',
+          'Independent verification of merchant + CP signatures and binding.' +
+          '<div class="check-list" id="check-list"></div>') +
+        renderStep('s4', 'Order placed', '') +
+      '</div>' +
+      '<div id="final-panel"></div>';
+
+    resultArea.style.display = 'block';
+    notifySize();
+
+    // Step 1: drift gate
+    setTimeout(function() { revealStep('s1', driftRejection ? 'failed' : 'success'); notifySize(); }, 250);
+
+    if (driftRejection) {
+      setTimeout(function() {
+        markStep('s2', 'failed', 'Skipped — cart drifted before the network was reached.');
+        notifySize();
+      }, 700);
+      setTimeout(function() {
+        markStep('s3', 'failed', 'Skipped.');
+        notifySize();
+      }, 950);
+      setTimeout(function() {
+        markStep('s4', 'failed', 'Order not placed.');
+        renderFinalPanel(payload);
+        notifySize();
+      }, 1200);
+      return;
+    }
+
+    // No drift — full ceremony continues
+    setTimeout(function() {
+      revealStep('s2', payload.success || (receipt && checks && checks.cp_signature) ? 'success' : 'failed');
+      notifySize();
+    }, 700);
+
+    setTimeout(function() {
+      var allChecksOk = checks && Object.keys(checks).every(function(k) { return checks[k]; });
+      revealStep('s3', allChecksOk ? 'success' : 'failed');
+      animateCheckList(checks);
+      notifySize();
+    }, 1100);
+
+    setTimeout(function() {
+      markStep('s4', payload.success ? 'success' : 'failed',
+        payload.success
+          ? 'Order ' + escapeHtml(payload.orderId || '') + ' has been placed.'
+          : 'Network rejected — order not placed.');
+      renderFinalPanel(payload);
+      notifySize();
+    }, 1700);
+  }
+
+  function renderStep(id, title, detail) {
+    return (
+      '<div class="ceremony-step pending" id="' + id + '">' +
+        '<span class="step-icon"></span>' +
+        '<div class="step-body">' +
+          '<div class="step-title">' + escapeHtml(title) + '</div>' +
+          '<div class="step-detail" id="' + id + '-detail">' + detail + '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function revealStep(id, status) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('pending');
+    el.classList.add('visible');
+    el.classList.add(status);
+    var icon = el.querySelector('.step-icon');
+    if (icon) icon.innerHTML = status === 'success' ? '&#10004;' : '&#10005;';
+  }
+
+  function markStep(id, status, detail) {
+    revealStep(id, status);
+    if (detail !== undefined) {
+      var d = document.getElementById(id + '-detail');
+      if (d) d.innerHTML = detail;
+    }
+  }
+
+  var CHECK_LABELS = {
+    merchant_signature: 'Merchant signature',
+    cp_signature: 'Credentials Provider signature',
+    hash_binding: 'transaction_data hash binding',
+    amount_consistency: 'Amount matches cart total',
+    mandate_id_linking: 'PaymentMandate references CartMandate',
+    payment_mandate_not_expired: 'PaymentMandate not expired',
+    cart_mandate_not_expired: 'CartMandate not expired',
+  };
+  var CHECK_ORDER = [
+    'merchant_signature', 'cp_signature', 'hash_binding',
+    'amount_consistency', 'mandate_id_linking',
+    'payment_mandate_not_expired', 'cart_mandate_not_expired',
+  ];
+
+  function animateCheckList(checks) {
+    var list = document.getElementById('check-list');
+    if (!list || !checks) return;
+    var html = '';
+    for (var i = 0; i < CHECK_ORDER.length; i++) {
+      var k = CHECK_ORDER[i];
+      var ok = !!checks[k];
+      html +=
+        '<div class="check-item ' + (ok ? 'pass' : 'fail') + '" id="chk-' + k + '">' +
+          '<span class="check-mark">' + (ok ? '&#10004;' : '&#10005;') + '</span>' +
+          '<span class="check-label">' + escapeHtml(CHECK_LABELS[k] || k) + '</span>' +
+        '</div>';
+    }
+    list.innerHTML = html;
+    // Stagger reveal
+    for (var j = 0; j < CHECK_ORDER.length; j++) {
+      (function(idx) {
+        setTimeout(function() {
+          var item = document.getElementById('chk-' + CHECK_ORDER[idx]);
+          if (item) item.classList.add('visible');
+          notifySize();
+        }, 80 * idx);
+      })(j);
+    }
+  }
+
+  function renderFinalPanel(payload) {
+    var panel = document.getElementById('final-panel');
+    if (!panel) return;
     if (payload.success) {
-      resultArea.innerHTML =
+      panel.innerHTML =
         '<div class="result-panel success">' +
           '<div class="result-headline">' +
             '<span class="result-icon">&#10004;</span>' +
-            'Payment authorized · Order placed' +
+            'Payment authorized · Order ' + escapeHtml(payload.orderId || '') +
           '</div>' +
           '<div class="result-detail">' +
-            'The merchant verified the signed mandate against the live cart at pay time and honored it. Order ' +
-            '<strong>' + escapeHtml(payload.orderId || '') + '</strong> has been placed.' +
+            'The chain verified end-to-end. Three parties cryptographically attested: the merchant signed the cart, the Credentials Provider signed the payment, and the network independently verified both before approving.' +
           '</div>' +
-          '<div class="result-meta">' +
-            'Mandate: ' + escapeHtml(payload.mandateId || '') + '<br>' +
-            'Signed by: ' + escapeHtml(payload.signedBy || '') +
-          '</div>' +
+          renderArtifactLinks(payload, 'success') +
         '</div>';
     } else {
-      var headline = payload.drifted
-        ? 'Payment rejected · Cart drifted from signed mandate'
-        : 'Payment rejected';
-      var followup = payload.drifted
-        ? 'Sign a new CartMandate so the merchant commits to the updated cart, then try paying again.'
-        : 'Inspect the mandate or contact support.';
-      resultArea.innerHTML =
+      panel.innerHTML =
         '<div class="result-panel drift">' +
           '<div class="result-headline">' +
             '<span class="result-icon">&#10005;</span>' +
-            escapeHtml(headline) +
+            (payload.drifted ? 'Payment rejected · Cart drifted from signed mandate' : 'Payment rejected') +
           '</div>' +
           '<div class="result-detail">' +
             '<strong>Reason:</strong> ' + escapeHtml(payload.reason || 'unknown') + '<br><br>' +
-            escapeHtml(followup) +
+            (payload.drifted
+              ? 'Sign a new CartMandate so the merchant commits to the updated cart, then try paying again.'
+              : 'Inspect the signed receipt for the failing check, or contact support.') +
           '</div>' +
-          (payload.mandateId
-            ? '<div class="result-meta">Mandate: ' + escapeHtml(payload.mandateId) + '</div>'
-            : '') +
+          renderArtifactLinks(payload, 'drift') +
         '</div>';
     }
-    resultArea.style.display = 'block';
     notifySize();
+  }
+
+  function renderArtifactLinks(payload, kind) {
+    var links = [];
+    if (payload.mandateId) {
+      var hostFromUrl = payload.paymentMandateUrl
+        ? payload.paymentMandateUrl.split('/_v/acg/')[0]
+        : '';
+      var cartUrl = hostFromUrl ? hostFromUrl + '/_v/acg/mandates/' + payload.mandateId : null;
+      if (cartUrl) links.push({ label: 'CartMandate', url: cartUrl });
+    }
+    if (payload.paymentMandateUrl) {
+      links.push({ label: 'PaymentMandate', url: payload.paymentMandateUrl });
+    }
+    if (payload.paymentReceiptUrl) {
+      links.push({ label: 'PaymentReceipt', url: payload.paymentReceiptUrl });
+    }
+    if (links.length === 0) return '';
+    var html = '<div class="artifact-links">';
+    for (var i = 0; i < links.length; i++) {
+      html +=
+        '<a class="artifact-link" href="' + escapeAttr(links[i].url) + '" ' +
+        'onclick="openLinkUrl(\'' + escapeAttr(links[i].url) + '\'); return false;">' +
+        escapeHtml(links[i].label) + ' →</a>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  window.openLinkUrl = function(url) {
+    if (!url) return;
+    rpcRequest('ui/open-link', { url: url }).catch(function() {
+      window.open(url, '_blank');
+    });
+  };
+
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function escapeHtml(s) {

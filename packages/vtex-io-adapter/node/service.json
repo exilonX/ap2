@@ -81,6 +81,22 @@
       "path": "/_v/acg/.well-known/did.json",
       "public": true
     },
+    "mockCpDidDocument": {
+      "path": "/_v/acg/mock-cp/.well-known/did.json",
+      "public": true
+    },
+    "mockNetworkDidDocument": {
+      "path": "/_v/acg/mock-network/.well-known/did.json",
+      "public": true
+    },
+    "getPaymentMandate": {
+      "path": "/_v/acg/payment-mandates/:paymentMandateId",
+      "public": true
+    },
+    "getPaymentReceipt": {
+      "path": "/_v/acg/receipts/:receiptId",
+      "public": true
+    },
     "chat": {
       "path": "/_v/acg/chat",
       "public": true

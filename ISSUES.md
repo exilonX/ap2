@@ -938,3 +938,104 @@ Heavier alternatives (server-side gender-mismatch guard, post-search rerank) are
 
 - Not Issue 0013 (multi-variant SKU added without confirmation). 0013 is about size/color confirmation post-product-pick. This is about gender confirmation pre-search.
 - Not blocking the demo. Storyboard around it (use queries with explicit gender from the start).
+
+---
+
+## 0017 — CartMandate: adopt v0.2 W3C-wrapped `CartContents`
+
+- **Status:** needs-triage
+- **Created:** 2026-05-07
+- **Demo-blocking:** No (current flat shape works end-to-end)
+
+### Context
+
+AP2 v0.2 wraps cart contents in a W3C `PaymentRequest`:
+
+```python
+class CartContents(BaseModel):
+    id: str
+    user_cart_confirmation_required: bool
+    payment_request: PaymentRequest      # W3C — wraps items, total, accepted methods
+    cart_expiry: str
+    merchant_name: str
+```
+
+Our impl is flat: `{ id, merchant_name, payment_items[], total, cart_expiry, order_reference }`. Documented as the "Y" path in the 2026-05-07 grilling — keep flat for the demo, upgrade post-demo.
+
+### Acceptance
+
+- Define `CartContents` in `@acg/core` matching the v0.2 Pydantic exactly (id, user_cart_confirmation_required, payment_request: PaymentRequest, cart_expiry, merchant_name).
+- Refactor `createCartMandate` to emit the new shape; the JWT `cart_hash` recomputes over JCS of the new contents.
+- Update `mandateMatchesCart` and `describeDrift` to read totals/items from the wrapped `payment_request.details`.
+- Update existing tests; add round-trip tests with the canonical Pydantic JSON fixtures from Google's repo (real interop verification).
+- Migration: existing VBase entries become invalid (cart_hash differs). Wipe `acg-mandates` bucket on deployment OR support both shapes during a transition window.
+
+Not coordinating with chat handler / MCP iframe — they consume `EvidenceBundle`, which abstracts the underlying CartContents shape.
+
+---
+
+## 0018 — `user_authorization` JWT: adopt sd-jwt-vc with KB-JWT
+
+- **Status:** needs-triage
+- **Created:** 2026-05-07
+- **Demo-blocking:** No (deviation accepted in ADR-0003)
+
+### Context
+
+AP2 v0.2's PaymentMandate spec describes `user_authorization` as an sd-jwt-vc (selective-disclosure JWT verifiable credential) with a key-binding JWT (KB-JWT) carrying `transaction_data: [hash(CartMandate), hash(PaymentMandateContents)]`. Our v1 uses a plain Ed25519 JWT carrying the same `transaction_data` claim — cryptographic content is equivalent, representation is simpler.
+
+### Acceptance
+
+- Adopt an sd-jwt-vc library (TS implementation; e.g. `sd-jwt-js` or hand-rolled per RFC).
+- Refactor `createPaymentMandate` to issue a CP issuer-signed JWT + a KB-JWT with `aud`, `nonce`, `sd_hash`, `transaction_data`.
+- Refactor `verifyPaymentMandate` to verify both JWTs and the disclosure set.
+- Add tests covering:
+  - Round-trip with empty disclosure set (no selective disclosure used)
+  - Disclosure of a subset of `payment_response` fields
+  - Tampered KB-JWT detected
+  - Missing `transaction_data` rejected
+- Deviation note in `AP2_COMPLIANCE.md` removes once shipped.
+
+---
+
+## 0019 — IntentMandate + dynamic `agent_presence` for autonomous flows
+
+- **Status:** needs-triage
+- **Created:** 2026-05-07
+- **Demo-blocking:** No
+
+### Context
+
+Per AP2 §4.1, IntentMandate covers "human-not-present" flows where an agent acts on a pre-authorized user mandate (e.g. *"buy this when the price drops below $X"*). All current ACG flows are interactive (chat widget or Claude Desktop), so `human_present: true` is hardcoded in `PaymentMandate.x_agent_presence`.
+
+### Acceptance
+
+- Implement IntentMandate types in `@acg/core/ap2` matching the v0.2 Pydantic class (`user_cart_confirmation_required`, `natural_language_description`, `merchants[]`, `skus[]`, `requires_refundability`, `intent_expiry`).
+- Add a flow where an Adapter event fires on a price-drop trigger (or scheduled job), validates an IntentMandate, signs CartMandate + PaymentMandate without user interaction, and sets `human_present: false`.
+- Network rejection or risk policy that treats `human_present: false` differently — e.g. higher fraud threshold, additional verification.
+- Tests with both interactive and autonomous flow fixtures.
+
+Coordinates with Issue 0010 (operational hardening — caller authentication) since IntentMandate is the AP2-native alternative to API-key authentication.
+
+---
+
+## 0020 — Mock 3DS2 step-up simulation in iframe
+
+- **Status:** needs-triage
+- **Created:** 2026-05-07
+- **Demo-blocking:** No
+
+### Context
+
+Real payment networks use 3DS2 for step-up authentication when transactions hit risk thresholds. Our mock network always approves on a clean chain. Adding a simulated 3DS2 challenge would:
+
+- Show one more recordable beat
+- Match real-world flow more closely
+- Useful for product walkthroughs after the demo
+
+### Acceptance
+
+- Mock `MockPaymentNetwork.approvePayment` returns a `step_up_required: true` flag occasionally (or based on amount threshold).
+- Iframe handles `step_up_required` by rendering a simulated 3DS2 challenge page (OTP entry, biometric "tap").
+- After challenge, iframe re-calls the network with the step-up result, network finalizes approval.
+- Documented as still-mock — production 3DS2 flows would integrate with the issuer's real challenge endpoints.

@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test src/jcs.test.ts src/did.test.ts src/mandates.test.ts src/keystore.test.ts src/evidence.test.ts"
+    "test": "node --import tsx --test src/jcs.test.ts src/did.test.ts src/mandates.test.ts src/keystore.test.ts src/evidence.test.ts src/ap2/payment-mandate.test.ts src/ap2/payment-receipt.test.ts"
   },
   "dependencies": {
     "canonicalize": "^2.0.0",

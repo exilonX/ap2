@@ -1,0 +1,20 @@
+{
+  "name": "@acg/mock-payment-network",
+  "version": "0.0.1",
+  "description": "Mock AP2 Credentials Provider + Payment Network for ACG demo. Each role holds its own DID and keypair via @acg/core's KeyStore. Production swap-in: replace with a real CP/network adapter.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test src/__tests__/credentials-provider.test.ts src/__tests__/payment-network.test.ts"
+  },
+  "dependencies": {
+    "@acg/core": "file:../core"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.0"
+  }
+}

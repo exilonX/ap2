@@ -62,3 +62,48 @@ export {
   type EvidenceBundle,
   type PaymentMandate,
 } from './evidence';
+
+// ─── AP2 v0.2 — PaymentMandate + PaymentReceipt + W3C PaymentRequest ─
+
+export {
+  createPaymentMandate,
+  verifyPaymentMandate,
+  hashCartMandate,
+  hashPaymentMandateContents,
+  PAYMENT_MANDATE_DATA_KEY,
+  type PaymentMandateContents,
+  type PaymentMandateJWTPayload,
+  type PaymentMandateVerification,
+  type AgentPresence,
+  type CreatePaymentMandateInput,
+  type CreatePaymentMandateOptions,
+} from './ap2/payment-mandate';
+
+export {
+  createPaymentReceipt,
+  verifyPaymentReceipt,
+  type PaymentReceipt,
+  type PaymentReceiptContents,
+  type PaymentReceiptJWTPayload,
+  type PaymentReceiptVerification,
+  type VerificationChecks,
+  type CreatePaymentReceiptInput,
+  type CreatePaymentReceiptOptions,
+} from './ap2/payment-receipt';
+
+export {
+  type PaymentItem as Ap2PaymentItem,
+  type PaymentCurrencyAmount as Ap2PaymentCurrencyAmount,
+  type PaymentResponse as Ap2PaymentResponse,
+  type PaymentRequest as Ap2PaymentRequest,
+  type PaymentMethodData as Ap2PaymentMethodData,
+  type PaymentDetailsInit as Ap2PaymentDetailsInit,
+  type PaymentDetailsModifier as Ap2PaymentDetailsModifier,
+  type PaymentOptions as Ap2PaymentOptions,
+  type PaymentShippingOption as Ap2PaymentShippingOption,
+  PAYMENT_METHOD_DATA_DATA_KEY,
+} from './ap2/payment-request';
+
+export {
+  type ContactAddress as Ap2ContactAddress,
+} from './ap2/contact-address';
