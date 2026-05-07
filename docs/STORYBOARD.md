@@ -5,6 +5,12 @@
 **Primary surface:** Claude Desktop (most iconic for the AP2 / agentic-commerce story; cleanest to record).
 **Secondary surface:** storefront chat widget (5s B-roll near the close to show "same backend, two surfaces").
 
+## Production decisions (locked 2026-05-08)
+
+- **Captions:** English only. The user-typed messages (Romanian: *"vreau o camasa"*, *"checkout"*) stay in Romanian for authenticity, with inline English caption translations. Caption track itself is English.
+- **Camera:** screen-only, no face cam. Focus stays on the artifacts.
+- **Workspace:** `acg / miniprix` (the current working setup) — already wired end-to-end with RON pricing, Romanian catalog, real products. Don't burn time spinning up an English-language workspace; the Romanian flavor reads as authentic, not a barrier.
+
 ---
 
 ## Pre-flight checklist
