@@ -4,45 +4,50 @@
  * Handle checkout initiation, payment page, and order execution.
  */
 
-import { json } from 'co-body';
-import { Cart } from '../cart/cart';
-import { mapOrderFormToCart } from '../mappers/cart';
-import { MandateOrchestration } from '../mandates/mandate-orchestration';
-import { buildMerchantIdentity, resolveMerchantDomain } from './did';
-import { resolveOrderFormId, generateSessionId } from '../utils/session';
-import type { CheckoutSession } from '../types/shared';
+import { json } from 'co-body'
 
-const VBASE_BUCKET = 'acg-sessions';
+import { Cart } from '../cart/cart'
+import { mapOrderFormToCart } from '../mappers/cart'
+import { MandateOrchestration } from '../mandates/mandate-orchestration'
+import { buildMerchantIdentity, resolveMerchantDomain } from './did'
+import {
+  resolveOrderFormId,
+  generateSessionId,
+  getOrderFormIdFromRequest,
+} from '../utils/session'
+import type { CheckoutSession } from '../types/shared'
+
+const VBASE_BUCKET = 'acg-sessions'
 
 interface CheckoutExecuteRequest {
   customerData?: {
-    email: string;
-    firstName: string;
-    lastName: string;
-    documentType?: string;
-    document?: string;
-    phone?: string;
-  };
+    email: string
+    firstName: string
+    lastName: string
+    documentType?: string
+    document?: string
+    phone?: string
+  }
   shippingAddress?: {
-    receiverName?: string;
-    postalCode: string;
-    city: string;
-    state: string;
-    country?: string;
-    street: string;
-    number: string;
-    neighborhood: string;
-    complement?: string;
-    selectedSla?: string;
-  };
+    receiverName?: string
+    postalCode: string
+    city: string
+    state: string
+    country?: string
+    street: string
+    number: string
+    neighborhood: string
+    complement?: string
+    selectedSla?: string
+  }
   paymentData?: {
-    paymentSystem?: number;
-    installments?: number;
-    cardNumber: string;
-    cardHolder: string;
-    cardExpiration: string;
-    cardCvv: string;
-  };
+    paymentSystem?: number
+    installments?: number
+    cardNumber: string
+    cardHolder: string
+    cardExpiration: string
+    cardCvv: string
+  }
 }
 
 /**
@@ -56,33 +61,36 @@ interface CheckoutExecuteRequest {
  */
 export async function initiateCheckout(ctx: Context) {
   try {
-    console.log('[ACG Checkout] INITIATE request');
+    // eslint-disable-next-line no-console -- pending issue 0005 (Logger injection)
+    console.log('[ACG Checkout] INITIATE request')
 
     // Drain any incoming body so the request stream completes (callers
     // may still POST something; we ignore it).
     try {
-      await json(ctx.req);
+      await json(ctx.req)
     } catch {
       // No body — that's fine.
     }
 
-    const cartModule = new Cart({ checkout: ctx.clients.checkout });
-    const orderFormId = await resolveOrderFormId(ctx, cartModule);
+    const cartModule = new Cart({ checkout: ctx.clients.checkout })
+    const orderFormId = await resolveOrderFormId(ctx, cartModule)
 
-    const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId);
+    const orderForm = await ctx.clients.checkout.getOrderForm(orderFormId)
+
     if (orderForm.items.length === 0) {
-      ctx.status = 400;
-      ctx.body = { error: 'Cart is empty. Add items first.' };
-      return;
+      ctx.status = 400
+      ctx.body = { error: 'Cart is empty. Add items first.' }
+
+      return
     }
 
     // Build the SimpleCart that MandateOrchestration consumes.
-    const simpleCart = mapOrderFormToCart(orderForm);
+    const simpleCart = mapOrderFormToCart(orderForm)
 
     // Create checkout session
-    const sessionId = generateSessionId();
-    const now = Date.now();
-    const expiresIn = 10 * 60 * 1000; // 10 minutes
+    const sessionId = generateSessionId()
+    const now = Date.now()
+    const expiresIn = 10 * 60 * 1000 // 10 minutes
 
     const session: CheckoutSession = {
       id: sessionId,
@@ -90,25 +98,27 @@ export async function initiateCheckout(ctx: Context) {
       createdAt: now,
       expiresAt: now + expiresIn,
       status: 'pending',
-    };
-    await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
+    }
+
+    await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session)
 
     // Sign + persist the CartMandate. The Adapter is the sole signer
     // per ADR-0001.
-    const identity = buildMerchantIdentity(ctx);
+    const identity = buildMerchantIdentity(ctx)
     const orchestration = new MandateOrchestration({
       identity,
       vbase: ctx.clients.vbase,
-    });
+    })
+
     const bundle = await orchestration.signAndPersist(simpleCart, {
       sessionId,
       orderFormId,
-    });
+    })
 
-    const host = resolveMerchantDomain(ctx);
-    const checkoutRedirectUrl = `https://${host}/_v/acg/checkout/redirect/${sessionId}`;
-    const checkoutDirectUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`;
-    const retrievalUrl = `https://${host}/_v/acg/mandates/${bundle.mandateId}`;
+    const host = resolveMerchantDomain(ctx)
+    const checkoutRedirectUrl = `https://${host}/_v/acg/checkout/redirect/${sessionId}`
+    const checkoutDirectUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`
+    const retrievalUrl = `https://${host}/_v/acg/mandates/${bundle.mandateId}`
 
     const response = {
       sessionId,
@@ -126,20 +136,21 @@ export async function initiateCheckout(ctx: Context) {
         itemCount: simpleCart.itemCount,
       },
       message: 'Click the checkout link to complete your purchase.',
-    };
+    }
 
+    // eslint-disable-next-line no-console -- pending issue 0005 (Logger injection)
     console.log(
       '[ACG Checkout] INITIATE Response:',
       `sessionId: ${response.sessionId}, mandateId: ${response.mandateId}`
-    );
-    ctx.body = response;
+    )
+    ctx.body = response
   } catch (error) {
-    console.error('[ACG Checkout] Initiate error:', error);
-    ctx.status = 500;
+    console.error('[ACG Checkout] Initiate error:', error)
+    ctx.status = 500
     ctx.body = {
       error: 'Failed to initiate checkout',
       message: error instanceof Error ? error.message : 'Unknown error',
-    };
+    }
   }
 }
 
@@ -150,54 +161,63 @@ export async function initiateCheckout(ctx: Context) {
  */
 export async function redirectToCheckout(ctx: Context) {
   try {
-    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId;
+    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId
 
     if (!sessionId) {
-      ctx.status = 400;
-      ctx.body = 'Missing session ID.';
-      return;
+      ctx.status = 400
+      ctx.body = 'Missing session ID.'
+
+      return
     }
 
     // Get session from VBase
-    let session: CheckoutSession;
+    let session: CheckoutSession
+
     try {
-      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true);
+      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true)
     } catch {
-      ctx.status = 404;
-      ctx.body = 'Checkout session not found or expired.';
-      return;
+      ctx.status = 404
+      ctx.body = 'Checkout session not found or expired.'
+
+      return
     }
 
     // Check expiration
     if (Date.now() > session.expiresAt) {
-      ctx.status = 410;
-      ctx.body = 'This checkout session has expired. Please start a new checkout.';
-      return;
+      ctx.status = 410
+      ctx.body =
+        'This checkout session has expired. Please start a new checkout.'
+
+      return
     }
 
-    const { orderFormId } = session;
+    const { orderFormId } = session
 
     // Set the checkout.vtex.com cookie so VTEX native checkout loads this cart
     ctx.cookies.set('checkout.vtex.com', `__ofid=${orderFormId}`, {
       httpOnly: false,
       secure: true,
       path: '/',
-    });
+    })
 
-    console.log(`[ACG Checkout] Redirecting to VTEX checkout with orderFormId: ${orderFormId}`);
+    // eslint-disable-next-line no-console -- pending issue 0005 (Logger injection)
+    console.log(
+      `[ACG Checkout] Redirecting to VTEX checkout with orderFormId: ${orderFormId}`
+    )
 
     // Redirect to VTEX native checkout with orderFormId as query param (belt-and-suspenders)
-    const workspace = ctx.vtex.workspace || 'master';
-    const host = workspace === 'master'
-      ? `${ctx.vtex.account}.myvtex.com`
-      : `${workspace}--${ctx.vtex.account}.myvtex.com`;
+    const workspace = ctx.vtex.workspace || 'master'
+    const host =
+      workspace === 'master'
+        ? `${ctx.vtex.account}.myvtex.com`
+        : `${workspace}--${ctx.vtex.account}.myvtex.com`
 
-    ctx.redirect(`https://${host}/checkout/?orderFormId=${orderFormId}#/cart`);
-    ctx.status = 302;
+    ctx.redirect(`https://${host}/checkout/?orderFormId=${orderFormId}#/cart`)
+    ctx.status = 302
   } catch (error) {
-    console.error('Checkout redirect error:', error);
-    ctx.status = 500;
-    ctx.body = 'An error occurred redirecting to checkout.';
+    console.error('Checkout redirect error:', error)
+    ctx.status = 500
+    ctx.body = 'An error occurred redirecting to checkout.'
   }
 }
 
@@ -207,49 +227,58 @@ export async function redirectToCheckout(ctx: Context) {
  */
 export async function renderPaymentPage(ctx: Context) {
   try {
-    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId;
+    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId
 
     if (!sessionId) {
-      ctx.status = 400;
-      ctx.body = 'Missing session ID.';
-      return;
+      ctx.status = 400
+      ctx.body = 'Missing session ID.'
+
+      return
     }
 
     // Get session from VBase
-    let session: CheckoutSession;
+    let session: CheckoutSession
+
     try {
-      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true);
+      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true)
     } catch {
-      ctx.status = 404;
-      ctx.body = 'Checkout session not found or expired.';
-      return;
+      ctx.status = 404
+      ctx.body = 'Checkout session not found or expired.'
+
+      return
     }
 
     // Check expiration
     if (Date.now() > session.expiresAt) {
-      ctx.status = 410;
-      ctx.body = 'This checkout session has expired. Please start a new checkout.';
-      return;
+      ctx.status = 410
+      ctx.body =
+        'This checkout session has expired. Please start a new checkout.'
+
+      return
     }
 
     // Check status
     if (session.status === 'completed') {
-      ctx.status = 200;
-      ctx.type = 'text/html';
-      ctx.body = renderConfirmationPage(session.orderId || 'Unknown');
-      return;
+      ctx.status = 200
+      ctx.type = 'text/html'
+      ctx.body = renderConfirmationPage(session.orderId || 'Unknown')
+
+      return
     }
 
     // Get cart details
-    const orderForm = await ctx.clients.checkout.getOrderForm(session.orderFormId);
-    const cart = mapOrderFormToCart(orderForm);
+    const orderForm = await ctx.clients.checkout.getOrderForm(
+      session.orderFormId
+    )
 
-    ctx.type = 'text/html';
-    ctx.body = renderPaymentPageHTML(cart, sessionId, ctx.vtex.account);
+    const cart = mapOrderFormToCart(orderForm)
+
+    ctx.type = 'text/html'
+    ctx.body = renderPaymentPageHTML(cart, sessionId, ctx.vtex.account)
   } catch (error) {
-    console.error('Render payment page error:', error);
-    ctx.status = 500;
-    ctx.body = 'An error occurred loading the payment page.';
+    console.error('Render payment page error:', error)
+    ctx.status = 500
+    ctx.body = 'An error occurred loading the payment page.'
   }
 }
 
@@ -264,65 +293,73 @@ export async function renderPaymentPage(ctx: Context) {
  */
 export async function executeCheckout(ctx: Context) {
   try {
-    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId;
-    let body: CheckoutExecuteRequest | undefined;
+    const sessionId = ctx.vtex.route?.params?.sessionId ?? ctx.params?.sessionId
+    let body: CheckoutExecuteRequest | undefined
+
     try {
-      body = await json(ctx.req);
+      body = await json(ctx.req)
     } catch {
       // No body provided - will use demo mode
     }
 
     // Get session from VBase
-    let session: CheckoutSession;
+    let session: CheckoutSession
+
     try {
-      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true);
+      session = await ctx.clients.vbase.getJSON(VBASE_BUCKET, sessionId, true)
     } catch {
-      ctx.status = 404;
-      ctx.body = { success: false, error: 'Checkout session not found' };
-      return;
+      ctx.status = 404
+      ctx.body = { success: false, error: 'Checkout session not found' }
+
+      return
     }
 
     // Check expiration
     if (Date.now() > session.expiresAt) {
-      ctx.status = 410;
-      ctx.body = { success: false, error: 'Checkout session expired' };
-      return;
+      ctx.status = 410
+      ctx.body = { success: false, error: 'Checkout session expired' }
+
+      return
     }
 
     // Check status
     if (session.status !== 'pending') {
-      ctx.status = 400;
+      ctx.status = 400
       ctx.body = {
         success: false,
         error: `Checkout already ${session.status}`,
         orderId: session.orderId,
-      };
-      return;
+      }
+
+      return
     }
 
     // Update status to processing
-    session.status = 'processing';
-    await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
+    session.status = 'processing'
+    await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session)
 
-    const { checkout, payments } = ctx.clients;
-    const { orderFormId } = session;
+    const { checkout, payments } = ctx.clients
+    const { orderFormId } = session
 
     try {
       // For demo mode (no real payment data), simulate order creation
       if (!body?.customerData || !body?.paymentData) {
         // Demo mode - simulate order
-        const orderId = `ACG-DEMO-${Date.now()}`;
-        session.status = 'completed';
-        session.orderId = orderId;
-        await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
+        const orderId = `ACG-DEMO-${Date.now()}`
+
+        session.status = 'completed'
+        session.orderId = orderId
+        await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session)
 
         ctx.body = {
           success: true,
           orderId,
           message: 'Demo order placed successfully!',
-          note: 'This is a simulated order. Provide customerData and paymentData for real checkout.',
-        };
-        return;
+          note:
+            'This is a simulated order. Provide customerData and paymentData for real checkout.',
+        }
+
+        return
       }
 
       // Step 1: Add client profile data
@@ -334,23 +371,25 @@ export async function executeCheckout(ctx: Context) {
         document: body.customerData.document,
         phone: body.customerData.phone,
         isCorporate: false,
-      });
+      })
 
       // Step 2: Add shipping data
       if (body.shippingAddress) {
-        const orderForm = await checkout.getOrderForm(orderFormId);
+        const orderForm = await checkout.getOrderForm(orderFormId)
         const logisticsInfo = orderForm.items.map((_, index) => ({
           itemIndex: index,
           selectedSla: body.shippingAddress?.selectedSla || 'Normal',
           selectedDeliveryChannel: 'delivery',
-        }));
+        }))
 
         await checkout.addShippingData(orderFormId, {
           clearAddressIfPostalCodeNotFound: false,
           selectedAddresses: [
             {
               addressType: 'residential',
-              receiverName: body.shippingAddress.receiverName || `${body.customerData.firstName} ${body.customerData.lastName}`,
+              receiverName:
+                body.shippingAddress.receiverName ||
+                `${body.customerData.firstName} ${body.customerData.lastName}`,
               postalCode: body.shippingAddress.postalCode,
               city: body.shippingAddress.city,
               state: body.shippingAddress.state,
@@ -362,12 +401,12 @@ export async function executeCheckout(ctx: Context) {
             },
           ],
           logisticsInfo,
-        });
+        })
       }
 
       // Step 3: Add payment data to orderForm
-      const currentOrderForm = await checkout.getOrderForm(orderFormId);
-      const orderValue = currentOrderForm.value;
+      const currentOrderForm = await checkout.getOrderForm(orderFormId)
+      const orderValue = currentOrderForm.value
 
       await checkout.addPaymentData(orderFormId, {
         payments: [
@@ -378,21 +417,29 @@ export async function executeCheckout(ctx: Context) {
             value: orderValue,
           },
         ],
-      });
+      })
 
       // Step 4: Place order (create transaction)
-      const referenceId = `ACG-${sessionId.substring(0, 8)}`;
-      const placeOrderResponse = await checkout.placeOrder(orderFormId, referenceId, false);
+      const referenceId = `ACG-${sessionId.substring(0, 8)}`
+      const placeOrderResponse = await checkout.placeOrder(
+        orderFormId,
+        referenceId,
+        false
+      )
 
-      const order = placeOrderResponse.orders[0];
-      const transactionId = placeOrderResponse.transactionData?.merchantTransactions?.[0]?.transactionId;
+      const order = placeOrderResponse.orders[0]
+      const transactionId =
+        placeOrderResponse.transactionData?.merchantTransactions?.[0]
+          ?.transactionId
 
       if (!transactionId) {
-        throw new Error('No transaction ID received from place order');
+        throw new Error('No transaction ID received from place order')
       }
 
       // Step 5: Send payment to gateway
-      const merchantTransaction = placeOrderResponse.transactionData.merchantTransactions[0];
+      const merchantTransaction =
+        placeOrderResponse.transactionData.merchantTransactions[0]
+
       await payments.sendPayments(transactionId, [
         {
           paymentSystem: body.paymentData.paymentSystem || 2,
@@ -414,18 +461,18 @@ export async function executeCheckout(ctx: Context) {
             merchantName: merchantTransaction.merchantName,
           },
         },
-      ]);
+      ])
 
       // Step 6: Authorize payment
       const authResponse = await payments.authorizeTransaction(
         transactionId,
         order.orderId
-      );
+      )
 
       // Update session with success
-      session.status = 'completed';
-      session.orderId = order.orderId;
-      await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
+      session.status = 'completed'
+      session.orderId = order.orderId
+      await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session)
 
       ctx.body = {
         success: true,
@@ -434,23 +481,26 @@ export async function executeCheckout(ctx: Context) {
         transactionId,
         status: authResponse.status,
         message: 'Order placed successfully!',
-      };
+      }
     } catch (checkoutError) {
       // Revert session status on failure
-      session.status = 'failed';
-      session.error = checkoutError instanceof Error ? checkoutError.message : 'Checkout failed';
-      await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session);
+      session.status = 'failed'
+      session.error =
+        checkoutError instanceof Error
+          ? checkoutError.message
+          : 'Checkout failed'
+      await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session)
 
-      throw checkoutError;
+      throw checkoutError
     }
   } catch (error) {
-    console.error('Execute checkout error:', error);
-    ctx.status = 500;
+    console.error('Execute checkout error:', error)
+    ctx.status = 500
     ctx.body = {
       success: false,
       error: 'Failed to execute checkout',
       message: error instanceof Error ? error.message : 'Unknown error',
-    };
+    }
   }
 }
 
@@ -468,12 +518,29 @@ export async function executeCheckout(ctx: Context) {
  */
 export async function getOrderStatus(ctx: Context) {
   try {
-    const orderId = ctx.vtex.route?.params?.orderId ?? ctx.params?.orderId;
+    const orderId = ctx.vtex.route?.params?.orderId ?? ctx.params?.orderId
 
     if (!orderId) {
-      ctx.status = 400;
-      ctx.body = { error: 'Missing order ID' };
-      return;
+      ctx.status = 400
+      ctx.body = { error: 'Missing order ID' }
+
+      return
+    }
+
+    // Defense-in-depth on top of the origin/rate-limit middleware tier:
+    // require an active session so totally-unauthenticated enumeration of
+    // "does this orderId exist" is blocked. The handler doesn't return
+    // customer PII either way — this is belt + suspenders, not the only
+    // guard. Issue 0010 (orders auth fix).
+    if (!getOrderFormIdFromRequest(ctx)) {
+      ctx.status = 401
+      ctx.body = {
+        error: 'unauthorized',
+        message:
+          'order status lookup requires an active session (X-ACG-Order-Form-Id header or storefront cookie)',
+      }
+
+      return
     }
 
     // Check if this is a demo order from our checkout session
@@ -484,8 +551,9 @@ export async function getOrderStatus(ctx: Context) {
         statusDescription: 'Payment confirmed, order is being prepared',
         createdAt: new Date().toISOString(),
         message: 'Demo order — payment approved.',
-      };
-      return;
+      }
+
+      return
     }
 
     // For real orders, try to look up in VBase checkout sessions
@@ -496,7 +564,7 @@ export async function getOrderStatus(ctx: Context) {
         VBASE_BUCKET,
         `order-${orderId}`,
         true
-      );
+      )
 
       if (sessions) {
         ctx.body = {
@@ -505,8 +573,9 @@ export async function getOrderStatus(ctx: Context) {
           statusDescription: 'Order found in ACG sessions',
           createdAt: new Date().toISOString(),
           message: 'Order completed via ACG.',
-        };
-        return;
+        }
+
+        return
       }
     } catch {
       // Not found in VBase — that's fine
@@ -516,17 +585,18 @@ export async function getOrderStatus(ctx: Context) {
     ctx.body = {
       orderId,
       status: 'unknown',
-      statusDescription: 'Order not found in ACG sessions. Check VTEX Admin for full order details.',
+      statusDescription:
+        'Order not found in ACG sessions. Check VTEX Admin for full order details.',
       createdAt: null,
       message: `Order ${orderId} — check VTEX Admin (Orders > All Orders) for current status.`,
-    };
+    }
   } catch (error) {
-    console.error('Get order status error:', error);
-    ctx.status = 500;
+    console.error('Get order status error:', error)
+    ctx.status = 500
     ctx.body = {
       error: 'Failed to get order status',
       message: error instanceof Error ? error.message : 'Unknown error',
-    };
+    }
   }
 }
 
@@ -546,7 +616,7 @@ function renderPaymentPageHTML(
       </div>
     `
     )
-    .join('');
+    .join('')
 
   return `
 <!DOCTYPE html>
@@ -758,7 +828,7 @@ function renderPaymentPageHTML(
   </script>
 </body>
 </html>
-  `;
+  `
 }
 
 function renderConfirmationPage(orderId: string): string {
@@ -800,5 +870,5 @@ function renderConfirmationPage(orderId: string): string {
   </div>
 </body>
 </html>
-  `;
+  `
 }
