@@ -12,7 +12,8 @@
  *       "args": ["path/to/dist/index.js"],
  *       "env": {
  *         "VTEX_ACCOUNT": "your-account",
- *         "VTEX_WORKSPACE": "master"
+ *         "VTEX_WORKSPACE": "master",
+ *         "ACG_AUTH_TOKEN": "<must match adapter's acgAuthToken setting>"
  *       }
  *     }
  *   }
@@ -33,6 +34,15 @@ const config = {
   vtexWorkspace: process.env.VTEX_WORKSPACE || 'master',
   vtexAppKey: process.env.VTEX_APP_KEY,
   vtexAppToken: process.env.VTEX_APP_TOKEN,
+  acgAuthToken: process.env.ACG_AUTH_TOKEN,
+}
+
+if (!config.acgAuthToken) {
+  console.error(
+    '[ACG] WARNING: ACG_AUTH_TOKEN env var not set. ' +
+      'The adapter will reject all calls with 403 unless its ' +
+      'requireOriginOrSecret middleware is bypassed (it should not be in prod).'
+  )
 }
 
 async function main() {

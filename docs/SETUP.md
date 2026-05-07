@@ -34,13 +34,41 @@ You should see output like:
 info: Build accepted for yourvendor.acg-adapter@0.0.1
 ```
 
-### 1.4 Test the endpoints
+### 1.4 Configure app settings (REQUIRED before any call succeeds)
+
+The adapter ships with **fail-closed security**: until you set the
+allowlist + auth token, every `/_v/acg/*` call returns 403. Open VTEX
+Admin → Apps → Agent Commerce Gateway Adapter → Settings, and fill in:
+
+| Setting | Required | Value |
+|---|---|---|
+| `acgAllowedOrigins` | yes (for the widget) | List of storefront origins, e.g. `["https://your-store.myvtex.com", "https://www.your-store.com"]` |
+| `acgAuthToken` | yes (for MCP / Claude Desktop) | Any random 32+ character string. `openssl rand -hex 32` works. Save this — you'll paste it into the Claude Desktop config in Step 3. |
+| `acgRateLimits` | optional | Override default per-IP rate limits per route class. Defaults: `chat 20/min, 200/day · mutating 30/min, 500/day · read 60/min, 2000/day` |
+| `acgSessionDailyLimit` | optional | Per-orderForm 24h request cap. Default: 100. |
+
+LLM keys (`claudeApiKey` etc.) and Pinecone keys belong in the same
+settings panel — see the schema in `manifest.json` for the full list.
+
+The DID document routes (`/_v/acg/.well-known/did.json` and the two
+mock-party variants) plus the artifact retrieval routes
+(`/_v/acg/mandates/:id`, `/_v/acg/payment-mandates/:id`,
+`/_v/acg/receipts/:id`) bypass the allowlist by design — they're the
+AP2 verification surface and must remain reachable by any third-party
+verifier. They're still IP rate-limited.
+
+### 1.5 Test the endpoints
 
 ```bash
-# Test search (replace with your account/workspace)
-curl "https://master--your-account.myvtex.com/_v/acg/search?q=shoes&limit=3"
+# DID document is publicly reachable
+curl "https://master--your-account.myvtex.com/_v/acg/.well-known/did.json"
 
-# Should return JSON with products
+# Search requires either the storefront Origin header or the auth token
+curl -H "X-ACG-Auth-Token: <your-token>" \
+  "https://master--your-account.myvtex.com/_v/acg/search?q=shoes&limit=3"
+
+# Without auth → 403 forbidden (this is correct)
+curl "https://master--your-account.myvtex.com/_v/acg/search?q=shoes"
 ```
 
 ## Step 2: MCP Server
@@ -96,14 +124,17 @@ Edit the config file:
       "args": ["/full/path/to/AP2/packages/mcp-server/dist/index.js"],
       "env": {
         "VTEX_ACCOUNT": "your-account-name",
-        "VTEX_WORKSPACE": "master"
+        "VTEX_WORKSPACE": "master",
+        "ACG_AUTH_TOKEN": "<the-same-token-you-set-as-acgAuthToken-in-VTEX-Admin>"
       }
     }
   }
 }
 ```
 
-**Important:** Use the full absolute path to the built `index.js`
+**Important:**
+- Use the full absolute path to the built `index.js`
+- `ACG_AUTH_TOKEN` must match the `acgAuthToken` app setting from Step 1.4 verbatim. The MCP server has no Origin header (stdio → HTTPS); without this the adapter returns 403 on every call.
 
 ### 3.3 Restart Claude Desktop
 

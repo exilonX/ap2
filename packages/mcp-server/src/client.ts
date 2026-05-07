@@ -16,6 +16,13 @@ interface VtexConfig {
   vtexWorkspace: string;
   vtexAppKey?: string;
   vtexAppToken?: string;
+  /**
+   * Shared secret matching the adapter's `acgAuthToken` app setting.
+   * Sent as X-ACG-Auth-Token on every request — the MCP server is
+   * server-to-server (no Origin header), so this is the only path past
+   * the adapter's requireOriginOrSecret middleware (issue 0010 item 5).
+   */
+  acgAuthToken?: string;
 }
 
 export class VtexClient {
@@ -33,6 +40,10 @@ export class VtexClient {
     if (config.vtexAppKey && config.vtexAppToken) {
       headers['X-VTEX-API-AppKey'] = config.vtexAppKey;
       headers['X-VTEX-API-AppToken'] = config.vtexAppToken;
+    }
+
+    if (config.acgAuthToken) {
+      headers['X-ACG-Auth-Token'] = config.acgAuthToken;
     }
 
     this.client = axios.create({
