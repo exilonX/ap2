@@ -47,6 +47,15 @@ export interface ApprovePaymentInput {
   cpPublicKey: Buffer;
   /** CP's DID — recorded into the receipt. */
   cpDID: string;
+  /**
+   * Demo-only — force a specific check to fail without constructing an
+   * actually-invalid mandate or waiting for natural expiry. Used by the
+   * iframe's "force reject" button to record the rejection branch of the
+   * ceremony. The receipt is still genuinely signed; only the override
+   * is theatrical. Production gating happens in the calling adapter —
+   * this class trusts its caller.
+   */
+  forceFailCheck?: keyof VerificationChecks;
 }
 
 export class MockPaymentNetwork {
@@ -86,6 +95,9 @@ export class MockPaymentNetwork {
   public async approvePayment(input: ApprovePaymentInput): Promise<PaymentReceipt> {
     const identity = await this.load();
     const checks = await this.verifyChain(input);
+    if (input.forceFailCheck) {
+      checks[input.forceFailCheck] = false;
+    }
     const rejectionReason = firstFailingCheck(checks);
 
     return createPaymentReceipt(
@@ -109,13 +121,9 @@ export class MockPaymentNetwork {
   private async verifyChain(input: ApprovePaymentInput): Promise<VerificationChecks> {
     // 1 + 7. CartMandate signature + expiry
     const cartVerification = await verifyCartMandate(input.cartMandate, input.merchantPublicKey);
-    const merchant_signature = cartVerification.checks.signatureValid;
-    const cart_mandate_not_expired = cartVerification.checks.notExpired;
 
     // 2 + 6. PaymentMandate signature + expiry + hash binding for contents
     const paymentVerification = await verifyPaymentMandate(input.paymentMandate, input.cpPublicKey);
-    const cp_signature = paymentVerification.checks.signatureValid;
-    const payment_mandate_not_expired = paymentVerification.checks.notExpired;
 
     // 3. Full hash binding — verifyPaymentMandate already checks the
     //    contents hash (transaction_data[1]); we additionally check
@@ -125,7 +133,7 @@ export class MockPaymentNetwork {
       input.paymentMandate.payment_mandate_contents
     );
     const td = paymentVerification.payload?.transaction_data;
-    const hash_binding =
+    const hashBinding =
       Array.isArray(td) &&
       td.length === 2 &&
       td[0] === expectedCartHash &&
@@ -141,23 +149,23 @@ export class MockPaymentNetwork {
     // drift nor trailing zeros cause false rejections.
     const paymentTotal = input.paymentMandate.payment_mandate_contents.payment_details_total.amount;
     const cartTotal = input.cartMandate.contents.total;
-    const amount_consistency =
+    const amountConsistency =
       paymentTotal.currency === cartTotal.currency &&
       Number(paymentTotal.value) === Number(cartTotal.value);
 
     // 5. Mandate id linking.
-    const mandate_id_linking =
+    const mandateIdLinking =
       input.paymentMandate.payment_mandate_contents.payment_details_id ===
       input.cartMandate.contents.id;
 
     return {
-      merchant_signature,
-      cp_signature,
-      hash_binding,
-      amount_consistency,
-      mandate_id_linking,
-      payment_mandate_not_expired,
-      cart_mandate_not_expired,
+      merchant_signature: cartVerification.checks.signatureValid,
+      cp_signature: paymentVerification.checks.signatureValid,
+      hash_binding: hashBinding,
+      amount_consistency: amountConsistency,
+      mandate_id_linking: mandateIdLinking,
+      payment_mandate_not_expired: paymentVerification.checks.notExpired,
+      cart_mandate_not_expired: cartVerification.checks.notExpired,
     };
   }
 

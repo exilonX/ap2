@@ -232,6 +232,35 @@ describe('MockPaymentNetwork — rejection paths', () => {
   });
 });
 
+describe('MockPaymentNetwork — forceFailCheck (demo override)', () => {
+  it('forces the named check to fail and emits a signed rejection receipt', async () => {
+    const f = await freshFixture();
+    const cpPk = await f.cp.getPublicKey();
+    const receipt = await f.network.approvePayment({
+      paymentMandate: f.paymentMandate,
+      cartMandate: f.cartMandate,
+      merchantPublicKey: f.merchantKeys.publicKey,
+      merchantDID: f.merchantDID,
+      cpPublicKey: cpPk,
+      cpDID: await f.cp.getDID(),
+      forceFailCheck: 'payment_mandate_not_expired',
+    });
+    assert.equal(receipt.contents.approval_status, 'rejected');
+    assert.equal(receipt.contents.verification_checks.payment_mandate_not_expired, false);
+    // Other checks must remain genuinely valid — only the named one is overridden.
+    assert.equal(receipt.contents.verification_checks.merchant_signature, true);
+    assert.equal(receipt.contents.verification_checks.cp_signature, true);
+    assert.equal(receipt.contents.verification_checks.hash_binding, true);
+    assert.equal(receipt.contents.verification_checks.amount_consistency, true);
+    assert.equal(receipt.contents.verification_checks.mandate_id_linking, true);
+    assert.equal(receipt.contents.verification_checks.cart_mandate_not_expired, true);
+    // Receipt is still real EdDSA, verifies against the network's public key.
+    const networkPk = await f.network.getPublicKey();
+    const verification = await verifyPaymentReceipt(receipt, networkPk);
+    assert.equal(verification.valid, true);
+  });
+});
+
 describe('MockPaymentNetwork — receipt artifact integrity', () => {
   it('records merchant_did, cp_did, network_did correctly', async () => {
     const f = await freshFixture();

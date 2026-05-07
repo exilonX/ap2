@@ -172,6 +172,9 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
         cardExpiration: z.string(),
         cardCvv: z.string(),
       }).optional().describe('Payment card details (theater — not used server-side)'),
+      forceReject: z.boolean().optional().describe(
+        'Demo-only — force the network to reject so the rejection branch of the ceremony is recordable. The adapter ignores this flag on master workspace (production).'
+      ),
     },
     async (params) => {
       try {
@@ -190,7 +193,10 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
               drifted: boolean
               mandateId: string | null
             }
-        >('/payment/execute', { mandateId: params.mandateId })
+        >('/payment/execute', {
+          mandateId: params.mandateId,
+          ...(params.forceReject ? { forceReject: true } : {}),
+        })
 
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result) }],

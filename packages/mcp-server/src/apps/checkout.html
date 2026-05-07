@@ -201,6 +201,18 @@
     cursor: pointer;
   }
 
+  .force-reject-link {
+    text-align: center;
+    margin-top: 6px;
+  }
+  .force-reject-link a {
+    font-size: 11px;
+    color: #999;
+    text-decoration: underline dotted;
+    cursor: pointer;
+  }
+  .force-reject-link a:hover { color: #cf222e; }
+
   .result-panel {
     border-radius: 12px;
     padding: 18px;
@@ -409,6 +421,9 @@
   <div class="native-checkout-link">
     <a id="checkout-btn" href="#" onclick="openLink('checkout-btn'); return false;">Or use VTEX standard checkout</a>
   </div>
+  <div class="force-reject-link">
+    <a href="#" id="force-reject-link" onclick="payNow(true); return false;">(force reject &mdash; staging only)</a>
+  </div>
 </div>
 
 <div id="result-area" style="display:none"></div>
@@ -546,15 +561,20 @@
   // The cryptographic ceremony lives server-side: verifyAgainstCart against the
   // mandate the iframe was rendered with. If the cart drifted since signing,
   // payment is rejected and the user is told why.
-  window.payNow = function() {
+  window.payNow = function(forceReject) {
     if (!currentMandateId) return;
     var btn = document.getElementById('pay-now-btn');
     btn.disabled = true;
-    btn.textContent = 'Verifying mandate against cart...';
+    btn.textContent = forceReject
+      ? 'Forcing rejection (demo)...'
+      : 'Verifying mandate against cart...';
+
+    var args = { mandateId: currentMandateId };
+    if (forceReject) args.forceReject = true;
 
     rpcRequest('tools/call', {
       name: 'executePayment',
-      arguments: { mandateId: currentMandateId },
+      arguments: args,
     })
       .then(function(result) {
         var payload = parseToolResult(result);

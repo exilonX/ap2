@@ -20,51 +20,62 @@ import {
   loadOrCreateIdentity,
   verifyCartMandate,
   verifyPaymentMandate,
-  type CartMandate,
-  type DIDDocument,
-  type KeyStore,
-  type MerchantIdentity as Identity,
-  type PaymentMandate,
-  type PaymentReceipt,
-  type VerificationChecks,
-} from '../core';
+} from '../core'
+import type {
+  CartMandate,
+  DIDDocument,
+  KeyStore,
+  MerchantIdentity as Identity,
+  PaymentMandate,
+  PaymentReceipt,
+  VerificationChecks,
+} from '../core'
 
 export interface MockPaymentNetworkDeps {
   /** KeyStore the network's keypair is persisted through. */
-  keyStore: KeyStore;
+  keyStore: KeyStore
   /** Domain for the network's DID (e.g. "mock-network.acg.example"). */
-  domain: string;
+  domain: string
 }
 
 export interface ApprovePaymentInput {
-  paymentMandate: PaymentMandate;
-  cartMandate: CartMandate;
+  paymentMandate: PaymentMandate
+  cartMandate: CartMandate
   /** Merchant's public key for verifying CartMandate.merchant_authorization. */
-  merchantPublicKey: Buffer;
+  merchantPublicKey: Buffer
   /** Merchant's DID — recorded into the receipt. */
-  merchantDID: string;
+  merchantDID: string
   /** CP's public key for verifying PaymentMandate.user_authorization. */
-  cpPublicKey: Buffer;
+  cpPublicKey: Buffer
   /** CP's DID — recorded into the receipt. */
-  cpDID: string;
+  cpDID: string
+  /**
+   * Demo-only — force a specific check to fail without constructing an
+   * actually-invalid mandate or waiting for natural expiry. Used by the
+   * iframe's "force reject" button to record the rejection branch of the
+   * ceremony. The receipt is still genuinely signed; only the override
+   * is theatrical. Production gating (workspace !== 'master') happens in
+   * the adapter handler — this class trusts its caller.
+   */
+  forceFailCheck?: keyof VerificationChecks
 }
 
 export class MockPaymentNetwork {
-  private cached: Identity | null = null;
+  private cached: Identity | null = null
 
   constructor(private readonly deps: MockPaymentNetworkDeps) {}
 
   /** This network's DID (e.g. "did:web:mock-network.acg.example"). */
   public async getDID(): Promise<string> {
-    return (await this.load()).did;
+    return (await this.load()).did
   }
 
   public async getDIDDocument(): Promise<DIDDocument> {
-    return (await this.load()).didDocument;
+    return (await this.load()).didDocument
   }
 
   public async getPublicKey(): Promise<Buffer> {
-    return (await this.load()).keys.publicKey;
+    return (await this.load()).keys.publicKey
   }
 
   /**
@@ -83,19 +94,30 @@ export class MockPaymentNetwork {
    *   6. PaymentMandate not expired
    *   7. CartMandate not expired
    */
-  public async approvePayment(input: ApprovePaymentInput): Promise<PaymentReceipt> {
-    const identity = await this.load();
-    const checks = await this.verifyChain(input);
-    const rejectionReason = firstFailingCheck(checks);
+  public async approvePayment(
+    input: ApprovePaymentInput
+  ): Promise<PaymentReceipt> {
+    const identity = await this.load()
+    const checks = await this.verifyChain(input)
+
+    if (input.forceFailCheck) {
+      checks[input.forceFailCheck] = false
+    }
+
+    const rejectionReason = firstFailingCheck(checks)
 
     return createPaymentReceipt(
       {
-        payment_mandate_id: input.paymentMandate.payment_mandate_contents.payment_mandate_id,
+        payment_mandate_id:
+          input.paymentMandate.payment_mandate_contents.payment_mandate_id,
         cart_mandate_id: input.cartMandate.contents.id,
         merchant_did: input.merchantDID,
         cp_did: input.cpDID,
-        amount: input.paymentMandate.payment_mandate_contents.payment_details_total.amount,
-        agent_presence: input.paymentMandate.payment_mandate_contents.x_agent_presence,
+        amount:
+          input.paymentMandate.payment_mandate_contents.payment_details_total
+            .amount,
+        agent_presence:
+          input.paymentMandate.payment_mandate_contents.x_agent_presence,
         verification_checks: checks,
         rejection_reason: rejectionReason,
       },
@@ -103,33 +125,38 @@ export class MockPaymentNetwork {
         networkDID: identity.did,
         networkKeys: identity.keys,
       }
-    );
+    )
   }
 
-  private async verifyChain(input: ApprovePaymentInput): Promise<VerificationChecks> {
+  private async verifyChain(
+    input: ApprovePaymentInput
+  ): Promise<VerificationChecks> {
     // 1 + 7. CartMandate signature + expiry
-    const cartVerification = await verifyCartMandate(input.cartMandate, input.merchantPublicKey);
-    const merchant_signature = cartVerification.checks.signatureValid;
-    const cart_mandate_not_expired = cartVerification.checks.notExpired;
+    const cartVerification = await verifyCartMandate(
+      input.cartMandate,
+      input.merchantPublicKey
+    )
 
     // 2 + 6. PaymentMandate signature + expiry + hash binding for contents
-    const paymentVerification = await verifyPaymentMandate(input.paymentMandate, input.cpPublicKey);
-    const cp_signature = paymentVerification.checks.signatureValid;
-    const payment_mandate_not_expired = paymentVerification.checks.notExpired;
+    const paymentVerification = await verifyPaymentMandate(
+      input.paymentMandate,
+      input.cpPublicKey
+    )
 
     // 3. Full hash binding — verifyPaymentMandate already checks the
     //    contents hash (transaction_data[1]); we additionally check
     //    transaction_data[0] against hash(CartMandate).
-    const expectedCartHash = await hashCartMandate(input.cartMandate);
+    const expectedCartHash = await hashCartMandate(input.cartMandate)
     const expectedContentsHash = await hashPaymentMandateContents(
       input.paymentMandate.payment_mandate_contents
-    );
-    const td = paymentVerification.payload?.transaction_data;
-    const hash_binding =
+    )
+
+    const td = paymentVerification.payload?.transaction_data
+    const hashBinding =
       Array.isArray(td) &&
       td.length === 2 &&
       td[0] === expectedCartHash &&
-      td[1] === expectedContentsHash;
+      td[1] === expectedContentsHash
 
     // 4. Amount consistency — PaymentMandate's total must equal CartMandate's total.
     //
@@ -139,32 +166,38 @@ export class MockPaymentNetwork {
     // number (canonical AP2 v0.2 / Google Pydantic uses float). Normalize
     // both via Number(...) before comparison so neither representation
     // drift nor trailing zeros cause false rejections.
-    const paymentTotal = input.paymentMandate.payment_mandate_contents.payment_details_total.amount;
-    const cartTotal = input.cartMandate.contents.total;
-    const amount_consistency =
+    const paymentTotal =
+      input.paymentMandate.payment_mandate_contents.payment_details_total.amount
+
+    const cartTotal = input.cartMandate.contents.total
+    const amountConsistency =
       paymentTotal.currency === cartTotal.currency &&
-      Number(paymentTotal.value) === Number(cartTotal.value);
+      Number(paymentTotal.value) === Number(cartTotal.value)
 
     // 5. Mandate id linking.
-    const mandate_id_linking =
+    const mandateIdLinking =
       input.paymentMandate.payment_mandate_contents.payment_details_id ===
-      input.cartMandate.contents.id;
+      input.cartMandate.contents.id
 
     return {
-      merchant_signature,
-      cp_signature,
-      hash_binding,
-      amount_consistency,
-      mandate_id_linking,
-      payment_mandate_not_expired,
-      cart_mandate_not_expired,
-    };
+      merchant_signature: cartVerification.checks.signatureValid,
+      cp_signature: paymentVerification.checks.signatureValid,
+      hash_binding: hashBinding,
+      amount_consistency: amountConsistency,
+      mandate_id_linking: mandateIdLinking,
+      payment_mandate_not_expired: paymentVerification.checks.notExpired,
+      cart_mandate_not_expired: cartVerification.checks.notExpired,
+    }
   }
 
   private async load(): Promise<Identity> {
-    if (this.cached) return this.cached;
-    this.cached = await loadOrCreateIdentity(this.deps.domain, this.deps.keyStore);
-    return this.cached;
+    if (this.cached) return this.cached
+    this.cached = await loadOrCreateIdentity(
+      this.deps.domain,
+      this.deps.keyStore
+    )
+
+    return this.cached
   }
 }
 
@@ -173,12 +206,19 @@ export class MockPaymentNetwork {
  * passed. Used for `rejection_reason`.
  */
 function firstFailingCheck(checks: VerificationChecks): string | undefined {
-  if (!checks.merchant_signature) return 'merchant signature invalid';
-  if (!checks.cp_signature) return 'credentials provider signature invalid';
-  if (!checks.hash_binding) return 'transaction_data hash binding mismatch';
-  if (!checks.amount_consistency) return 'payment amount does not match cart total';
-  if (!checks.mandate_id_linking) return 'payment_details_id does not reference cart mandate';
-  if (!checks.payment_mandate_not_expired) return 'payment mandate has expired';
-  if (!checks.cart_mandate_not_expired) return 'cart mandate has expired';
-  return undefined;
+  if (!checks.merchant_signature) return 'merchant signature invalid'
+  if (!checks.cp_signature) return 'credentials provider signature invalid'
+  if (!checks.hash_binding) return 'transaction_data hash binding mismatch'
+  if (!checks.amount_consistency) {
+    return 'payment amount does not match cart total'
+  }
+
+  if (!checks.mandate_id_linking) {
+    return 'payment_details_id does not reference cart mandate'
+  }
+
+  if (!checks.payment_mandate_not_expired) return 'payment mandate has expired'
+  if (!checks.cart_mandate_not_expired) return 'cart mandate has expired'
+
+  return undefined
 }
