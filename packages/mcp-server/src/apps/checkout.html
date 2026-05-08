@@ -167,6 +167,40 @@
     cursor: not-allowed;
   }
 
+  .on-file-section {
+    background: white;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .on-file-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+  }
+  .on-file-row:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
+  .on-file-label {
+    color: #999;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .on-file-value { color: #1a1a2e; font-weight: 500; }
+  .on-file-mock-tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    background: #fff4e5;
+    color: #b35900;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
   .pay-now-btn {
     width: 100%;
     padding: 16px;
@@ -411,6 +445,33 @@
       <a class="ap2-link" id="mandate-proof-link" href="#" onclick="openLink('mandate-proof-link'); return false;">View Mandate Proof</a>
       <a class="ap2-link" id="did-link" href="#" onclick="openLink('did-link'); return false;">Verify Merchant Identity</a>
     </div>
+  </div>
+</div>
+
+<!--
+  Card-on-file + ship-to display. The iframe is a *mandate-confirmation*
+  surface, not a payment-data-entry surface — production CP integration
+  (Google Pay / wallet) would surface a biometric sheet at this step
+  with the user's real card. We mock that here so the demo viewer
+  understands the model is "card on file, just confirm" and not
+  "checkout where someone forgot to ask for a card number".
+
+  The "MOCK" tags make the simplification explicit. The PaymentMandate's
+  payment_response.details.token uses tok-mock-{timestamp} on the wire
+  to match.
+-->
+<div class="on-file-section" id="on-file-section">
+  <div class="on-file-row">
+    <span class="on-file-label">Payment method</span>
+    <span class="on-file-value">VISA &bull;&bull;&bull;&bull; 4242 <span class="on-file-mock-tag">MOCK</span></span>
+  </div>
+  <div class="on-file-row">
+    <span class="on-file-label">Ship to</span>
+    <span class="on-file-value">Address on file <span class="on-file-mock-tag">MOCK</span></span>
+  </div>
+  <div class="on-file-row">
+    <span class="on-file-label">Authorization</span>
+    <span class="on-file-value">Click Pay Now to sign &amp; submit</span>
   </div>
 </div>
 

@@ -1,3 +1,5 @@
+/* eslint-disable no-console, no-await-in-loop -- pre-existing instrumentation; tracked by issue 0005 (Logger injection) and the LLM tool-call loop's intentional sequencing */
+
 import { json } from 'co-body'
 
 import { Cart } from '../cart/cart'
@@ -9,17 +11,25 @@ import {
   TransientCartError,
 } from '../cart/errors'
 import { ClaudeClient, GeminiClient, OpenAIClient } from '../clients/llm'
-import type { LLMMessage, LLMTool, LLMToolCall, LLMResponse, LLMProvider } from '../clients/llm'
+import type {
+  LLMMessage,
+  LLMTool,
+  LLMToolCall,
+  LLMResponse,
+  LLMProvider,
+} from '../clients/llm'
 import { loadConfigForAccount } from '../config/load'
 import type { ClientConfig } from '../config/types'
 import { mapOrderFormToCart } from '../mappers/cart'
 import { mapProduct } from '../mappers/product'
 import { getOrderFormIdFromRequest, resolveOrderFormId } from '../utils/session'
 import { semanticSearch } from './rag'
-
 // Importing this module registers all AgentTools (Issue 03 — AP2 ceremony).
 import '../agent-tools'
-import { dispatch as dispatchAgentTool, getDefinitions as getAgentToolDefinitions } from '../agent-tools/registry'
+import {
+  dispatch as dispatchAgentTool,
+  getDefinitions as getAgentToolDefinitions,
+} from '../agent-tools/registry'
 import type {
   CartPreviewData,
   MandateInfo,
@@ -43,10 +53,10 @@ interface ChatRequest {
 interface ChatResponse {
   reply: string
   products?: ProductCardData[]
-  suggestions?: string[]    // quick-reply chips to render after the reply
-  cartPreview?: CartPreviewData  // structured cart snapshot to render inline
+  suggestions?: string[] // quick-reply chips to render after the reply
+  cartPreview?: CartPreviewData // structured cart snapshot to render inline
   cartUpdated?: boolean
-  mandate?: MandateInfo     // present when the checkout tool signed a CartMandate
+  mandate?: MandateInfo // present when the checkout tool signed a CartMandate
 }
 
 interface AppSettings {
@@ -65,13 +75,15 @@ const CHAT_TOOLS: LLMTool[] = [
   // ── Search & Browse ──
   {
     name: 'search_products',
-    description: 'Search for products in the store catalog. Use when the customer is looking for products, asks about availability, or wants recommendations.',
+    description:
+      'Search for products in the store catalog. Use when the customer is looking for products, asks about availability, or wants recommendations.',
     parameters: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Search query (e.g., "running shoes", "red dress size M")',
+          description:
+            'Search query (e.g., "running shoes", "red dress size M")',
         },
         limit: {
           type: 'number',
@@ -83,7 +95,8 @@ const CHAT_TOOLS: LLMTool[] = [
   },
   {
     name: 'get_product_details',
-    description: 'Get detailed info about a specific product by SKU. Use when the customer asks about a specific product (size, material, specs).',
+    description:
+      'Get detailed info about a specific product by SKU. Use when the customer asks about a specific product (size, material, specs).',
     parameters: {
       type: 'object',
       properties: {
@@ -101,7 +114,10 @@ const CHAT_TOOLS: LLMTool[] = [
       type: 'object',
       properties: {
         sku: { type: 'string', description: 'The product SKU to add' },
-        quantity: { type: 'number', description: 'Quantity to add (default 1)' },
+        quantity: {
+          type: 'number',
+          description: 'Quantity to add (default 1)',
+        },
       },
       required: ['sku'],
     },
@@ -129,7 +145,10 @@ const CHAT_TOOLS: LLMTool[] = [
       type: 'object',
       properties: {
         sku: { type: 'string', description: 'The product SKU to update' },
-        quantity: { type: 'number', description: 'New quantity (must be >= 1)' },
+        quantity: {
+          type: 'number',
+          description: 'New quantity (must be >= 1)',
+        },
       },
       required: ['sku', 'quantity'],
     },
@@ -140,7 +159,10 @@ const CHAT_TOOLS: LLMTool[] = [
     parameters: {
       type: 'object',
       properties: {
-        code: { type: 'string', description: 'The coupon or promo code (e.g., "VIP15")' },
+        code: {
+          type: 'string',
+          description: 'The coupon or promo code (e.g., "VIP15")',
+        },
       },
       required: ['code'],
     },
@@ -149,7 +171,8 @@ const CHAT_TOOLS: LLMTool[] = [
   // ── Customer & Shipping ──
   {
     name: 'set_customer_profile',
-    description: 'Set the customer profile on the cart. Use when the customer provides their contact details for checkout.',
+    description:
+      'Set the customer profile on the cart. Use when the customer provides their contact details for checkout.',
     parameters: {
       type: 'object',
       properties: {
@@ -163,7 +186,8 @@ const CHAT_TOOLS: LLMTool[] = [
   },
   {
     name: 'set_shipping_address',
-    description: 'Set the shipping address on the cart. Use when the customer provides their delivery address.',
+    description:
+      'Set the shipping address on the cart. Use when the customer provides their delivery address.',
     parameters: {
       type: 'object',
       properties: {
@@ -172,22 +196,30 @@ const CHAT_TOOLS: LLMTool[] = [
         city: { type: 'string', description: 'City' },
         state: { type: 'string', description: 'State or province' },
         postalCode: { type: 'string', description: 'Postal/ZIP code' },
-        country: { type: 'string', description: 'Country code (e.g., "ROU", "BRA", "USA")' },
-        complement: { type: 'string', description: 'Apartment, suite, etc. (optional)' },
+        country: {
+          type: 'string',
+          description: 'Country code (e.g., "ROU", "BRA", "USA")',
+        },
+        complement: {
+          type: 'string',
+          description: 'Apartment, suite, etc. (optional)',
+        },
       },
       required: ['street', 'number', 'city', 'state', 'postalCode', 'country'],
     },
   },
   {
     name: 'get_shipping_options',
-    description: 'Get available shipping methods and their costs. Use after a shipping address has been set.',
+    description:
+      'Get available shipping methods and their costs. Use after a shipping address has been set.',
     parameters: { type: 'object', properties: {} },
   },
 
   // ── Intelligence ──
   {
     name: 'propose_deal',
-    description: 'Analyze the current cart and suggest deals, discounts, or ways to save money. Use proactively when a customer has items in their cart.',
+    description:
+      'Analyze the current cart and suggest deals, discounts, or ways to save money. Use proactively when a customer has items in their cart.',
     parameters: { type: 'object', properties: {} },
   },
 
@@ -236,7 +268,7 @@ const CHAT_TOOLS: LLMTool[] = [
 
 function buildSystemPrompt(config: ClientConfig): string {
   const storeName = config.brand.name
-  const currency = config.currency
+  const { currency } = config
   const defaultLocale = config.locales.default
 
   // Merchant-specific context block (injected verbatim)
@@ -252,7 +284,9 @@ function buildSystemPrompt(config: ClientConfig): string {
   // Custom rules section — empty if not configured
   const customRulesSection =
     config.customRules && config.customRules.length > 0
-      ? `\n## CUSTOM RULES (specific magazinului)\n${config.customRules.map((r) => `- ${r}`).join('\n')}\n`
+      ? `\n## CUSTOM RULES (specific magazinului)\n${config.customRules
+          .map((r) => `- ${r}`)
+          .join('\n')}\n`
       : ''
 
   // Multi-step intent block — swaps based on flow preference
@@ -329,6 +363,17 @@ Spune DOAR ce ai primit din tool-uri. Nu inventa: nume, SKU-uri, prețuri, stoc,
 
 ## STIL
 Concis (1-3 fraze). Câmpurile structurate din tool results (produse, coș, mandat) apar automat — NU le repeta în text. Checkout doar la cerere explicită.
+
+## GEN — APAREL CU GEN AMBIGUU (CRITIC)
+Pentru piese de îmbrăcăminte cu gen (cămașă, pantaloni, rochie, fustă, sacou, geacă, pulovăr, tricou, blugi, costum), dacă cererea NU specifică genul (bărbați/damă/copil), întreabă O SINGURĂ DATĂ cu suggest_replies ÎNAINTE de orice search_products.
+
+- "Vreau o cămașă" → "Pentru bărbați sau damă?" + ["Bărbați", "Damă"]
+- "Caut pantaloni si o camasa" → "Pentru bărbați sau damă?" (un singur prompt acoperă ambele)
+- "O rochie roșie" → rochia e implicit damă → search direct
+- "Pantofi sport bărbați" → gen specificat → search direct
+- "Cămașă neagră pentru tata" → "tata" implică bărbați → search direct
+
+NU GHICI niciodată. A amesteca cămașă damă cu pantaloni bărbați în același coș (cum se întâmplă când engine-ul filtrează aleator) e eroare gravă — clientul observă, demo-ul își pierde credibilitatea.
 
 ## CHECKOUT FLOW
 Default: create_cart_mandate → clientul revizuiește → execute_payment(mandateId) cu mandateId-ul primit. Folosește redirect_to_native_checkout DOAR când clientul cere explicit checkout VTEX standard.
@@ -443,6 +488,7 @@ async function executeTool(
     config,
     orderFormId,
   })
+
   if (agentEffect !== null) {
     return agentEffect
   }
@@ -469,7 +515,9 @@ async function executeTool(
       // Semantic search ranks the noun heavily and ignores the modifier; we
       // re-rank by post-filtering the obvious contradictions.
       const overFetch = Math.max(limit * 3, 12)
-      const ragResult = await semanticSearch(ctx, query, overFetch, { available: true })
+      const ragResult = await semanticSearch(ctx, query, overFetch, {
+        available: true,
+      })
 
       let productCards: ChatResponse['products']
       let summary: string
@@ -479,12 +527,17 @@ async function executeTool(
         // Semantic search underweights modifiers like "lung" / "elegant" — when
         // the noun matches strongly, the modifier barely affects ranking. We
         // post-filter to enforce the user's intent.
-        const filtered = applyQualifierFilter(query, ragResult.results, (m) => String(m.metadata?.name || ''))
+        const filtered = applyQualifierFilter(query, ragResult.results, (m) =>
+          String(m.metadata?.name || '')
+        )
+
         const trimmed = filtered.slice(0, limit)
         const droppedCount = ragResult.results.length - filtered.length
 
         if (droppedCount > 0) {
-          console.log(`[ACG Chat] qualifier filter dropped ${droppedCount} contradicting results for query "${query}"`)
+          console.log(
+            `[ACG Chat] qualifier filter dropped ${droppedCount} contradicting results for query "${query}"`
+          )
         }
 
         // Semantic search found results
@@ -500,9 +553,10 @@ async function executeTool(
             name: String(meta.name || 'Unknown'),
             imageUrl: String(meta.image || ''),
             price: Math.round(Number(meta.price || 0) * 100),
-            listPrice: Number(meta.originalPrice || 0) > Number(meta.price || 0)
-              ? Math.round(Number(meta.originalPrice) * 100)
-              : undefined,
+            listPrice:
+              Number(meta.originalPrice || 0) > Number(meta.price || 0)
+                ? Math.round(Number(meta.originalPrice) * 100)
+                : undefined,
             discountPct: onSale ? discountPct : undefined,
             onSale: onSale || undefined,
             currency,
@@ -517,28 +571,44 @@ async function executeTool(
             const onSale = Boolean(meta.onSale)
             const discountPct = Number(meta.discountPct || 0)
             const original = Number(meta.originalPrice || 0)
-            const priceStr = onSale && discountPct > 0
-              ? `${meta.price} ${currency} (on sale, was ${original} ${currency}, ${discountPct}% off)`
-              : `${meta.price} ${currency}`
+            const priceStr =
+              onSale && discountPct > 0
+                ? `${meta.price} ${currency} (on sale, was ${original} ${currency}, ${discountPct}% off)`
+                : `${meta.price} ${currency}`
 
-            return `- ${meta.name} (SKU: ${meta.sku}) — ${priceStr} [relevance: ${(match.score * 100).toFixed(0)}%]${meta.available === false ? ' [OUT OF STOCK]' : ''}`
+            return `- ${meta.name} (SKU: ${
+              meta.sku
+            }) — ${priceStr} [relevance: ${(match.score * 100).toFixed(0)}%]${
+              meta.available === false ? ' [OUT OF STOCK]' : ''
+            }`
           })
           .join('\n')
 
         return {
-          result: `Found ${trimmed.length} products via semantic search${droppedCount > 0 ? ` (filtered ${droppedCount} contradicting "${query}")` : ''}:\n${summary}`,
+          result: `Found ${trimmed.length} products via semantic search${
+            droppedCount > 0
+              ? ` (filtered ${droppedCount} contradicting "${query}")`
+              : ''
+          }:\n${summary}`,
           products: productCards,
         }
       }
 
       // Fallback: VTEX keyword search
       // Over-fetch so we still get `limit` in-stock items after filtering
-      const vtexProductsRaw = await ctx.clients.search.searchProducts(query, limit * 2)
-      const vtexProducts = vtexProductsRaw.filter((p) => {
-        const offer = p.items?.[0]?.sellers?.[0]?.commertialOffer
+      const vtexProductsRaw = await ctx.clients.search.searchProducts(
+        query,
+        limit * 2
+      )
 
-        return (offer?.AvailableQuantity ?? 0) > 0
-      }).slice(0, limit)
+      const vtexProducts = vtexProductsRaw
+        .filter((p) => {
+          const offer = p.items?.[0]?.sellers?.[0]?.commertialOffer
+
+          return (offer?.AvailableQuantity ?? 0) > 0
+        })
+        .slice(0, limit)
+
       const products = vtexProducts.map(mapProduct)
 
       if (products.length === 0) {
@@ -559,7 +629,9 @@ async function executeTool(
           name: p.name,
           imageUrl: p.image || '',
           price: Math.round(p.price * 100),
-          listPrice: p.originalPrice ? Math.round(p.originalPrice * 100) : undefined,
+          listPrice: p.originalPrice
+            ? Math.round(p.originalPrice * 100)
+            : undefined,
           discountPct,
           onSale: onSale || undefined,
           currency,
@@ -572,13 +644,18 @@ async function executeTool(
         .map((p) => {
           const onSale = p.originalPrice && p.originalPrice > p.price
           const discountPct = onSale
-            ? Math.round(((p.originalPrice! - p.price) / p.originalPrice!) * 100)
+            ? Math.round(
+                ((p.originalPrice! - p.price) / p.originalPrice!) * 100
+              )
             : 0
+
           const priceStr = onSale
             ? `${p.price} ${currency} (on sale, was ${p.originalPrice} ${currency}, ${discountPct}% off)`
             : `${p.price} ${currency}`
 
-          return `- ${p.name} (SKU: ${p.sku}) — ${priceStr}${!p.available ? ' [OUT OF STOCK]' : ''}`
+          return `- ${p.name} (SKU: ${p.sku}) — ${priceStr}${
+            !p.available ? ' [OUT OF STOCK]' : ''
+          }`
         })
         .join('\n')
 
@@ -611,7 +688,9 @@ async function executeTool(
         const available = (offer?.AvailableQuantity ?? 0) > 0
         const price = offer?.Price ?? 0
 
-        return `  - SKU ${item.itemId}: "${item.nameComplete || item.name}" — ${price} RON ${available ? '(in stock)' : '(OUT OF STOCK)'}`
+        return `  - SKU ${item.itemId}: "${
+          item.nameComplete || item.name
+        }" — ${price} RON ${available ? '(in stock)' : '(OUT OF STOCK)'}`
       })
 
       // Build a prescriptive action hint so the LLM can't ignore the variant check.
@@ -619,7 +698,9 @@ async function executeTool(
       // skuName format. We use the same suffix extraction as add_to_cart so the
       // labels are consistent across the conversation.
       const variantLabels = availableItems
-        .map((item) => extractVariantLabel(item.nameComplete || item.name || ''))
+        .map((item) =>
+          extractVariantLabel(item.nameComplete || item.name || '')
+        )
         .filter((label) => label.length > 0)
 
       let action: string
@@ -667,7 +748,9 @@ async function executeTool(
         ...variantLines,
         '',
         action,
-      ].filter(Boolean).join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
 
       return { result: details }
     }
@@ -681,13 +764,17 @@ async function executeTool(
       // ("Da, adaugă", "OK", "prima", etc.) AND the SKU isn't one returned
       // by any get_product_details tool result this chat call.
       const validationError = validateAddToCart(sku, userMessage, messages)
+
       if (validationError) {
-        console.warn(`[ACG Chat] add_to_cart blocked — SKU ${sku} not in valid set (issue 0008)`)
+        console.warn(
+          `[ACG Chat] add_to_cart blocked — SKU ${sku} not in valid set (issue 0008)`
+        )
+
         return { result: validationError }
       }
 
       const cart = new Cart({ checkout: ctx.clients.checkout })
-      const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
+      const ofId = orderFormId || (await resolveOrderFormId(ctx, cart))
 
       try {
         const updated = await cart.addItem(ofId, sku, quantity)
@@ -711,15 +798,17 @@ async function executeTool(
             `Variant: ${variantLabel || '(none detected)'}`,
             `Cart total: ${updated.total} ${updated.currency} (${updated.itemCount} items).`,
             '',
-            'CONFIRMATION: Răspunde clientului INCLUZÂND varianta. Exemplu: "Am adăugat ' +
-              shortName + ' ' + (variantLabel || '') +
-              ' — total ' + updated.total + ' ' + updated.currency + ' ✓"',
+            `CONFIRMATION: Răspunde clientului INCLUZÂND varianta. Exemplu: "Am adăugat ${shortName} ${
+              variantLabel || ''
+            } — total ${updated.total} ${updated.currency} ✓"`,
           ].join('\n'),
           cartUpdated: true,
         }
       } catch (err) {
         if (err instanceof InvalidSkuFormatError) {
-          console.warn(`[ACG Chat] Rejecting suspicious SKU format: "${err.sku}"`)
+          console.warn(
+            `[ACG Chat] Rejecting suspicious SKU format: "${err.sku}"`
+          )
 
           return {
             result: `ERROR: SKU "${err.sku}" e invalid. SKU-urile valide sunt itemId numeric (ex: "590551"), NU productId + variantă (ex: "588600_M"). ACTION: Apelează get_product_details(productId) pentru a vedea SKU-urile reale ale variantelor, apoi add_to_cart cu unul EXACT din lista returnată. NU construi SKU-uri.`,
@@ -765,7 +854,9 @@ async function executeTool(
 
     case 'get_cart': {
       if (!orderFormId) {
-        return { result: 'Your cart is empty. Try searching for some products!' }
+        return {
+          result: 'Your cart is empty. Try searching for some products!',
+        }
       }
 
       const cart = new Cart({ checkout: ctx.clients.checkout })
@@ -802,12 +893,19 @@ async function executeTool(
         }
 
         const items = snapshot.items
-          .map((i) => `- ${i.name} x${i.quantity} — ${i.totalPrice} ${snapshot.currency}`)
+          .map(
+            (i) =>
+              `- ${i.name} x${i.quantity} — ${i.totalPrice} ${snapshot.currency}`
+          )
           .join('\n')
 
         const status = [
-          snapshot.hasShippingAddress ? 'Shipping address: set' : 'Shipping address: not set',
-          snapshot.isReadyForCheckout ? 'Ready for checkout' : 'Not ready for checkout yet',
+          snapshot.hasShippingAddress
+            ? 'Shipping address: set'
+            : 'Shipping address: not set',
+          snapshot.isReadyForCheckout
+            ? 'Ready for checkout'
+            : 'Not ready for checkout yet',
         ].join('\n')
 
         return {
@@ -894,14 +992,19 @@ async function executeTool(
 
     case 'apply_coupon': {
       if (!orderFormId) {
-        return { result: 'Cart is empty. Add items first before applying a coupon.' }
+        return {
+          result: 'Cart is empty. Add items first before applying a coupon.',
+        }
       }
 
       const code = args.code as string
       const cart = new Cart({ checkout: ctx.clients.checkout })
 
       try {
-        const { cart: updated, applied, reason } = await cart.applyCoupon(orderFormId, code)
+        const { cart: updated, applied, reason } = await cart.applyCoupon(
+          orderFormId,
+          code
+        )
 
         if (applied) {
           return {
@@ -933,7 +1036,7 @@ async function executeTool(
 
     case 'set_customer_profile': {
       const cart = new Cart({ checkout: ctx.clients.checkout })
-      const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
+      const ofId = orderFormId || (await resolveOrderFormId(ctx, cart))
 
       const profileData = {
         email: args.email as string,
@@ -962,7 +1065,7 @@ async function executeTool(
 
     case 'set_shipping_address': {
       const cart = new Cart({ checkout: ctx.clients.checkout })
-      const ofId = orderFormId || await resolveOrderFormId(ctx, cart)
+      const ofId = orderFormId || (await resolveOrderFormId(ctx, cart))
 
       try {
         await cart.setShippingAddress(ofId, {
@@ -1002,14 +1105,19 @@ async function executeTool(
         const shippingOptions = await cart.getShippingOptions(orderFormId)
 
         if (shippingOptions.length === 0) {
-          return { result: 'No shipping options available. Make sure you have set a shipping address.' }
+          return {
+            result:
+              'No shipping options available. Make sure you have set a shipping address.',
+          }
         }
 
         const lines = shippingOptions.map((opt) => {
           const daysMatch = (opt.estimatedDelivery || '').replace(/[^\d]/g, '')
           const days = daysMatch ? parseInt(daysMatch, 10) : 0
 
-          return `- ${opt.name}: ${opt.price > 0 ? `${opt.price} RON` : 'FREE'} (${days} business days)`
+          return `- ${opt.name}: ${
+            opt.price > 0 ? `${opt.price} RON` : 'FREE'
+          } (${days} business days)`
         })
 
         const unique = [...new Set(lines)]
@@ -1043,27 +1151,42 @@ async function executeTool(
       // Free shipping threshold
       const freeShippingThreshold = 200
 
-      if (cart.total < freeShippingThreshold && cart.total >= freeShippingThreshold * 0.5) {
+      if (
+        cart.total < freeShippingThreshold &&
+        cart.total >= freeShippingThreshold * 0.5
+      ) {
         const needed = freeShippingThreshold - cart.total
 
-        suggestions.push(`Add ${needed.toFixed(2)} ${cart.currency} more for FREE shipping!`)
+        suggestions.push(
+          `Add ${needed.toFixed(2)} ${cart.currency} more for FREE shipping!`
+        )
       }
 
       // Quantity discount hint
       if (cart.items.length === 1 && cart.items[0].quantity === 1) {
-        suggestions.push(`Buy 2 of "${cart.items[0].name}" and you might qualify for a bulk discount.`)
+        suggestions.push(
+          `Buy 2 of "${cart.items[0].name}" and you might qualify for a bulk discount.`
+        )
       }
 
       // Bundle suggestion
       if (cart.items.length >= 2) {
-        suggestions.push('You have multiple items — check if a bundle deal is available at checkout.')
+        suggestions.push(
+          'You have multiple items — check if a bundle deal is available at checkout.'
+        )
       }
 
       if (suggestions.length === 0) {
-        return { result: `Your cart looks good at ${cart.total} ${cart.currency}. No additional deals found right now.` }
+        return {
+          result: `Your cart looks good at ${cart.total} ${cart.currency}. No additional deals found right now.`,
+        }
       }
 
-      return { result: `Deal suggestions:\n${suggestions.map((s) => `- ${s}`).join('\n')}` }
+      return {
+        result: `Deal suggestions:\n${suggestions
+          .map((s) => `- ${s}`)
+          .join('\n')}`,
+      }
     }
 
     // The legacy `case 'checkout'` block was deleted by Issue 03 — its
@@ -1082,16 +1205,22 @@ async function executeTool(
         const total = order.value ? (order.value / 100).toFixed(2) : 'N/A'
 
         return {
-          result: `Order ${orderId}:\nStatus: ${status}\nTotal: ${total}\nCreated: ${order.creationDate || 'N/A'}`,
+          result: `Order ${orderId}:\nStatus: ${status}\nTotal: ${total}\nCreated: ${
+            order.creationDate || 'N/A'
+          }`,
         }
       } catch {
-        return { result: `Order ${orderId} not found or you don't have access to view it.` }
+        return {
+          result: `Order ${orderId} not found or you don't have access to view it.`,
+        }
       }
     }
 
     case 'suggest_replies': {
       const options = Array.isArray(args.options)
-        ? (args.options as unknown[]).filter((o): o is string => typeof o === 'string').slice(0, 4)
+        ? (args.options as unknown[])
+            .filter((o): o is string => typeof o === 'string')
+            .slice(0, 4)
         : []
 
       if (options.length === 0) {
@@ -1116,7 +1245,9 @@ function createLLMClient(ctx: Context, settings: AppSettings) {
 
   if (provider === 'openai') {
     if (!settings.openaiApiKey) {
-      throw new Error('OpenAI API key not configured. Go to Admin > Apps > ACG Adapter settings.')
+      throw new Error(
+        'OpenAI API key not configured. Go to Admin > Apps > ACG Adapter settings.'
+      )
     }
 
     return new OpenAIClient(ctx.vtex, {
@@ -1127,7 +1258,9 @@ function createLLMClient(ctx: Context, settings: AppSettings) {
 
   if (provider === 'gemini') {
     if (!settings.geminiApiKey) {
-      throw new Error('Gemini API key not configured. Go to Admin > Apps > ACG Adapter settings.')
+      throw new Error(
+        'Gemini API key not configured. Go to Admin > Apps > ACG Adapter settings.'
+      )
     }
 
     return new GeminiClient(ctx.vtex, {
@@ -1138,7 +1271,9 @@ function createLLMClient(ctx: Context, settings: AppSettings) {
 
   // Default: Claude
   if (!settings.claudeApiKey) {
-    throw new Error('Claude API key not configured. Go to Admin > Apps > ACG Adapter settings.')
+    throw new Error(
+      'Claude API key not configured. Go to Admin > Apps > ACG Adapter settings.'
+    )
   }
 
   return new ClaudeClient(ctx.vtex, {
@@ -1164,7 +1299,10 @@ function trimHistory(
   let trimmed = history.slice(-MAX_MESSAGES)
 
   // Further trim if token budget exceeded
-  let totalTokens = trimmed.reduce((sum, m) => sum + estimateTokens(m.content), 0)
+  let totalTokens = trimmed.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0
+  )
 
   while (totalTokens > maxTokens && trimmed.length > 2) {
     trimmed = trimmed.slice(1)
@@ -1175,7 +1313,7 @@ function trimHistory(
 }
 
 // Truncate tool results to avoid blowing up context
-function truncateToolResult(result: string, maxChars: number = 1500): string {
+function truncateToolResult(result: string, maxChars = 1500): string {
   if (result.length <= maxChars) return result
 
   return `${result.slice(0, maxChars)}... [truncated]`
@@ -1247,11 +1385,16 @@ function extractVariantLabel(fullName: string): string {
   if (!fullName) return ''
 
   const lastSep = fullName.lastIndexOf(' - ')
-  const suffix = lastSep >= 0 ? fullName.slice(lastSep + 3).trim() : fullName.trim()
+  const suffix =
+    lastSep >= 0 ? fullName.slice(lastSep + 3).trim() : fullName.trim()
 
   if (!suffix) return ''
 
-  const parts = suffix.split('_').map((p) => p.trim()).filter(Boolean)
+  const parts = suffix
+    .split('_')
+    .map((p) => p.trim())
+    .filter(Boolean)
+
   const cleaned = parts.filter((p) => !/^[A-Z0-9]{6,}$/.test(p))
 
   if (cleaned.length === 0 || cleaned.every((p) => /^unica$/i.test(p))) {
@@ -1276,16 +1419,19 @@ const CONFIRMATION_REGEX = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm|prima|
 function extractValidSkuSet(messages: LLMMessage[]): Set<string> {
   const skus = new Set<string>()
   const skuPattern = /\bSKU\s+(\d+)/g
+
   for (const m of messages) {
     if (!m.toolResults) continue
     for (const tr of m.toolResults) {
       if (tr.name !== 'get_product_details') continue
       let match: RegExpExecArray | null
+
       while ((match = skuPattern.exec(tr.result)) !== null) {
         skus.add(match[1])
       }
     }
   }
+
   return skus
 }
 
@@ -1304,10 +1450,13 @@ function validateAddToCart(
   if (!CONFIRMATION_REGEX.test(userMessage.trim())) {
     return null
   }
+
   const validSkus = extractValidSkuSet(messages)
+
   if (validSkus.has(sku)) {
     return null
   }
+
   return [
     `ERROR: SKU ${sku} is not a valid variant of any product in this conversation.`,
     `Valid SKUs come from get_product_details tool results — not from prior conversation history`,
@@ -1344,6 +1493,7 @@ function detectCartHallucination(
     /\badded to (?:cart|the cart)\b/i,
     /\b(?:produsul|articolul|piesa) e (?:acum )?(?:în|in) co[șs]\b/i,
   ]
+
   const removePatterns = [
     /\bam scos\b/i,
     /\bam [șs]ters\b/i,
@@ -1358,14 +1508,18 @@ function detectCartHallucination(
   if (claimsAdd && !didAdd) {
     return {
       violated: true,
-      reason: `LLM said "added" but no add_to_cart tool was called (tools: ${calledTools.join(',') || 'none'})`,
+      reason: `LLM said "added" but no add_to_cart tool was called (tools: ${
+        calledTools.join(',') || 'none'
+      })`,
     }
   }
 
   if (claimsRemove && !didRemove) {
     return {
       violated: true,
-      reason: `LLM said "removed" but no remove_from_cart/update was called (tools: ${calledTools.join(',') || 'none'})`,
+      reason: `LLM said "removed" but no remove_from_cart/update was called (tools: ${
+        calledTools.join(',') || 'none'
+      })`,
     }
   }
 
@@ -1375,11 +1529,11 @@ function detectCartHallucination(
 // ─── Token Budget Constants ─────────────────────────────────────
 
 const TOKEN_BUDGET = {
-  systemPrompt: 400,     // ~400 tokens for system prompt
-  history: 1500,         // ~1500 tokens for conversation history
-  toolResults: 1500,     // ~1500 tokens for tool results per round
+  systemPrompt: 400, // ~400 tokens for system prompt
+  history: 1500, // ~1500 tokens for conversation history
+  toolResults: 1500, // ~1500 tokens for tool results per round
   maxResponseTokens: 512, // Max LLM output tokens per call
-  maxTotalInput: 4000,   // Hard cap on total input tokens
+  maxTotalInput: 4000, // Hard cap on total input tokens
 }
 
 // ─── Main Handler ───────────────────────────────────────────────
@@ -1398,15 +1552,17 @@ export async function chatHandler(ctx: Context) {
     // Reject excessively long messages
     if (body.message.length > 2000) {
       ctx.status = 400
-      ctx.body = { error: 'Message too long. Please keep messages under 2000 characters.' }
+      ctx.body = {
+        error: 'Message too long. Please keep messages under 2000 characters.',
+      }
 
       return
     }
 
     // Get app settings
-    const settings: AppSettings = await ctx.clients.apps.getAppSettings(
-      'vtexeurope.acg-adapter'
-    ).catch(() => ({}))
+    const settings: AppSettings = await ctx.clients.apps
+      .getAppSettings('vtexeurope.acg-adapter')
+      .catch(() => ({}))
 
     // Create LLM client
     let llm: ClaudeClient | OpenAIClient | GeminiClient
@@ -1471,7 +1627,11 @@ export async function chatHandler(ctx: Context) {
       )
 
       console.log(
-        `[ACG Chat] Round ${round} — text:${(response.content?.length ?? 0)}c toolCalls:${response.toolCalls.length} finishReason:${response.finishReason}`
+        `[ACG Chat] Round ${round} — text:${
+          response.content?.length ?? 0
+        }c toolCalls:${response.toolCalls.length} finishReason:${
+          response.finishReason
+        }`
       )
 
       if (response.content && response.content.trim().length > 0) {
@@ -1482,17 +1642,23 @@ export async function chatHandler(ctx: Context) {
       if (response.toolCalls.length === 0) {
         // Use this round's text if available, else fall back to whatever we
         // captured in earlier rounds (Gemini after-tool quiet-turn case).
-        const finalText = response.content?.trim() ? response.content : lastAssistantText
+        const finalText = response.content?.trim()
+          ? response.content
+          : lastAssistantText
 
         // EMPTY RESPONSE GUARD — Gemini sometimes returns text:0 toolCalls:0
         // on confirmation messages ("Da, adaugă") because it can't decide what
         // to add without re-reading the conversation. One corrective round
         // usually unblocks it.
         const isEmpty = !response.content?.trim() && !lastAssistantText
-        const userMessageLooksLikeConfirmation = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm)\b/i.test(body.message)
+        const userMessageLooksLikeConfirmation = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm)\b/i.test(
+          body.message
+        )
 
         if (isEmpty && round < MAX_TOOL_ROUNDS - 1) {
-          console.warn('[ACG Chat] Empty response detected — forcing corrective round')
+          console.warn(
+            '[ACG Chat] Empty response detected — forcing corrective round'
+          )
           messages.push({ role: 'assistant', content: '(no response)' })
           messages.push({
             role: 'user',
@@ -1503,27 +1669,44 @@ export async function chatHandler(ctx: Context) {
           continue
         }
 
-        const guard = detectCartHallucination(finalText, addedSuccessfully, removedSuccessfully, calledTools)
+        const guard = detectCartHallucination(
+          finalText,
+          addedSuccessfully,
+          removedSuccessfully,
+          calledTools
+        )
 
         if (guard.violated && round < MAX_TOOL_ROUNDS - 1) {
           // The LLM claimed a cart action it didn't actually perform.
           // Push a corrective system note and let it run another round to do the real call.
-          console.warn(`[ACG Chat] Hallucination detected — ${guard.reason}. Forcing correction round ${round + 1}.`)
+          console.warn(
+            `[ACG Chat] Hallucination detected — ${
+              guard.reason
+            }. Forcing correction round ${round + 1}.`
+          )
           messages.push({ role: 'assistant', content: finalText })
           messages.push({
             role: 'user',
-            content: `[SYSTEM CORRECTION] Răspunsul tău anterior a spus că ai adăugat/scos un produs, DAR nu ai apelat tool-ul corespunzător în acest mesaj. Asta e o halucinare gravă. Tools apelate până acum: ${calledTools.join(', ') || '(niciunul)'}. Apelează ACUM tool-ul corect (add_to_cart sau remove_from_cart cu SKU-ul exact), apoi confirmă bazat pe rezultatul lui. NU repeta răspunsul fabricat.`,
+            content: `[SYSTEM CORRECTION] Răspunsul tău anterior a spus că ai adăugat/scos un produs, DAR nu ai apelat tool-ul corespunzător în acest mesaj. Asta e o halucinare gravă. Tools apelate până acum: ${
+              calledTools.join(', ') || '(niciunul)'
+            }. Apelează ACUM tool-ul corect (add_to_cart sau remove_from_cart cu SKU-ul exact), apoi confirmă bazat pe rezultatul lui. NU repeta răspunsul fabricat.`,
           })
           continue
         }
 
         // Localize the fallback to match the merchant's default locale.
         // Picks up strings.errorConnection from the active config.
-        const fallbackText = config.strings[config.locales.default]?.errorConnection
-          ?? "I'm sorry, I couldn't generate a response."
+        const fallbackText =
+          config.strings[config.locales.default]?.errorConnection ??
+          "I'm sorry, I couldn't generate a response."
+
         const reply = finalText || fallbackText
 
-        console.log(`[ACG Chat] Final reply (round ${round}, ${reply.length}c): ${reply.slice(0, 120)}${reply.length > 120 ? '...' : ''}`)
+        console.log(
+          `[ACG Chat] Final reply (round ${round}, ${
+            reply.length
+          }c): ${reply.slice(0, 120)}${reply.length > 120 ? '...' : ''}`
+        )
 
         ctx.body = {
           reply,
@@ -1545,7 +1728,8 @@ export async function chatHandler(ctx: Context) {
         messages.push({
           role: 'assistant',
           content: response.content || '(calling tools)',
-          toolCalls: response.toolCalls.length > 0 ? response.toolCalls : undefined,
+          toolCalls:
+            response.toolCalls.length > 0 ? response.toolCalls : undefined,
         })
       }
 
@@ -1554,11 +1738,21 @@ export async function chatHandler(ctx: Context) {
       const roundToolResults: Array<{ name: string; result: string }> = []
 
       for (const toolCall of response.toolCalls) {
-        console.log(`[ACG Chat] Tool call: ${toolCall.name}`, JSON.stringify(toolCall.arguments))
+        console.log(
+          `[ACG Chat] Tool call: ${toolCall.name}`,
+          JSON.stringify(toolCall.arguments)
+        )
         calledTools.push(toolCall.name)
 
         try {
-          const toolResult = await executeTool(ctx, toolCall, orderFormId, config, messages, body.message)
+          const toolResult = await executeTool(
+            ctx,
+            toolCall,
+            orderFormId,
+            config,
+            messages,
+            body.message
+          )
 
           // Only count cart actions as successful if the tool didn't return
           // an ERROR result. Otherwise the hallucination guard would skip
@@ -1567,7 +1761,11 @@ export async function chatHandler(ctx: Context) {
 
           if (toolCall.name === 'add_to_cart' && !wasError) {
             addedSuccessfully = true
-          } else if ((toolCall.name === 'remove_from_cart' || toolCall.name === 'update_cart_quantity') && !wasError) {
+          } else if (
+            (toolCall.name === 'remove_from_cart' ||
+              toolCall.name === 'update_cart_quantity') &&
+            !wasError
+          ) {
             removedSuccessfully = true
           }
 
@@ -1606,7 +1804,9 @@ export async function chatHandler(ctx: Context) {
           console.error(`[ACG Chat] Tool error: ${toolCall.name}`, error)
           roundToolResults.push({
             name: toolCall.name,
-            result: `ERROR: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            result: `ERROR: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`,
           })
         }
       }
@@ -1629,15 +1829,25 @@ export async function chatHandler(ctx: Context) {
 
     // If we exhausted tool rounds, ask once more for a final text-only response
     console.warn('[ACG Chat] Exhausted MAX_TOOL_ROUNDS — requesting final text')
-    const finalResponse = await llm.chat(messages, [], TOKEN_BUDGET.maxResponseTokens)
-    const fallbackText = config.strings[config.locales.default]?.errorConnection
-      ?? "I've looked into that for you. Is there anything else I can help with?"
-    const finalText =
-      finalResponse.content?.trim() ||
-      lastAssistantText ||
-      fallbackText
+    const finalResponse = await llm.chat(
+      messages,
+      [],
+      TOKEN_BUDGET.maxResponseTokens
+    )
 
-    console.log(`[ACG Chat] Final reply (${finalText.length}c): ${finalText.slice(0, 120)}${finalText.length > 120 ? '...' : ''}`)
+    const fallbackText =
+      config.strings[config.locales.default]?.errorConnection ??
+      "I've looked into that for you. Is there anything else I can help with?"
+
+    const finalText =
+      finalResponse.content?.trim() || lastAssistantText || fallbackText
+
+    console.log(
+      `[ACG Chat] Final reply (${finalText.length}c): ${finalText.slice(
+        0,
+        120
+      )}${finalText.length > 120 ? '...' : ''}`
+    )
 
     ctx.body = {
       reply: finalText,
