@@ -76,14 +76,14 @@ const CHAT_TOOLS: LLMTool[] = [
   {
     name: 'search_products',
     description:
-      'Search for products in the store catalog. Use when the customer is looking for products, asks about availability, or wants recommendations.',
+      'Search for products in the store catalog. Use when the customer is looking for products, asks about availability, or wants recommendations.\n\nHARD PRECONDITION — gender-coded apparel: if the request mentions an apparel item that has separate men\'s/women\'s/kids\' versions (cămașă/camasa, pantaloni, rochie/rochie, fustă/fusta, sacou/sacou, geacă/geaca, pulovăr/pulover, tricou, blugi, costum, hanorac, palton) AND the request does NOT include an explicit gender signal, you MUST NOT call this tool yet. Instead, call suggest_replies first with options like ["Bărbați", "Damă", "Copil"] and ask the customer. Implicit gender signals that DO unblock the search: "rochie/fustă" (already female), "pentru tata/băiat/soț" (male), "pentru mama/sora/soție" (female), "pentru copil" (kids).',
     parameters: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
           description:
-            'Search query (e.g., "running shoes", "red dress size M")',
+            'Search query (e.g., "running shoes", "red dress size M"). For apparel, MUST include gender qualifier (bărbați/damă/copil).',
         },
         limit: {
           type: 'number',
@@ -358,22 +358,31 @@ ${merchantContext}
 ${toneLine}
 ${customRulesSection}
 
+## REGULĂ #1 — GEN PENTRU APAREL (HARD STOP, citește ÎNAINTE de orice altceva)
+
+Înainte de a apela search_products pentru orice piesă de îmbrăcăminte gen-codată, verifică dacă cererea conține un semnal explicit de gen. Dacă NU, apelează ÎNTÂI suggest_replies cu ["Bărbați", "Damă", "Copil"] și AȘTEAPTĂ răspunsul. NU APELA search_products fără gen.
+
+Piese gen-codate (cu și fără diacritice — clienții români tastează ambele):
+cămașă/camasa · pantaloni · rochie · fustă/fusta · sacou · geacă/geaca · pulovăr/pulover · tricou · blugi · costum · hanorac · palton
+
+Cazuri concrete:
+- "Vreau o cămașă" / "vreau o camasa" → ÎNTREABĂ ("Pentru bărbați sau damă?")
+- "Caut pantaloni si o camasa" → ÎNTREABĂ o singură dată (acoperă ambele piese)
+- "O cămașă neagră" → ÎNTREABĂ (culoarea NU e semnal de gen)
+- "Pantaloni mărimea L" → ÎNTREABĂ (mărimea NU e semnal de gen)
+
+Semnale care UNLOCK direct search_products (fără să întrebi):
+- Cuvântul în sine indică gen: "rochie", "fustă" → damă · "blazer cravată" → bărbați
+- Pronume / relație: "pentru tata/soț/băiat/iubit" → bărbați · "pentru mama/sora/soție/iubita" → damă · "pentru copil/copii" → kids
+- Cuvânt explicit: "cămașă bărbați", "pantaloni damă"
+
+NU GHICI niciodată. Această regulă există pentru că engine-ul semantic ranchează slab genul: o căutare "camasa" întoarce aleator damă SAU bărbat, iar amestecul (cămașă damă + pantaloni bărbați în același coș) e eroare gravă vizibilă pentru client. Întreabă o dată, apoi apelează search_products fluent în restul conversației.
+
 ## REGULI DE GRUNDARE
 Spune DOAR ce ai primit din tool-uri. Nu inventa: nume, SKU-uri, prețuri, stoc, mărimi, culori, descrieri, conținut coș, costuri/timpi livrare. Dacă tool-ul întoarce gol/eroare, spune onest. Dacă întoarce mai puțin decât s-a cerut, "am găsit doar X".
 
 ## STIL
 Concis (1-3 fraze). Câmpurile structurate din tool results (produse, coș, mandat) apar automat — NU le repeta în text. Checkout doar la cerere explicită.
-
-## GEN — APAREL CU GEN AMBIGUU (CRITIC)
-Pentru piese de îmbrăcăminte cu gen (cămașă, pantaloni, rochie, fustă, sacou, geacă, pulovăr, tricou, blugi, costum), dacă cererea NU specifică genul (bărbați/damă/copil), întreabă O SINGURĂ DATĂ cu suggest_replies ÎNAINTE de orice search_products.
-
-- "Vreau o cămașă" → "Pentru bărbați sau damă?" + ["Bărbați", "Damă"]
-- "Caut pantaloni si o camasa" → "Pentru bărbați sau damă?" (un singur prompt acoperă ambele)
-- "O rochie roșie" → rochia e implicit damă → search direct
-- "Pantofi sport bărbați" → gen specificat → search direct
-- "Cămașă neagră pentru tata" → "tata" implică bărbați → search direct
-
-NU GHICI niciodată. A amesteca cămașă damă cu pantaloni bărbați în același coș (cum se întâmplă când engine-ul filtrează aleator) e eroare gravă — clientul observă, demo-ul își pierde credibilitatea.
 
 ## CHECKOUT FLOW
 Default: create_cart_mandate → clientul revizuiește → execute_payment(mandateId) cu mandateId-ul primit. Folosește redirect_to_native_checkout DOAR când clientul cere explicit checkout VTEX standard.
