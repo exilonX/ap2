@@ -66,9 +66,34 @@ export function registerSearchTools(server: McpServer, client: VtexClient) {
   // Visual product search — renders product cards with images in chat
   const browseProductsTool = server.tool(
     'browseProducts',
-    'Search and browse products visually with images, prices, and add-to-cart buttons.',
+    [
+      'Search and browse products visually with images, prices, and add-to-cart buttons.',
+      '',
+      'HARD PRECONDITION — gender-coded apparel:',
+      'If the user request mentions an apparel item that has separate men\'s / women\'s / kids\' versions',
+      '(cămașă/camasa, pantaloni, fustă/fusta, sacou, geacă/geaca, pulovăr/pulover, tricou, blugi,',
+      'costum, hanorac, palton — and not "rochie" which is implicitly female)',
+      'AND the request does NOT include an explicit gender signal,',
+      'you MUST NOT call this tool yet. Instead, ask the user "Pentru bărbați sau damă?" first.',
+      '',
+      'Implicit gender signals that DO unblock the search (no need to ask):',
+      '  - The word itself is gendered: "rochie", "fustă" → female; "blazer cu cravată" → male',
+      '  - Pronouns / relations: "pentru tata/soț/băiat/iubit" → male,',
+      '    "pentru mama/sora/soție/iubită" → female, "pentru copil" → kids',
+      '  - Explicit qualifier: "cămașă bărbați", "pantaloni damă"',
+      '',
+      'Color, size, material, occasion are NOT gender signals — still ask if no gender given.',
+      '',
+      'Once gender is known, include it in the search query (e.g. q="camasa bărbați negru").',
+      'The semantic search engine ranks gender weakly; without it the catalog returns mixed-gender',
+      'results and silently mixes men\'s pants with women\'s shirts in the cart.',
+    ].join('\n'),
     {
-      query: z.string().describe('Search query'),
+      query: z
+        .string()
+        .describe(
+          'Search query. For apparel, MUST include gender qualifier (bărbați/damă/copil) — see HARD PRECONDITION in tool description.'
+        ),
       maxResults: z.number().optional().describe('Max results (default: 5)'),
     },
     async (params) => {
