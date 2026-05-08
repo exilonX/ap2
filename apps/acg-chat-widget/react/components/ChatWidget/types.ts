@@ -23,6 +23,9 @@ export interface Mandate {
   signedBy: string         // merchant DID at sign time
   signedAt: string         // ISO timestamp
   didDocumentUrl: string
+  checkoutUrl: string      // VTEX native checkout — same-tab navigation from primary CTA
+  total: number            // cart total at sign time, displayed in the action button
+  currency: string         // ISO-4217 (e.g. RON)
 }
 
 export interface Message {
