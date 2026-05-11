@@ -27,14 +27,14 @@ Word budgets (~2.5 wps after natural pauses):
 
 | Scene | Duration | Word budget |
 |---|---|---|
-| 1 — AP2 primer + cold open (incl. H-P / H-N-P pillar) | 35s | ~85 words |
-| 2 — Live shopping | 35s | ~70 words |
+| 1 — Montage cold open + AP2 primer (incl. H-P / H-N-P pillar) | 40s | ~85 words (montage is silent) |
+| 2 — Live shopping | 30s | ~65 words |
 | 3 — Three-actor signing ceremony | 70s | ~125 words |
-| 4 — Independent verification | 25s | ~50 words |
+| 4 — Independent verification (substantive) | 25s | ~65 words |
 | 5 — Rejection branch (punchline) | 30s | ~60 words |
 | 6 — Architecture diagram + RAG + widget | 30s | ~60 words |
 | 7 — Compliance + commercial CTA | 15s | ~30 words |
-| **Total** | **240s = 4:00** | **~480 words** |
+| **Total** | **240s = 4:00** | **~490 words** |
 
 ---
 
@@ -71,43 +71,51 @@ Each beat below uses this format:
 
 ---
 
-### Scene 1 — AP2 primer + cold open (0:00 → 0:35)
+### Scene 1 — Trailer-cut cold open + AP2 primer (0:00 → 0:40)
 
-The single most important rewrite from v1. Viewer needs context on **what AP2 is, the two modes it covers (human-present vs human-not-present), why mandates exist, and who the three actors are** *before* the demo unfolds, otherwise the rest reads as random JSON ceremony.
+The viewer needs **a hook in the first 5 seconds**, not a static DID document. The pattern that works for dev-tool demos (Linear, Vercel, Cursor, Lovable, etc.): a 6–8 second fast-cut montage showcasing what was built, then drop into the explanation. Below is the rewrite — montage opener (8s), then the AP2 primer condensed to 32s.
 
-**Visual:** Black fade-in → animated text "Who's responsible when an AI buys?" → split-screen showing two scenarios: (1) user actively chatting with agent on left, (2) agent acting autonomously while user is asleep / away on right → AP2 spec reference → three-actor diagram → crossfade to Claude Desktop.
+**Visual:** Rapid-cut montage assembled from clips you'll record across the rest of the scenes, intercut at 1–1.5s per clip with crossfades. Total runtime ~8s. Then crossfade into the AP2 primer.
 
-> **(0:00-0:09)** — *Black fade-in to bold text: "Who's responsible when an AI buys?"*
-> **VOICE:** "AI agents are shopping on our behalf — sometimes with the user actively chatting, sometimes autonomously while the user sleeps. Who's responsible when something goes wrong? Merchant doesn't see the user. Bank doesn't see the agent. No proof anyone authorized anything."
+> **(0:00-0:08)** — *MONTAGE. Fast-cut, no voice, single sound effect or a low instrumental swell.*
+>
+> Clip sequence (1.0–1.5s each):
+> 1. Chat in Romanian → tool call `browseProducts` expanding → product cards rendering
+> 2. The 4-step ceremony mid-reveal — step 3's 7-check checklist animating in
+> 3. PaymentReceipt JSON open in a browser tab, `verification.valid: true` highlighted
+> 4. Three `.well-known/did.json` URLs side-by-side
+> 5. Mandate badge in the storefront widget — *"Cryptographically signed by acg--miniprix.myvtex.com"*
+> 6. Rejection receipt JSON — `approval_status: rejected` next to `verification.valid: true`
+>
+> **CAPTION (single, holds for the montage):** **Agent commerce. Cryptographically verifiable. Built in 4 weeks.**
+
+> **(0:08-0:16)** — *Crossfade from montage to bold text: "Who's responsible when an AI buys?"*
+> **VOICE:** "AI agents are shopping on our behalf — sometimes with the user actively chatting, sometimes autonomously while we sleep. Who's responsible when something goes wrong?"
 > **CAPTION:** **Who's responsible when an AI buys?**
 
-> **(0:09-0:20)** — *Split-screen visual: left = phone chat with agent (label "Human present"), right = autonomous agent dashboard (label "Human not present — buy when price drops").*
-> **VOICE:** "AP2 covers two modes. Human-present: you're in the loop, confirming each step. Human-not-present: you pre-delegate authority — *buy these shoes when they drop below 80 RON* — and the agent acts later."
-> **CAPTION:** **Human present · Human not present**
+> **(0:16-0:24)** — *Split-screen: left = phone chat with agent labeled "Human present"; right = autonomous agent dashboard labeled "Human not present — buy when price drops".*
+> **VOICE:** "AP2 — Google's Agent Payments Protocol — covers both modes. Human-present: you confirm in real time. Human-not-present: you pre-delegate authority and the agent acts later."
+> **CAPTION:** **AP2 · Agent Payments Protocol · Google · v0.2**
 
-> **(0:20-0:28)** — *AP2 specification reference / Google AP2 GitHub repo page on screen.*
-> **VOICE:** "AP2 — Google's Agent Payments Protocol — gives both modes the same trust shape: cryptographically signed mandates."
-> **CAPTION:** **AP2 · Agent Payments Protocol (Google · v0.2)**
+> **(0:24-0:32)** — *Three-box animation: Merchant signs CartMandate · CP signs PaymentMandate · Network signs PaymentReceipt. Each box gets a key icon and a did:web URL.*
+> **VOICE:** "Three actors. Three private keys. The merchant signs the cart, the Credentials Provider signs the payment, the Network signs the receipt — each with their own Ed25519 key."
+> **CAPTION:** **3 actors · 3 private keys · 3 published DIDs**
 
-> **(0:28-0:35)** — *Animation showing three boxes appearing: Merchant → CartMandate, CP → PaymentMandate, Network → PaymentReceipt. Today's demo label appears under it.*
-> **VOICE:** "Today's demo: human-present. Merchant signs the cart. Credentials Provider signs the payment. Network signs the receipt. Real Ed25519. Published `did:web`."
-> **CAPTION:** **Today: human-present demo · Merchant · CP · Network**
+> **(0:32-0:40)** — *Quick cut: Claude Desktop window opens. Settings → Developer panel briefly visible (~1.5s) showing `vtex-store · running`. Crossfade to the chat input ready for the demo.*
+> **VOICE:** "Today's demo: human-present. The agent runs as an MCP server inside Claude Desktop, proxying to a VTEX IO backend."
+> **CAPTION:** **MCP server: `vtex-store` · live connection**
 
 ---
 
-### Scene 2 — Live shopping + RAG (0:35 → 1:10)
+### Scene 2 — Live shopping + RAG (0:40 → 1:10)
 
 **Visual:** Claude Desktop window. Type, tool calls fire, iframe renders products, add to cart.
 
-> **(0:35-0:43)** — *Type "vreau o camasa si niste pantaloni pentru barbati".*
-> **VOICE:** "I ask the agent in Romanian for a shirt and some pants. The MCP server proxies through a VTEX IO adapter."
-> **CAPTION:** **MCP → VTEX IO adapter → real catalog**
+> **(0:40-0:55)** — *Type "vreau o camasa si niste pantaloni pentru barbati". Tool calls fire — make sure `vtex-store: browseProducts` is visible in the chat. Caption flags Pinecone since the UI doesn't visibly show it.*
+> **VOICE:** "I ask the agent in Romanian for a shirt and some pants. The MCP tool call hits a VTEX IO adapter that queries both the live catalog and a Pinecone vector index. 'Pantaloni lungi închiși la culoare' returns actual long dark pants — semantic search, not keyword matches."
+> **CAPTION:** **MCP → VTEX IO adapter · live catalog + Pinecone vector search**
 
-> **(0:43-0:58)** — *Tool calls fire. Caption flags Pinecone since the UI doesn't visibly show it.*
-> **VOICE:** "The adapter hits the real VTEX catalog — and a Pinecone vector index for semantic search. 'Pantaloni lungi închiși la culoare' returns actual long dark pants, not just keyword matches."
-> **CAPTION:** **Pinecone vector index · semantic search over VTEX catalog**
-
-> **(0:58-1:10)** — *Product cards render in iframes. Click add-to-cart on a shirt + pants.*
+> **(0:55-1:10)** — *Product cards render in iframes. Click add-to-cart on a shirt + pants.*
 > **VOICE:** "The agent reads the results, renders product cards, adds two items to a real cart on the same orderForm a human would use."
 > **CAPTION:** **Real merchant · Real prices · Real RON**
 
@@ -148,25 +156,25 @@ This is where each actor is *named*, *roled*, and *attributed* to a real-world p
 
 ### Scene 4 — Independent verification (2:20 → 2:45)
 
-Since scene 1 explained the *why*, scene 4 is now a fast demonstration — click links, point at fields, show validation.
+The strongest single beat for AP2 credibility. The viewer needs to feel that **three different parties hold three different private keys**, none of which can sign on each other's behalf, and that anyone with a browser can verify the chain.
 
-**Visual:** Click each artifact link; new browser tabs with JSON; key fields highlighted.
+**Visual:** Click each artifact link; new browser tabs with JSON; key fields highlighted; close on the three DID documents side-by-side.
 
-> **(2:20-2:25)** — *Click CartMandate link. Highlight `verification.valid: true` and `signedBy`.*
-> **VOICE:** "The CartMandate. `verification.valid: true`. Signed by the merchant."
-> **CAPTION:** **CartMandate · verification.valid: true**
+> **(2:20-2:27)** — *Click CartMandate link. Browser opens JSON. Highlight `merchant_authorization` (the JWT string), `verification.valid: true`, `signedBy: did:web:acg--miniprix.myvtex.com`.*
+> **VOICE:** "The CartMandate. This JWT was signed by the merchant's private Ed25519 key. Their public key sits at a published `.well-known` URL — anyone can fetch it and verify this signature."
+> **CAPTION:** **CartMandate · signed with merchant's private key · public key at `/.well-known/did.json`**
 
-> **(2:25-2:30)** — *Click PaymentMandate link. Highlight `cpDID`.*
-> **VOICE:** "The PaymentMandate. Signed by the Credentials Provider."
-> **CAPTION:** **PaymentMandate · signed by mock-cp**
+> **(2:27-2:33)** — *Click PaymentMandate link. Browser opens. Highlight `user_authorization` JWT, the `cp_did` field, `payment_response.details.token`.*
+> **VOICE:** "The PaymentMandate. Signed by the Credentials Provider with their own private key — different party, different key. In production: Stripe, Adyen, PayPal, or Google Pay."
+> **CAPTION:** **PaymentMandate · CP's private key · prod: Stripe / Adyen / PayPal / Google Pay**
 
-> **(2:30-2:35)** — *Click PaymentReceipt link. Highlight `approval_status: "approved"`, all 7 checks true, `networkDID`.*
-> **VOICE:** "The PaymentReceipt. All seven checks true. Signed by the Network."
-> **CAPTION:** **PaymentReceipt · 7/7 checks · signed by mock-network**
+> **(2:33-2:39)** — *Click PaymentReceipt link. Browser opens. Highlight `approval_status: "approved"`, all 7 `verification_checks: true`, `network_authorization` JWT, `network_did`.*
+> **VOICE:** "The PaymentReceipt. Signed by the Network with theirs — third party, third key. In production: Visa or Mastercard."
+> **CAPTION:** **PaymentReceipt · Network's private key · prod: Visa / Mastercard · 7/7 checks ✓**
 
-> **(2:35-2:45)** — *Split-screen the three `.well-known/did.json` URLs side-by-side. Three different `publicKeyHex` values.*
-> **VOICE:** "Three different `.well-known` endpoints. Anyone can fetch them and verify these signatures themselves — no SDK, no trust assumption."
-> **CAPTION:** **Three DIDs · three keys · zero trust assumed**
+> **(2:39-2:45)** — *Split-screen the three `.well-known/did.json` URLs. Highlight that each shows a different `publicKeyHex` value — visibly different hex strings.*
+> **VOICE:** "Three private keys, held by three different parties. Three public keys, published at three different URLs. Verification needs no SDK and no trust — just the URLs."
+> **CAPTION:** **3 private keys · 3 published public keys · 3 different parties · zero shared trust**
 
 ---
 
