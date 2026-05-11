@@ -121,20 +121,6 @@ const TOTAL_AMOUNT: React.CSSProperties = {
   color: '#f71963',
 }
 
-const CHECKOUT_BTN: React.CSSProperties = {
-  display: 'block',
-  marginTop: '10px',
-  padding: '10px 14px',
-  background: '#f71963',
-  color: '#fff',
-  textDecoration: 'none',
-  borderRadius: '8px',
-  textAlign: 'center',
-  fontSize: '13px',
-  fontWeight: 600,
-  transition: 'opacity 0.15s ease',
-}
-
 function CartPreviewCard({ cart }: CartPreviewCardProps) {
   return (
     <div style={WRAPPER}>
@@ -167,9 +153,15 @@ function CartPreviewCard({ cart }: CartPreviewCardProps) {
         <span style={TOTAL_AMOUNT}>{formatPrice(cart.total, cart.currency)}</span>
       </div>
 
-      <a href={cart.checkoutUrl} style={CHECKOUT_BTN}>
-        Mergi la plată →
-      </a>
+      {/*
+        The inline "Mergi la plată" button was removed deliberately.
+        Two-button confusion: the cart preview used to navigate directly
+        to VTEX native checkout, bypassing the AP2 mandate signing
+        entirely. The mandate badge below handles the full ceremony
+        (sign → pay in chat → receipt), and exposes a "Or use VTEX
+        standard checkout" secondary link as the explicit
+        no-AP2 escape hatch. One path per intent.
+      */}
     </div>
   )
 }

@@ -1,6 +1,77 @@
 import type { CartPreview, Mandate, Message, ProductCard } from './types'
 import { getMockResponse } from './mockResponses'
 
+/**
+ * Result shape from POST /_v/acg/payment/execute — mirrors the iframe's
+ * parsed-tool-result. The handler always returns HTTP 200 (the AP2
+ * ceremony succeeded *as a process* even when it rejected) so success
+ * vs failure is on the body's `success` field.
+ */
+export interface PaymentResult {
+  success: boolean
+  // success-only fields
+  orderId?: string
+  mandateId?: string
+  signedBy?: string
+  cartTotal?: number
+  cartCurrency?: string
+  paymentMandate?: unknown
+  paymentMandateId?: string
+  paymentMandateUrl?: string
+  // success + rejection-with-receipt fields
+  paymentReceipt?: {
+    contents: {
+      receipt_id: string
+      approval_status: 'approved' | 'rejected'
+      rejection_reason?: string
+      verification_checks: {
+        merchant_signature: boolean
+        cp_signature: boolean
+        hash_binding: boolean
+        amount_consistency: boolean
+        mandate_id_linking: boolean
+        payment_mandate_not_expired: boolean
+        cart_mandate_not_expired: boolean
+      }
+    }
+    network_authorization: string
+  }
+  paymentReceiptId?: string
+  paymentReceiptUrl?: string
+  mockCpDid?: string
+  mockNetworkDid?: string
+  // failure-only fields
+  reason?: string
+  drifted?: boolean
+}
+
+/**
+ * Run the AP2 payment ceremony — re-verify the signed mandate against the
+ * live cart, sign PaymentMandate via the mock CP, run the 7-check chain
+ * via the mock Network, emit a signed PaymentReceipt (approved OR
+ * rejected — always-emit invariant). The browser-side widget calls this
+ * directly via fetch (same as the iframe in Claude Desktop calls it via MCP).
+ *
+ * Network/transport failures throw. Tool-level failures (drift, network
+ * rejection) come back as `success: false` with a `reason` (and a
+ * `paymentReceipt` if the chain reached the network).
+ */
+export async function executePayment(mandateId: string): Promise<PaymentResult> {
+  const response = await fetch('/_v/acg/payment/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ mandateId }),
+  })
+
+  if (!response.ok && response.status !== 200) {
+    throw new Error(`Payment execute returned ${response.status}`)
+  }
+
+  const data: PaymentResult = await response.json()
+  return data
+}
+
 interface ChatAPIResponse {
   reply: string
   products?: Array<{
