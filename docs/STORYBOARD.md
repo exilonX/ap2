@@ -1,17 +1,27 @@
 # Demo Storyboard — Agent Commerce Gateway (AP2 case study)
 
-> **Format for reading aloud:** every beat is one card with three blocks — STAGE (what's happening), CAPTION (overlay text), and **🎤 SAY** (the exact words to read). Read straight down.
+> **Format:** every beat has a STAGE block (what to record / build) and one or more CAPTION cards (the on-screen text that carries the narrative). **Captions are load-bearing** — they replace voice. Voice is optional and can be added later (yours, or AI like ElevenLabs).
 
-> **Every beat is tagged 🔴 REC or 🟦 POST** so you know which moments need a live screen capture and which are assembled in the editor.
->
-> 🔴 **REC** — Live screen capture during the recording session. You actually do this action on screen.
-> 🟦 **POST** — Assembled in editor after recording (title slates, montage cuts, text overlays, animated graphics).
+> **Every beat is tagged 🔴 REC or 🟦 POST.**
+> 🔴 **REC** — live screen capture during the recording session.
+> 🟦 **POST** — built in the editor (title cards, montage cuts, text overlays, animated graphics, all captions).
 
-**Runtime:** 4:00. Voice + captions paired.
+**Runtime:** 4:00. **No voice required for v1.** Caption-driven from take 1.
 
 ---
 
-## Pre-flight checklist (before you hit record)
+## Caption styling (read-once, then apply consistently)
+
+- **Font:** sans-serif, white text. Body 38–44px @ 1080p, hint lines 22–26px.
+- **Background:** dark semi-transparent bar (rgba(0,0,0,0.65)) bottom-third OR a dark band that auto-sizes to text.
+- **Hold time:** each caption stays ≥ 3s. Long captions: ≥ 5s. Never flash a caption for less than the time a moderate reader needs to finish it (~4 words/second).
+- **Card transitions:** soft fade in (~200ms), fade out (~300ms). No slide-ins, no flashy.
+- **Technical fields** (`did:web:…`, `cart_hash:`, `verification.valid:`) — monospace, slightly smaller than body.
+- **Strong contrast vs the action.** If the screen content is busy (JSON, animated ceremony), the caption bar gets stronger background opacity.
+
+---
+
+## Pre-flight checklist
 
 - [ ] Adapter linked (`vtex link` from `packages/vtex-io-adapter`)
 - [ ] App settings populated (`acgAllowedOrigins`, `acgAuthToken`, LLM keys, Pinecone keys)
@@ -26,24 +36,20 @@
 
 ## Production decisions (locked)
 
-- **Voice + captions** paired from take 1.
-- **English captions** only. User-typed Romanian stays Romanian.
+- **Caption-driven** (no voice for v1). Add voice later if quality allows.
+- **Caption language:** English. User-typed Romanian stays Romanian.
 - **Camera:** screen-only, no face cam.
 - **Workspace:** `acg / miniprix`.
-- **Repo strategy:** BSL public on GitHub, case study lives on portfolio.
-- **CTA:** commercial — "book a call to deploy on your store."
+- **Repo:** BSL public on GitHub. Case study on portfolio.
+- **CTA:** commercial — "book a call to deploy."
 
-## Recording workflow
+## Recording workflow (captions-driven)
 
-**Step 1 — Capture all 🔴 REC beats.** Record continuous-take screen captures of each REC scene. You don't need to capture beats in script order; just make sure every REC beat below ends up on disk.
-
-**Step 2 — Build the 🟦 POST beats.** Title slates, text overlays, the Scene 1 montage, the two-mode split-screen, the three-actor diagram, the closing CTA card — all of these are assembled in your editor from text, color blocks, or extracts of your REC footage.
-
-**Step 3 — Lay everything onto the timeline** at the timestamps below.
-
-**Step 4 — Record voice over the silent edit.** Read the 🎤 SAY blocks straight down. Multiple takes for dense scenes (3 and 5).
-
-**Step 5 — Overlay captions** at the SAY moments. Hold ~2s after voice ends.
+1. **Capture all 🔴 REC beats** silently with no narration.
+2. **Build the 🟦 POST beats** in your editor (title slates, montage, two-mode card, three-actor card, compliance card, CTA card).
+3. **Lay everything onto the timeline** at the timestamps below.
+4. **Add captions** at the per-beat moments. Caption hold-times listed for each card.
+5. **(Optional v2)** Record voice or generate AI voiceover from the OLD SAY blocks (preserved in commit history if you want to recover them).
 
 ---
 
@@ -53,99 +59,109 @@
 
 ### Beat 1.1  ·  0:00 – 0:04  ·  Title slate  ·  🟦 POST
 
-**STAGE:** Editor-built. Black background. Title text fades in centered:
-> Agent Commerce on AP2
+**STAGE:** Black background. Large centered text fades in.
+
+**CAPTION — full beat:**
+> # Agent Commerce on AP2
 >
 > *An implementation of Google's Agent Payments Protocol*
+>
+> *Signed and verifiable. Built in 4 weeks.*
 
-**CAPTION:** *(the title text IS the caption — keep it on screen for the full 4 seconds)*
-
-**🎤 SAY:**
-> "Agent commerce, signed and verifiable. Here's how I built it in four weeks."
+Title holds for the full 4 seconds.
 
 ---
 
 ### Beat 1.2  ·  0:04 – 0:12  ·  Rapid-cut montage (the hook)  ·  🟦 POST
 
-**STAGE:** Editor-built. Six clips, 1.0 – 1.5 seconds each, crossfade between them. **Every clip is an extract from REC footage you captured for Scenes 2 – 5.** Nothing new is captured for this beat.
+**STAGE:** Six clips, 1.0 – 1.5 seconds each, crossfaded. **All clips are extracts from your 🔴 REC footage of Scenes 2–5.** Nothing new is captured.
 
-| # | Clip source (from your REC footage) | What it shows |
+| # | Clip source (REC footage) | What it shows |
 |---|---|---|
-| 1 | Scene 2 capture | Romanian chat → `browseProducts` tool call expanding → product cards rendering |
-| 2 | Scene 3 capture | 4-step ceremony mid-reveal — step 3's 7-check checklist animating in |
-| 3 | Scene 4 capture | PaymentReceipt JSON, `verification.valid: true` highlighted |
-| 4 | Scene 4 closer capture | Three `.well-known/did.json` URLs side-by-side in a split view |
-| 5 | Scene 2 / widget capture | Mandate badge — *"Cryptographically signed by acg--miniprix.myvtex.com"* |
-| 6 | Scene 5 capture | Rejection receipt JSON — `approval_status: rejected` next to `verification.valid: true` |
+| 1 | Scene 2 | Romanian chat → `browseProducts` tool call expanding → product cards rendering |
+| 2 | Scene 3 | 4-step ceremony mid-reveal — 7-check checklist animating in |
+| 3 | Scene 4 | PaymentReceipt JSON, `verification.valid: true` highlighted |
+| 4 | Scene 4 closer | Three `.well-known/did.json` URLs side-by-side |
+| 5 | Scene 2 / widget | Mandate badge — *"Cryptographically signed by acg--miniprix.myvtex.com"* |
+| 6 | Scene 5 | Rejection receipt JSON — `approval_status: rejected` next to `verification.valid: true` |
 
-**CAPTION:**
-> **Agent commerce. Cryptographically verifiable.**
-
-**🎤 SAY:**
-> *(silent — let the visuals breathe under a single instrumental swell or sfx)*
+**CAPTION — held for the full 8s, large centered:**
+> ## Agent commerce. Cryptographically verifiable.
 
 ---
 
 ### Beat 1.3  ·  0:12 – 0:20  ·  The problem  ·  🟦 POST
 
-**STAGE:** Editor-built. Crossfade from montage to bold text on dark background:
-> Who's responsible when an AI buys?
+**STAGE:** Dark background. Question text fades in large, centered. Below the question, smaller body text appears after a 2s delay.
 
-**CAPTION:**
-> **Who's responsible when an AI buys?**
+**CAPTION (held 0:12–0:20):**
+> ## Who's responsible when an AI buys?
 
-**🎤 SAY:**
-> "AI agents are shopping on our behalf — sometimes with the user chatting in real time, sometimes autonomously while we sleep. Who's responsible when something goes wrong?"
+**CAPTION (smaller, fades in at 0:15, held until 0:20):**
+> *Merchant doesn't see the user. Bank doesn't see the agent. Today, no cryptographic proof anyone consented.*
 
 ---
 
 ### Beat 1.4  ·  0:20 – 0:28  ·  The two modes  ·  🟦 POST
 
-**STAGE:** Editor-built. Two text-box overlays side by side on a neutral background:
+**STAGE:** Two stylized boxes side-by-side fade in together.
 
-| Human present | Human not present |
-|---|---|
-| User chats with the agent in real time. Confirms each step. | User pre-delegates authority. *"Buy these shoes when they drop below 80 RON."* |
+**LEFT BOX (held 0:20–0:28):**
+> ### Human present
+> You chat with the agent in real time.
+> Confirm each step.
+> → **CartMandate**
 
-**CAPTION:**
-> **AP2 · Agent Payments Protocol · Google · v0.2**
+**RIGHT BOX (held 0:20–0:28):**
+> ### Human not present
+> You pre-delegate authority.
+> *"Buy these shoes when they drop below 80 RON."*
+> → **IntentMandate**
 
-**🎤 SAY:**
-> "AP2 — Google's Agent Payments Protocol — covers both modes. Today's demo: human-present."
+**CAPTION (subtitle band at the bottom, 0:23–0:28):**
+> **AP2 — Google's Agent Payments Protocol — covers both modes. Today: human-present.**
 
 ---
 
 ### Beat 1.5  ·  0:28 – 0:36  ·  Three actors, three keys  ·  🟦 POST
 
-**STAGE:** Editor-built. Three boxes appearing left-to-right, each with a key icon and a DID URL:
-> Merchant signs CartMandate  ·  `did:web:<store-host>`
->
-> Credentials Provider signs PaymentMandate  ·  `did:web:<cp-host>`
->
-> Network signs PaymentReceipt  ·  `did:web:<network-host>`
+**STAGE:** Three boxes appearing left-to-right (animate in at 0:28, 0:30, 0:32).
 
-**CAPTION:**
-> **3 actors · 3 private keys · 3 published DIDs**
+**BOX 1 (Merchant, appears 0:28):**
+> 🔑 Merchant
+> signs CartMandate
+> `did:web:<store>`
 
-**🎤 SAY:**
-> "Three actors. Three private keys. The merchant signs the cart, the Credentials Provider — like Stripe or Apple Pay — signs the payment, and the Network — Visa or Mastercard — signs the receipt. Each with their own Ed25519 key."
+**BOX 2 (CP, appears 0:30):**
+> 🔑 Credentials Provider
+> signs PaymentMandate
+> `did:web:<cp>`
+> *prod: Stripe / Adyen / PayPal / Apple Pay*
+
+**BOX 3 (Network, appears 0:32):**
+> 🔑 Payment Network
+> signs PaymentReceipt
+> `did:web:<network>`
+> *prod: Visa / Mastercard*
+
+**CAPTION (subtitle band, held 0:32–0:36):**
+> **3 actors · 3 private Ed25519 keys · 3 public DIDs · independent verification**
 
 ---
 
 ### Beat 1.6  ·  0:36 – 0:44  ·  MCP plumbing reveal + tool surface  ·  🔴 REC
 
-**STAGE:** Live screen capture. Two sub-shots, no dead air:
+**STAGE:** Live screen capture. Two sub-shots, no dead air.
 
-1. **(0:36–0:39, ~3s):** In Claude Desktop, open Settings → Developer. **`vtex-store · running`** is visible. Hold for the voice line that names the MCP server.
-2. **(0:39–0:44, ~5s):** Close Settings. **Click the tools / "Search and tools" icon** in the Claude Desktop chat input bar so the list of MCP tools opens. The tools list shows `browseProducts`, `addToCart`, `getCart`, `checkoutInChat`, `executePayment`, etc. Camera lingers on the list while the voice names them. Cursor jumps into the chat input on the last beat to set up Scene 2.
+1. **(0:36–0:39, 3s):** In Claude Desktop, open Settings → Developer. **`vtex-store · running`** visible.
+2. **(0:39–0:44, 5s):** Close Settings. Click the **"Search and tools"** icon in the chat input bar so the list of MCP tools opens — `browseProducts`, `addToCart`, `checkoutInChat`, `executePayment`, etc. Camera lingers on the list.
 
-> **Why the tool list matters:** these are the only things the agent can do. They're explicit, enumerable, auditable — not "the agent has access to your store." Showing them on screen makes the trust surface concrete.
+**CAPTION (held 0:36–0:40):**
+> **MCP server: `vtex-store` · live connection**
 
-**CAPTION:**
-> **MCP server: `vtex-store` · running · 16 tools exposed (search, cart, checkout, payment)**
-
-**🎤 SAY:**
-> "The agent runs as an MCP server inside Claude Desktop. Here are the tools it exposes — search, cart, checkout, AP2 payment. Nothing more. Let's start."
+**CAPTION (replaces previous, held 0:40–0:44):**
+> **16 tools exposed: search · cart · checkout · AP2 payment**
+> *That's the entire trust surface. Nothing more.*
 
 ---
 
@@ -155,32 +171,32 @@
 
 ### Beat 2.1  ·  0:44 – 0:59  ·  Type and search  ·  🔴 REC
 
-**STAGE:** Live screen capture inside Claude Desktop.
-1. Type into chat: *vreau o camasa si niste pantaloni pentru barbati*
-2. Hit enter. Wait for the tool calls to expand — `vtex-store: browseProducts` becomes visible.
-3. Let the tool-call expansion stay open for ~3 seconds.
+**STAGE:** Live capture in Claude Desktop.
+1. Type *vreau o camasa si niste pantaloni pentru barbati* into chat.
+2. Hit enter. Wait for tool calls — `vtex-store: browseProducts` becomes visible and expands.
+3. Let the tool-call expansion stay visible for ~3s.
 
-**CAPTION:**
-> **MCP → VTEX IO adapter · live catalog + Pinecone vector search**
+**CAPTION (held 0:44–0:50):**
+> **User asks (in Romanian): *"I want a shirt and some pants for men."***
 
-**🎤 SAY:**
-> "I ask the agent in Romanian for a shirt and some pants. The MCP tool call hits a VTEX IO adapter that queries both the live catalog and a Pinecone vector index. *Pantaloni lungi închiși la culoare* returns actual long dark pants — semantic search, not keyword matches."
+**CAPTION (replaces, held 0:50–0:59):**
+> **MCP tool call: `browseProducts`**
+> *VTEX IO adapter → live catalog + Pinecone vector index → semantic match*
 
 ---
 
 ### Beat 2.2  ·  0:59 – 1:14  ·  Render and add to cart  ·  🔴 REC
 
 **STAGE:** Continue live capture.
-1. Product cards render in iframes inside the chat. Wait for the images to load.
-2. Click *Add to cart* on one shirt.
-3. Click *Add to cart* on one pair of pants.
-4. Cart preview card appears with the running total in RON.
+1. Product cards render in iframes. Wait for images to load.
+2. Click *Add to cart* on one shirt, then one pair of pants.
+3. Cart preview card appears with running total in RON.
 
-**CAPTION:**
-> **Real merchant · Real prices · Real RON**
+**CAPTION (held 0:59–1:07):**
+> **Real merchant. Real prices. Real RON.**
 
-**🎤 SAY:**
-> "The agent reads the results, renders product cards, adds two items to a real cart — on the same orderForm a human would have if they shopped natively in VTEX."
+**CAPTION (replaces, held 1:07–1:14):**
+> **Cart shared with native VTEX checkout — same `orderForm`, same cookie session.**
 
 ---
 
@@ -191,84 +207,81 @@
 ### Beat 3.1  ·  1:14 – 1:22  ·  Type "checkout"  ·  🔴 REC
 
 **STAGE:** Live capture.
-1. Type *checkout* into chat. Hit enter.
-2. The iframe opens with cart preview + AP2 Security panel.
-3. Hold camera on the iframe top section so the mandate id, merchant DID, and cart hash are visible.
+1. Type *checkout*. Hit enter.
+2. Iframe opens with cart preview + AP2 Security panel showing mandate ID, merchant DID, cart hash.
 
-**CAPTION:**
-> **Three actors · three signatures · three roles**
-
-**🎤 SAY:**
-> "I type checkout. Three actors enter the picture."
+**CAPTION (held 1:14–1:22):**
+> ## Three actors enter the picture.
 
 ---
 
 ### Beat 3.2  ·  1:22 – 1:34  ·  Merchant signs CartMandate  ·  🔴 REC
 
-**STAGE:** Camera lingers on the AP2 Security panel. **Optional:** zoom or highlight overlay on the mandate id and `did:web:acg--miniprix.myvtex.com` (the highlight overlay itself is POST, but the underlying frame is REC).
+**STAGE:** Camera lingers on the AP2 Security panel. **POST overlay:** colored rectangle highlighting the mandate ID and `did:web:acg--miniprix.myvtex.com`.
 
-**CAPTION:**
-> **Merchant signs CartMandate · `did:web:acg--miniprix.myvtex.com`**
+**CAPTION (held 1:22–1:28):**
+> ### 1️⃣ Merchant signs CartMandate
+> *The VTEX store commits to these items at this price.*
 
-**🎤 SAY:**
-> "First, the Merchant. The VTEX store itself, identified by `did:web` pointing at `miniprix.myvtex.com`. The merchant signs the CartMandate: *I commit to selling exactly these items at this price.*"
+**CAPTION (replaces, held 1:28–1:34):**
+> **Signed by:** `did:web:acg--miniprix.myvtex.com`
+> *Private Ed25519 key · public counterpart at `/.well-known/did.json`*
 
 ---
 
 ### Beat 3.3  ·  1:34 – 1:39  ·  Click Pay Now + drift check  ·  🔴 REC
 
-**STAGE:** Live capture.
-1. Click **Pay Now** button.
-2. Ceremony Step 1 reveals with a green check next to *"Re-verify CartMandate against current cart."*
+**STAGE:** Click **Pay Now**. Ceremony Step 1 reveals green check next to *"Re-verify CartMandate against current cart."*
 
-**CAPTION:**
-> **Step 1 · re-hash live cart · drift detection (catches cart-tamper post-sign)**
-
-**🎤 SAY:**
-> "Pay Now. Step one — re-hash the live cart and compare to the signed mandate. Drift detection catches cart-tamper between sign and pay."
+**CAPTION (held 1:34–1:39):**
+> **Step 1 · Re-hash live cart → compare to signed mandate**
+> *Drift detection catches cart-tamper between sign and pay.*
 
 ---
 
 ### Beat 3.4  ·  1:39 – 1:58  ·  CP signs PaymentMandate  ·  🔴 REC
 
-**STAGE:** Continue capture. Ceremony Step 2 reveals with a green check.
+**STAGE:** Ceremony Step 2 reveals green check.
 
-The Credentials Provider is the party that **holds the user's card** and **confirms the user authorized the payment** — distinct from the Network, which only sees the cryptographic chain. In production: Stripe, Adyen, PayPal, Apple Pay, Google Pay.
+**CAPTION (held 1:39–1:47):**
+> ### 2️⃣ Credentials Provider signs PaymentMandate
+> *The party holding the user's card. Confirms user authorized this payment.*
 
-**CAPTION (primary):**
-> **CP signs PaymentMandate · holds user's card · prod: Stripe / Adyen / PayPal / Apple Pay / Google Pay**
+**CAPTION (replaces, held 1:47–1:53):**
+> **Production CP:** Stripe · Adyen · PayPal · Apple Pay · Google Pay
+> **Demo CP:** mock — same shape, real Ed25519
 
-**CAPTION (secondary, briefly around 1:50):**
-> `agent_presence: { human_present: true }` — H-N-P mode uses IntentMandate
-
-**🎤 SAY:**
-> "Second, the Credentials Provider. The party holding the user's card-on-file — Stripe, Adyen, PayPal, or Apple Pay in production. The CP signs the PaymentMandate, confirming the user authorized this payment and binding the cart hash to the payment hash."
+**CAPTION (replaces, held 1:53–1:58):**
+> `agent_presence: { human_present: true }`
+> *H-N-P mode would use IntentMandate (post-demo)*
 
 ---
 
 ### Beat 3.5  ·  1:58 – 2:15  ·  Network verifies, signs Receipt  ·  🔴 REC
 
-**STAGE:** Continue capture. Ceremony Step 3 reveals — the 7-check checklist animates in at 80ms intervals. **Do not speed up in post.** Then Step 4 reveals with order placed.
+**STAGE:** Ceremony Step 3 reveals. **7-check checklist animates in at 80ms intervals — do not speed up.** Step 4 reveals with order placed.
 
-The Payment Network is **a different party from the CP** — they only see the signed chain, not the user. Their independent verification is what makes the receipt credible. In production: Visa, Mastercard.
+**CAPTION (held 1:58–2:05):**
+> ### 3️⃣ Payment Network verifies the chain
+> *Independent third party. Doesn't know the user — only the cryptography.*
 
-**CAPTION:**
-> **Network verifies 7 properties · independent third party · prod: Visa / Mastercard**
+**CAPTION (replaces, held 2:05–2:11):**
+> **7 checks:** signatures · hash binding · amount · mandate IDs · expiries
+> *All must pass.*
 
-**🎤 SAY:**
-> "Third, the Payment Network. A different party from the CP — they don't know the user, only the signed chain. Visa or Mastercard in production. The Network independently verifies seven separate properties — signatures, hash binding, amount, mandate IDs, expiries — then signs the PaymentReceipt."
+**CAPTION (replaces, held 2:11–2:15):**
+> **Production Network:** Visa · Mastercard
+> **Demo Network:** mock — signs PaymentReceipt
 
 ---
 
 ### Beat 3.6  ·  2:15 – 2:24  ·  Final panel — three artifact links  ·  🔴 REC
 
-**STAGE:** Final *Payment authorized · Order ACG-XXXX* panel visible. Three artifact buttons in view: **CartMandate · PaymentMandate · PaymentReceipt**.
+**STAGE:** *Payment authorized · Order ACG-XXXX* panel visible. Three artifact buttons: CartMandate · PaymentMandate · PaymentReceipt.
 
-**CAPTION:**
-> **None can lie without the others noticing.**
-
-**🎤 SAY:**
-> "Three parties. Three roles. None can lie without the others noticing."
+**CAPTION (held 2:15–2:24):**
+> ## Three parties. Three roles.
+> ### None can lie without the others noticing.
 
 ---
 
@@ -278,118 +291,108 @@ The strongest single beat for AP2 credibility. The viewer must feel that **three
 
 ---
 
-### Beat 4.1  ·  2:24 – 2:31  ·  CartMandate JSON  ·  🔴 REC
+### Beat 4.1  ·  2:24 – 2:31  ·  CartMandate JSON  ·  🔴 REC + 🟦 POST overlay
 
-**STAGE:** Live capture.
-1. Click the **CartMandate** link in the iframe. New browser tab opens with the JSON.
-2. Camera scrolls through the JSON. **Optional POST overlay:** colored rectangle highlighting `merchant_authorization` (the JWT), `verification.valid: true`, `signedBy: did:web:acg--miniprix.myvtex.com`.
+**STAGE:**
+1. **REC:** click the CartMandate link. New browser tab opens with JSON.
+2. **POST:** colored rectangle highlights around `merchant_authorization` (the JWT), `verification.valid: true`, `signedBy: did:web:acg--miniprix.myvtex.com`.
 
-**CAPTION:**
-> **CartMandate · signed with merchant's private key · public key at `/.well-known/did.json`**
-
-**🎤 SAY:**
-> "The CartMandate. This JWT was signed by the merchant's private Ed25519 key. Their public key sits at a published `.well-known` URL — anyone can fetch it and verify this signature."
-
----
-
-### Beat 4.2  ·  2:31 – 2:37  ·  PaymentMandate JSON  ·  🔴 REC
-
-**STAGE:** Live capture.
-1. Click the **PaymentMandate** link. New browser tab opens.
-2. Scroll through. **Optional POST overlay:** highlight `user_authorization` JWT, `cp_did`, `payment_response.details.token`.
-
-**CAPTION:**
-> **PaymentMandate · CP's private key · prod: Stripe / Adyen / PayPal / Google Pay**
-
-**🎤 SAY:**
-> "The PaymentMandate. Signed by the Credentials Provider with their own private key — different party, different key. In production: Stripe, Adyen, PayPal, or Apple Pay."
+**CAPTION (held 2:24–2:31):**
+> ### CartMandate
+> **Signed by the merchant's private Ed25519 key.**
+> *Public counterpart at `/.well-known/did.json` — fetch it, verify the JWT, done.*
 
 ---
 
-### Beat 4.3  ·  2:37 – 2:43  ·  PaymentReceipt JSON  ·  🔴 REC
+### Beat 4.2  ·  2:31 – 2:37  ·  PaymentMandate JSON  ·  🔴 REC + 🟦 POST overlay
 
-**STAGE:** Live capture.
-1. Click the **PaymentReceipt** link. New browser tab opens.
-2. **Optional POST overlay:** highlight `approval_status: "approved"`, all 7 `verification_checks: true`, `network_authorization` JWT, `network_did`.
+**STAGE:**
+1. **REC:** click PaymentMandate link. New tab opens JSON.
+2. **POST:** highlights on `user_authorization` JWT, `cp_did`, `payment_response.details.token`.
 
-**CAPTION:**
-> **PaymentReceipt · Network's private key · prod: Visa / Mastercard · 7/7 ✓**
+**CAPTION (held 2:31–2:37):**
+> ### PaymentMandate
+> **Signed by the CP's private key. Different party, different key.**
+> *Prod: Stripe · Adyen · PayPal · Apple Pay*
 
-**🎤 SAY:**
-> "The PaymentReceipt. Signed by the Network with theirs — third party, third key. In production: Visa or Mastercard."
+---
+
+### Beat 4.3  ·  2:37 – 2:43  ·  PaymentReceipt JSON  ·  🔴 REC + 🟦 POST overlay
+
+**STAGE:**
+1. **REC:** click PaymentReceipt link. New tab opens JSON.
+2. **POST:** highlights on `approval_status: "approved"`, all 7 `verification_checks: true`, `network_authorization` JWT, `network_did`.
+
+**CAPTION (held 2:37–2:43):**
+> ### PaymentReceipt
+> **Signed by the Network's private key. Third party, third key.**
+> *Prod: Visa · Mastercard · all 7 checks ✓*
 
 ---
 
 ### Beat 4.4  ·  2:43 – 2:49  ·  Three DID documents side-by-side  ·  🔴 REC + 🟦 POST overlay
 
 **STAGE:**
-1. **REC:** open the three `.well-known/did.json` URLs in three browser tabs (or one window split-screen — pre-arranged in pre-flight).
-2. **POST overlay:** colored boxes highlighting the three different `publicKeyHex` values so the eye instantly sees they're different.
+1. **REC:** the three `.well-known/did.json` URLs open in three split-screen tabs (pre-arranged).
+2. **POST:** colored boxes around each `publicKeyHex` value — three visibly different hex strings.
 
-**CAPTION:**
-> **3 private keys · 3 published public keys · 3 different parties · zero shared trust**
-
-**🎤 SAY:**
-> "Three private keys, held by three different parties. Three public keys, at three different URLs. Verification needs no SDK and no trust — just the URLs."
+**CAPTION (held 2:43–2:49):**
+> ## 3 private keys · 3 public keys · 3 different parties
+> **Verification needs no SDK and no trust — just the URLs.**
 
 ---
 
 # SCENE 5 — Rejection branch (the punchline)  ·  2:49 → 3:19
 
-The single strongest beat. The contradiction (rejected + valid) must land in near-silence.
+The single strongest beat. The contradiction (rejected + valid) must land hard.
 
 ---
 
 ### Beat 5.1  ·  2:49 – 2:54  ·  New cart, open checkout  ·  🔴 REC
 
 **STAGE:** Live capture.
-1. Reset to Claude Desktop. Start a new cart (or use a different shopping flow).
+1. Reset to Claude Desktop. New cart.
 2. Type *checkout*. Iframe re-opens.
 
-**CAPTION:**
-> **What if a check fails?**
-
-**🎤 SAY:**
-> "Now — what happens when something goes wrong?"
+**CAPTION (held 2:49–2:54):**
+> ## What happens when something goes wrong?
 
 ---
 
 ### Beat 5.2  ·  2:54 – 3:02  ·  Click force-reject  ·  🔴 REC
 
-**STAGE:** Live capture. Click the small grey **`(force reject — staging only)`** link below the Pay Now button.
+**STAGE:** Click the small grey **`(force reject — staging only)`** link below the Pay Now button.
 
-**CAPTION:**
-> **Force-reject (staging only) · fails `payment_mandate_not_expired`**
-
-**🎤 SAY:**
-> "In production: insufficient funds, fraud flag, 3DS step-up failure. Here I force the Network to fail one check."
+**CAPTION (held 2:54–3:02):**
+> ### Force-reject (staging only)
+> *Simulates: insufficient funds · fraud flag · 3DS step-up failure*
+> **The Network will fail one check.**
 
 ---
 
 ### Beat 5.3  ·  3:02 – 3:09  ·  6 green + 1 red  ·  🔴 REC
 
-**STAGE:** Continue capture. Ceremony plays. Steps 1 and 2 succeed. Step 3 reveals 6 green checks + 1 red ✗ on `payment_mandate_not_expired`. Step 4 marks failed.
+**STAGE:** Ceremony plays. Steps 1 + 2 succeed. Step 3 reveals 6 green ✓ + 1 red ✗ on `payment_mandate_not_expired`. Step 4 marks failed.
 
-**CAPTION:**
-> **6 ✓ + 1 ✗ · Network rejected**
-
-**🎤 SAY:**
-> "Steps one and two succeed. Step three: six green, one red. The Network rejected."
+**CAPTION (held 3:02–3:09):**
+> **6 ✓ + 1 ✗ · Network rejected the chain**
 
 ---
 
-### Beat 5.4  ·  3:09 – 3:19  ·  The contradiction  ·  🔴 REC + 🟦 POST overlay
+### Beat 5.4  ·  3:09 – 3:19  ·  The contradiction (THE PUNCHLINE)  ·  🔴 REC + 🟦 POST overlay
 
 **STAGE:**
-1. **REC:** click the **PaymentReceipt** link. JSON opens in browser.
-2. **POST overlay:** strong colored boxes around BOTH `approval_status: "rejected"` AND `verification.valid: true` at the top level — the viewer must see both at the same time.
-3. **Music drops to silence in this beat.** The contradiction lands harder in silence with just the voice.
+1. **REC:** click the PaymentReceipt link. JSON opens.
+2. **POST:** strong colored highlight boxes around BOTH `approval_status: "rejected"` AND `verification.valid: true` at the top level — visible at the same time.
 
-**CAPTION:**
-> **`approval_status: rejected` · `verification.valid: true` · always-emit invariant**
+**CAPTION (held 3:09–3:14, large, centered):**
+> ## Payment rejected.
 
-**🎤 SAY:**
-> "The receipt. Payment rejected — *but the receipt itself is cryptographically valid*. The Network signed the rejection. Today a decline is a string from the acquirer's logs. Tomorrow, it's evidence anyone can verify."
+**CAPTION (replaces, held 3:14–3:19, slightly smaller, with emphasis):**
+> ## But the receipt itself is *cryptographically valid*.
+> **The Network *signed the rejection*. Today a decline is a string. Tomorrow it's evidence.**
+
+> **The always-emit invariant.** This is the AP2 punchline. Hold it.
 
 ---
 
@@ -400,29 +403,34 @@ The single strongest beat. The contradiction (rejected + valid) must land in nea
 ### Beat 6.1  ·  3:19 – 3:30  ·  Architecture diagram (from case study)  ·  🔴 REC
 
 **STAGE:** Live capture.
-1. Navigate to the case study page on your portfolio site (open in a tab pre-flight).
-2. Scroll to the architecture diagram section (the three-party trust chain SVG).
-3. Camera lingers on the three identity boxes. Pan across to show Pinecone, OpenAI, Anthropic boxes.
+1. Navigate to the case study page on your portfolio site.
+2. Scroll to the three-party trust chain SVG.
+3. Camera lingers on the three identity boxes. Pan to show Pinecone, OpenAI, Anthropic.
 
-> **Reuse the existing SVG diagram from the case study page.** No new image asset needed.
+> **Reuse the existing SVG diagram. No new image asset needed.**
 
-**CAPTION:**
-> **VTEX IO · Pinecone · OpenAI · Anthropic · 3 identities · 3 DIDs**
+**CAPTION (held 3:19–3:25):**
+> ### Stack
+> **VTEX IO · Pinecone · OpenAI · Anthropic**
 
-**🎤 SAY:**
-> "Behind the scenes — a VTEX IO adapter serves all the routes. Pinecone holds vector embeddings of the catalog so semantic queries work. OpenAI handles embeddings, Anthropic runs the chat loop."
+**CAPTION (replaces, held 3:25–3:30):**
+> *Pinecone: vector embeddings of the catalog → semantic search*
+> *OpenAI: embeddings · Anthropic: chat loop*
 
 ---
 
 ### Beat 6.2  ·  3:30 – 3:45  ·  Production swap-in  ·  🔴 REC
 
-**STAGE:** Stay scrolled on the diagram. Camera pans to / highlights the three identity boxes (Merchant / mock CP / mock Network).
+**STAGE:** Stay on the diagram. Pan to / highlight the three identity boxes (Merchant / mock CP / mock Network).
 
-**CAPTION:**
-> **3 identities · production swap-in: Stripe / Adyen / PayPal / Google Pay · Visa / Mastercard**
+**CAPTION (held 3:30–3:38):**
+> ### 3 identities → production swap-in is one class change
+> **mock CP** → Stripe · Adyen · PayPal · Google Pay
+> **mock Network** → Visa · Mastercard
 
-**🎤 SAY:**
-> "Three cryptographic identities — merchant, mock CP, mock Network — each with its own `did:web`. In production, swap the mocks for Stripe and Visa. Orchestration code doesn't change. Backend-agnostic — same engine runs on Shopify, BigCommerce, or any headless setup."
+**CAPTION (replaces, held 3:38–3:45):**
+> **Backend-agnostic:** same engine runs on Shopify · BigCommerce · any headless setup.
+> *Three small interfaces — `CartProvider`, `CatalogProvider`, `KeyStore` — bridge to any backend.*
 
 ---
 
@@ -432,81 +440,77 @@ The single strongest beat. The contradiction (rejected + valid) must land in nea
 
 ### Beat 7.1  ·  3:45 – 3:53  ·  Compliance summary  ·  🟦 POST
 
-**STAGE:** Editor-built. Plain dark background. Text appears:
+**STAGE:** Plain dark background. Text appears.
 
-> AP2 v0.2 · EdDSA Ed25519 · JCS (RFC 8785) · did:web
+**CAPTION (held 3:45–3:53):**
+> ### AP2 v0.2 spec-faithful
+> **EdDSA Ed25519 · JCS (RFC 8785) · `did:web`**
 >
-> Human-present shipped · IntentMandate next · Production CP swap-in ready
-
-**CAPTION:**
-> **AP2 v0.2 · human-present shipped · IntentMandate (H-N-P) next**
-
-**🎤 SAY:**
-> "AP2 v0.2 spec-faithful for the human-present flow. IntentMandate next for human-not-present. Production CP swap-in ready."
+> ✅ Human-present shipped
+> 🔜 IntentMandate (human-not-present) next
+> ✅ Production CP swap-in ready
 
 ---
 
 ### Beat 7.2  ·  3:53 – 4:00  ·  CTA + portfolio URL  ·  🟦 POST
 
-**STAGE:** Editor-built. Plain dark background. Portfolio URL prominent on screen:
+**STAGE:** Plain dark background. URLs prominent.
 
-> **Want this on your store?**
+**CAPTION (held 3:53–4:00, large):**
+> ## Want this on your store?
 >
-> github.com/exilonX/ap2  ·  [your-portfolio.com/ap2-case-study]
-
-**CAPTION:**
-> **Source-available under BSL 1.1 · github.com/exilonX/ap2 · book a call to deploy**
-
-**🎤 SAY:**
-> "Source under BSL. Book a call if you want this on your store. Link below."
+> **github.com/exilonX/ap2**
+> **[your-portfolio.com/ap2-case-study]**
+>
+> *Source under BSL 1.1 · Book a call to deploy*
 
 Hold the final frame for 1.5 seconds before fade-out.
 
 ---
 
-## What you actually capture vs build
+## REC / POST counts (after captions-only rebuild)
 
-Quick reference — what each tag means in practice:
-
-| Tag | What you do | Tools |
+| Type | Count | Beats |
 |---|---|---|
-| 🔴 **REC** | Open the actual app (Claude Desktop, browser, portfolio site). Perform the action. Record screen. | OBS, built-in screen recorder |
-| 🟦 **POST** | Type text into a video editor's title-card / overlay tool. Or arrange clips you already captured. | DaVinci Resolve, CapCut, Final Cut |
-
-Counting the storyboard:
-
-- **🔴 REC beats:** 14 (Scenes 2, 3, 4, 5, 6 entirely + Scene 1's MCP plumbing reveal)
-- **🟦 POST beats:** 7 (Scene 1's title slate, montage, problem text, two modes, three actors; Scene 7's compliance card + CTA card)
-- **Hybrid (REC base + POST overlay):** Beats 4.4 and 5.4 — record the screen, then add colored highlight boxes in post
+| 🔴 **REC** (live screen capture) | 14 | Scene 1.6 · all of Scenes 2, 3, 4, 5, 6 |
+| 🟦 **POST** (editor-built cards) | 7 | Scene 1.1–1.5 · Scene 7.1, 7.2 |
+| 🔴 + 🟦 (REC base + POST overlay highlights) | 4 | Beats 4.1, 4.2, 4.3, 4.4, 5.4 |
+| **Captions on every beat** | every beat | The narrative is fully caption-carried |
 
 ---
 
 ## Editing notes
 
-- **Cut every dead second.** Voice script assumes tight cuts.
+- **Cut every dead second.** Caption-driven means viewers need pacing variety — too much hold-time on one card and they tune out.
 - **Speed up JSON scrolling** in scenes 4 and 5 to 1.5×.
-- **Highlight key fields** in JSON with POST-overlay colored rectangles or zoom-ins.
-- **The 7-check reveal in Beat 3.5:** never speed up — slow to 0.85× if the voice line doesn't fit.
-- **Music:** instrumental, –18 dB. **Cut entirely** under Beat 5.4's contradiction.
-- **Caption styling:** monospace for technical fields (`did:web:…`, `cart_hash:`). Sans-serif for prose.
+- **Highlight key fields** in JSON with colored rectangles or zoom-ins.
+- **7-check reveal in Beat 3.5:** never speed up. Slow to 0.85× if captions need more breathing room.
+- **Music:** instrumental, –18 dB. **Cut entirely under Beat 5.4** — the contradiction lands harder in silence.
+- **Caption font sizing:** title-style captions (## headers in this doc) at 44–52px, body at 36–38px, technical fields slightly smaller (~28px monospace).
+- **Caption hold times** listed per beat. Never less than ~3s. Long captions ≥ 5s.
 
-## Voice delivery tips
+---
 
-- **Tempo:** slower than feels natural. Conversational, not announcer.
-- **Emphasis:** lean on the contrast in Beat 5.4 — *"Payment rejected. **But** the receipt itself is cryptographically valid."* The "but" earns a micro-pause.
-- **Actor names:** in Scenes 3 and 4, slow down on "Stripe, Adyen, PayPal, Apple Pay" and "Visa, Mastercard" — these names anchor unfamiliar terminology to the viewer's existing mental model.
-- **Tone:** matter-of-fact, not hype.
-- **Re-takes:** Scenes 1, 3, 5 are the most dense. Plan 3+ takes each.
+## Optional: adding voice in v2
+
+If you ever want voice (yours or AI-generated):
+
+1. The OLD voice scripts are preserved in commit history (`git log docs/STORYBOARD.md`, look at commits before 2026-05-08).
+2. Each old SAY block maps to one or two CAPTION cards in this v2 — feed those into ElevenLabs / Play.ht / Murf with the matching timing.
+3. ElevenLabs free tier: ~10K characters/month. Full script is ~500 words ≈ 3K characters. One free month does the whole demo.
+4. If keeping captions when you add voice, you can either: (a) tighten captions to short reinforcements ["MCP server: vtex-store"] and let voice carry detail, or (b) keep this full caption track as accessibility/mute-mode.
 
 ## Word budgets
 
-| Scene | Duration | Spoken words | Pace |
-|---|---|---|---|
-| 1 | 44s | ~85 (montage silent) | 2.5 wps in voiced beats |
-| 2 | 30s | ~70 | 2.3 wps |
-| 3 | 70s | ~125 | 1.8 wps (animation pauses) |
-| 4 | 25s | ~65 | 2.6 wps |
-| 5 | 30s | ~60 | 2.0 wps |
-| 6 | 26s | ~60 | 2.3 wps |
-| 7 | 15s | ~30 | 2.0 wps |
-| **Total** | **240s** | **~495 words** | |
+This v2 has no voice. Captions land at viewers' reading pace (~3–4 words/second), not speech pace. Approximate caption-text totals:
+
+| Scene | Duration | Caption words |
+|---|---|---|
+| 1 | 44s | ~75 |
+| 2 | 30s | ~30 |
+| 3 | 70s | ~95 |
+| 4 | 25s | ~50 |
+| 5 | 30s | ~40 |
+| 6 | 26s | ~55 |
+| 7 | 15s | ~30 |
+| **Total** | **240s** | **~375 caption words** |
