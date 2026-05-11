@@ -132,17 +132,20 @@
 
 ---
 
-### Beat 1.6  ·  0:36 – 0:44  ·  MCP plumbing reveal  ·  🔴 REC
+### Beat 1.6  ·  0:36 – 0:44  ·  MCP plumbing reveal + tool surface  ·  🔴 REC
 
-**STAGE:** Live screen capture.
-1. **In Claude Desktop:** open Settings → Developer. **`vtex-store · running`** is visible. Hold ~2s.
-2. **Close Settings.** Camera now on the Claude Desktop chat window, cursor blinking in the empty input. Hold ~6s.
+**STAGE:** Live screen capture. Two sub-shots, no dead air:
+
+1. **(0:36–0:39, ~3s):** In Claude Desktop, open Settings → Developer. **`vtex-store · running`** is visible. Hold for the voice line that names the MCP server.
+2. **(0:39–0:44, ~5s):** Close Settings. **Click the tools / "Search and tools" icon** in the Claude Desktop chat input bar so the list of MCP tools opens. The tools list shows `browseProducts`, `addToCart`, `getCart`, `checkoutInChat`, `executePayment`, etc. Camera lingers on the list while the voice names them. Cursor jumps into the chat input on the last beat to set up Scene 2.
+
+> **Why the tool list matters:** these are the only things the agent can do. They're explicit, enumerable, auditable — not "the agent has access to your store." Showing them on screen makes the trust surface concrete.
 
 **CAPTION:**
-> **MCP server: `vtex-store` · live connection**
+> **MCP server: `vtex-store` · running · 16 tools exposed (search, cart, checkout, payment)**
 
 **🎤 SAY:**
-> "The agent runs as an MCP server inside Claude Desktop, proxying tool calls to a VTEX IO backend. Let's start."
+> "The agent runs as an MCP server inside Claude Desktop. Here are the tools it exposes — search, cart, checkout, AP2 payment. Nothing more. Let's start."
 
 ---
 
