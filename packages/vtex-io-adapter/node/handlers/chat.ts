@@ -1265,6 +1265,10 @@ function createLLMClient(ctx: Context, settings: AppSettings) {
       )
     }
 
+    const model = settings.openaiModel || 'gpt-4o-mini'
+
+    console.log(`[ACG LLM] provider=openai model=${model}`)
+
     return new OpenAIClient(ctx.vtex, {
       apiKey: settings.openaiApiKey,
       model: settings.openaiModel,
@@ -1278,6 +1282,10 @@ function createLLMClient(ctx: Context, settings: AppSettings) {
       )
     }
 
+    const model = settings.geminiModel || 'gemini-2.5-flash'
+
+    console.log(`[ACG LLM] provider=gemini model=${model}`)
+
     return new GeminiClient(ctx.vtex, {
       apiKey: settings.geminiApiKey,
       model: settings.geminiModel,
@@ -1290,6 +1298,10 @@ function createLLMClient(ctx: Context, settings: AppSettings) {
       'Claude API key not configured. Go to Admin > Apps > ACG Adapter settings.'
     )
   }
+
+  const model = settings.claudeModel || 'claude-haiku-4-5-20251001'
+
+  console.log(`[ACG LLM] provider=claude model=${model}`)
 
   return new ClaudeClient(ctx.vtex, {
     apiKey: settings.claudeApiKey,
