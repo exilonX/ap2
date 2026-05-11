@@ -135,9 +135,9 @@ This is where each actor is *named*, *roled*, and *attributed* to a real-world p
 > **VOICE:** "First — the Merchant. The VTEX store itself, identified by `did:web` pointing at `miniprix.myvtex.com`. The merchant signs the CartMandate: 'I commit to selling exactly these items at this price.'"
 > **CAPTION:** **Merchant signs CartMandate · `did:web:acg--miniprix.myvtex.com`**
 
-> **(1:30-1:35)** — *Click Pay Now button. Ceremony step 1 reveals.*
-> **VOICE:** "I click Pay Now."
-> **CAPTION:** *(none — let the click land)*
+> **(1:30-1:35)** — *Click Pay Now button. Ceremony step 1 reveals — green check next to "Re-verify CartMandate against current cart."*
+> **VOICE:** "Pay Now. Step one — re-hash the live cart and compare to the signed mandate. Drift detection catches cart-tamper between sign and pay."
+> **CAPTION:** **Step 1 · re-hash live cart · drift detection (catches cart-tamper post-sign)**
 
 > **(1:35-1:55)** — *Step 2 reveals. Caption emphasizes the CP's real-world equivalents AND the human-presence flag on the PaymentMandate.*
 > **VOICE:** "Second — the Credentials Provider. In production this is Stripe, Adyen, PayPal, or Google Pay — the party holding the user's card-on-file. Here, a mock CP. The CP signs the PaymentMandate, binding the cart hash to the payment hash. Neither can be tampered without invalidating both."
