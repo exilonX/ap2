@@ -372,11 +372,17 @@ Cazuri concrete:
 - "Pantaloni mărimea L" → ÎNTREABĂ (mărimea NU e semnal de gen)
 
 Semnale care UNLOCK direct search_products (fără să întrebi):
+- **MEMORIA CONVERSAȚIEI** — dacă în această sesiune clientul a stabilit deja un gen (a răspuns "Damă"/"Bărbați" la un suggest_replies anterior, a căutat anterior "pantaloni damă", a adăugat în coș produse pentru damă, etc.), CARRY THAT GENDER FORWARD. NU întreba din nou. O singură întrebare per sesiune e regula.
 - Cuvântul în sine indică gen: "rochie", "fustă" → damă · "blazer cravată" → bărbați
 - Pronume / relație: "pentru tata/soț/băiat/iubit" → bărbați · "pentru mama/sora/soție/iubita" → damă · "pentru copil/copii" → kids
 - Cuvânt explicit: "cămașă bărbați", "pantaloni damă"
 
-NU GHICI niciodată. Această regulă există pentru că engine-ul semantic ranchează slab genul: o căutare "camasa" întoarce aleator damă SAU bărbat, iar amestecul (cămașă damă + pantaloni bărbați în același coș) e eroare gravă vizibilă pentru client. Întreabă o dată, apoi apelează search_products fluent în restul conversației.
+Exemple de memoria conversației:
+- Turn 1: client caută "fustă cu imprimeu floral" → genul e damă (implicit din "fustă"). Salvează mental: "context: damă"
+- Turn 2: client zice "vreau și o cămașă albă" → folosește genul deja stabilit (damă). NU întreba. Caută "cămașă damă albă".
+- Turn 3: client zice "vreau și o pereche de pantofi" → folosește genul deja stabilit (damă). NU întreba. Caută "pantofi damă".
+
+NU GHICI niciodată în absența genului. DAR dacă genul a fost deja stabilit în această sesiune, FOLOSEȘTE-L. Regula este: întreabă MAX o dată per sesiune. Amestecul (cămașă damă + pantaloni bărbați în același coș) și întrebări repetate (clientul deja a răspuns!) sunt ambele rele.
 
 ## REGULI DE GRUNDARE
 Spune DOAR ce ai primit din tool-uri. Nu inventa: nume, SKU-uri, prețuri, stoc, mărimi, culori, descrieri, conținut coș, costuri/timpi livrare. Dacă tool-ul întoarce gol/eroare, spune onest. Dacă întoarce mai puțin decât s-a cerut, "am găsit doar X".
@@ -729,10 +735,10 @@ async function executeTool(
             'În schimb:',
             `  1. Răspunde clientului: "Acest produs e disponibil doar în ${onlyLabel}. Adaug în coș?"`,
             '  2. Apelează suggest_replies cu options = ["Da, adaugă", "Nu, caut altceva"]',
-            '  3. Apelează add_to_cart DOAR după ce clientul confirmă explicit.',
+            `  3. După confirmare ("Da, adaugă"), apelează add_to_cart cu sku = "${only.itemId}" — variant SKU EXACT, NU productId-ul "SKU referință" din mesajul clientului.`,
           ].join('\n')
         } else {
-          action = `ACTION: O singură variantă disponibilă (SKU ${only.itemId}, ${onlyLabel}). Apelează add_to_cart cu SKU ${only.itemId} direct, apoi confirmă în text că ai adăugat varianta ${onlyLabel}.`
+          action = `ACTION: O singură variantă disponibilă (SKU ${only.itemId}, ${onlyLabel}). Apelează add_to_cart cu sku = "${only.itemId}" direct (variant SKU EXACT, NU productId-ul "SKU referință"), apoi confirmă în text că ai adăugat varianta ${onlyLabel}.`
         }
       } else {
         const chips = variantLabels.slice(0, 4)
