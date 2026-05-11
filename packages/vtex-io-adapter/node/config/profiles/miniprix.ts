@@ -32,7 +32,14 @@ Prețurile sunt în RON.`,
   // Cart confirmation style.
   // 'verbose' = ask before adding single-variant items ("Adaug în coș?").
   // 'terse'   = add directly, confirm after.
-  confirmationStyle: 'verbose',
+  //
+  // Switched from 'verbose' to 'terse' on 2026-05-11 after Haiku got stuck
+  // in confirmation loops: clicking "Da, adaugă" triggered a fresh
+  // get_product_details (history strips tool results between turns) →
+  // re-asked "Da, adaugă?" → loop. Terse sidesteps the loop entirely by
+  // adding immediately and confirming post-fact. The variant SKU comes
+  // from the same single get_product_details round, no second turn needed.
+  confirmationStyle: 'terse',
 
   // Multi-step intent (outfit, gift bundle, etc).
   // 'stepwise' = pas cu pas, ghidat. 'parallel' = tot deodată.
