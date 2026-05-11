@@ -1,4 +1,6 @@
-import { ExternalClient, IOContext, InstanceOptions } from '@vtex/api'
+/* eslint-disable no-console, no-await-in-loop, no-loop-func -- LLM client logging + intentional sequential retries; tracked by issue 0005 (Logger injection) */
+import type { IOContext, InstanceOptions } from '@vtex/api'
+import { ExternalClient } from '@vtex/api'
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -48,7 +50,11 @@ const DEFAULT_MODELS: Record<LLMProvider, string> = {
 
 function getHttpStatus(error: unknown): number | undefined {
   if (typeof error === 'object' && error !== null) {
-    const e = error as { response?: { status?: number }; status?: number; statusCode?: number }
+    const e = error as {
+      response?: { status?: number }
+      status?: number
+      statusCode?: number
+    }
 
     return e.response?.status ?? e.status ?? e.statusCode
   }
@@ -61,7 +67,10 @@ function getHttpStatus(error: unknown): number | undefined {
 export class ClaudeClient extends ExternalClient {
   private model: string
 
-  constructor(context: IOContext, options: InstanceOptions & { apiKey: string; model?: string }) {
+  constructor(
+    context: IOContext,
+    options: InstanceOptions & { apiKey: string; model?: string }
+  ) {
     super('https://api.anthropic.com', context, {
       ...options,
       headers: {
@@ -78,7 +87,7 @@ export class ClaudeClient extends ExternalClient {
   public async chat(
     messages: LLMMessage[],
     tools?: LLMTool[],
-    maxTokens: number = 1024
+    maxTokens = 1024
   ): Promise<LLMResponse> {
     const systemMessage = messages.find((m) => m.role === 'system')
     const conversationMessages = messages
@@ -138,7 +147,9 @@ export class ClaudeClient extends ExternalClient {
     return this.parseClaudeResponse(response)
   }
 
-  private async postWithRetry(body: Record<string, unknown>): Promise<ClaudeAPIResponse> {
+  private async postWithRetry(
+    body: Record<string, unknown>
+  ): Promise<ClaudeAPIResponse> {
     // Anthropic 429s on burst tool-loops. Retry with exponential backoff.
     // 5xx are also retryable (transient API issues).
     const delays = [400, 1200, 3000] // ms — total worst-case wait ~4.6s
@@ -153,13 +164,19 @@ export class ClaudeClient extends ExternalClient {
       } catch (error) {
         lastError = error
         const status = getHttpStatus(error)
-        const retryable = status === 429 || (status !== undefined && status >= 500 && status < 600)
+        const retryable =
+          status === 429 ||
+          (status !== undefined && status >= 500 && status < 600)
 
         if (!retryable || attempt === delays.length) {
           throw error
         }
 
-        console.warn(`[ACG LLM] Anthropic ${status} — retrying in ${delays[attempt]}ms (attempt ${attempt + 1}/${delays.length})`)
+        console.warn(
+          `[ACG LLM] Anthropic ${status} — retrying in ${
+            delays[attempt]
+          }ms (attempt ${attempt + 1}/${delays.length})`
+        )
         await new Promise((r) => setTimeout(r, delays[attempt]))
       }
     }
@@ -183,7 +200,8 @@ export class ClaudeClient extends ExternalClient {
       }
     }
 
-    const finishReason = response.stop_reason === 'tool_use' ? 'tool_use' : 'stop'
+    const finishReason =
+      response.stop_reason === 'tool_use' ? 'tool_use' : 'stop'
 
     return { content, toolCalls, finishReason }
   }
@@ -194,7 +212,10 @@ export class ClaudeClient extends ExternalClient {
 export class OpenAIClient extends ExternalClient {
   private model: string
 
-  constructor(context: IOContext, options: InstanceOptions & { apiKey: string; model?: string }) {
+  constructor(
+    context: IOContext,
+    options: InstanceOptions & { apiKey: string; model?: string }
+  ) {
     super('https://api.openai.com', context, {
       ...options,
       headers: {
@@ -210,7 +231,7 @@ export class OpenAIClient extends ExternalClient {
   public async chat(
     messages: LLMMessage[],
     tools?: LLMTool[],
-    maxTokens: number = 1024
+    maxTokens = 1024
   ): Promise<LLMResponse> {
     const body: Record<string, unknown> = {
       model: this.model,
@@ -240,7 +261,7 @@ export class OpenAIClient extends ExternalClient {
 
   private parseOpenAIResponse(response: OpenAIAPIResponse): LLMResponse {
     const choice = response.choices[0]
-    const message = choice.message
+    const { message } = choice
     const toolCalls: LLMToolCall[] = []
 
     if (message.tool_calls) {
@@ -253,7 +274,8 @@ export class OpenAIClient extends ExternalClient {
       }
     }
 
-    const finishReason = choice.finish_reason === 'tool_calls' ? 'tool_use' : 'stop'
+    const finishReason =
+      choice.finish_reason === 'tool_calls' ? 'tool_use' : 'stop'
 
     return {
       content: message.content,
@@ -269,7 +291,10 @@ export class GeminiClient extends ExternalClient {
   private model: string
   private apiKey: string
 
-  constructor(context: IOContext, options: InstanceOptions & { apiKey: string; model?: string }) {
+  constructor(
+    context: IOContext,
+    options: InstanceOptions & { apiKey: string; model?: string }
+  ) {
     super('https://generativelanguage.googleapis.com', context, {
       ...options,
       headers: {
@@ -285,7 +310,7 @@ export class GeminiClient extends ExternalClient {
   public async chat(
     messages: LLMMessage[],
     tools?: LLMTool[],
-    maxTokens: number = 1024
+    maxTokens = 1024
   ): Promise<LLMResponse> {
     const systemMessage = messages.find((m) => m.role === 'system')
     const conversation = messages.filter((m) => m.role !== 'system')
@@ -295,16 +320,23 @@ export class GeminiClient extends ExternalClient {
     // proper functionResponse parts so Gemini can reason about them.
     const contents = conversation.map((m) => mapMessageToGeminiContent(m))
 
+    // thinkingBudget: Flash supports 0 (disable thinking) so all
+    // maxOutputTokens become real output. Pro requires thinking enabled
+    // with a non-zero budget; setting 0 produces a 400 INVALID_ARGUMENT.
+    // Detect Pro by name and leave thinking config off entirely (Pro's
+    // default thinking budget is sized for its capability).
+    const isProModel = /\bpro\b/i.test(this.model)
+    const generationConfig: Record<string, unknown> = {
+      maxOutputTokens: maxTokens,
+    }
+
+    if (!isProModel) {
+      generationConfig.thinkingConfig = { thinkingBudget: 0 }
+    }
+
     const body: Record<string, unknown> = {
       contents,
-      generationConfig: {
-        maxOutputTokens: maxTokens,
-        // Gemini 2.5 Flash uses "thinking" tokens by default — these count
-        // against maxOutputTokens, leaving little room for actual output.
-        // For commerce chat we don't need long internal reasoning; disable
-        // thinking entirely so output:N tokens means N tokens of real output.
-        thinkingConfig: { thinkingBudget: 0 },
-      },
+      generationConfig,
     }
 
     if (systemMessage) {
@@ -331,22 +363,37 @@ export class GeminiClient extends ExternalClient {
 
     if (u) {
       console.log(
-        `[ACG LLM] tokens — input:${u.promptTokenCount ?? 0} cached:${u.cachedContentTokenCount ?? 0} output:${u.candidatesTokenCount ?? 0} finish:${finishReason} parts:${partsCount}`
+        `[ACG LLM] tokens — input:${u.promptTokenCount ?? 0} cached:${
+          u.cachedContentTokenCount ?? 0
+        } output:${
+          u.candidatesTokenCount ?? 0
+        } finish:${finishReason} parts:${partsCount}`
       )
     }
 
     // Surface unusual finish reasons so we know when Gemini blocked output
-    if (finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS' && finishReason !== 'NONE') {
-      console.warn(`[ACG LLM] Gemini returned non-standard finishReason: ${finishReason}`)
+    if (
+      finishReason !== 'STOP' &&
+      finishReason !== 'MAX_TOKENS' &&
+      finishReason !== 'NONE'
+    ) {
+      console.warn(
+        `[ACG LLM] Gemini returned non-standard finishReason: ${finishReason}`
+      )
     }
 
     return parseGeminiResponse(response)
   }
 
-  private async postWithRetry(body: Record<string, unknown>): Promise<GeminiAPIResponse> {
+  private async postWithRetry(
+    body: Record<string, unknown>
+  ): Promise<GeminiAPIResponse> {
     // Gemini hits 503 ("model overloaded") and 429 ("quota exceeded") regularly.
     // Retry with exponential backoff like we do for Anthropic.
-    const path = `/v1beta/models/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`
+    const path = `/v1beta/models/${
+      this.model
+    }:generateContent?key=${encodeURIComponent(this.apiKey)}`
+
     const delays = [400, 1200, 3000] // ms — total worst-case wait ~4.6s
 
     let lastError: unknown
@@ -359,13 +406,29 @@ export class GeminiClient extends ExternalClient {
       } catch (error) {
         lastError = error
         const status = getHttpStatus(error)
-        const retryable = status === 429 || (status !== undefined && status >= 500 && status < 600)
+        const retryable =
+          status === 429 ||
+          (status !== undefined && status >= 500 && status < 600)
 
         if (!retryable || attempt === delays.length) {
+          // Surface the actual Google error message so config issues
+          // (invalid model name, bad API key, etc.) are diagnosable from
+          // the log without server-debugger spelunking.
+          const detail = extractGoogleErrorDetail(error)
+
+          console.error(
+            `[ACG LLM] Gemini ${
+              status ?? '???'
+            } non-retryable error for model "${this.model}": ${detail}`
+          )
           throw error
         }
 
-        console.warn(`[ACG LLM] Gemini ${status} — retrying in ${delays[attempt]}ms (attempt ${attempt + 1}/${delays.length})`)
+        console.warn(
+          `[ACG LLM] Gemini ${status} — retrying in ${
+            delays[attempt]
+          }ms (attempt ${attempt + 1}/${delays.length})`
+        )
         await new Promise((r) => setTimeout(r, delays[attempt]))
       }
     }
@@ -374,9 +437,33 @@ export class GeminiClient extends ExternalClient {
   }
 }
 
+// Pulls the human-readable error message out of a Google API failure.
+// Google's 400/404 responses look like:
+//   { error: { code: 400, message: "...", status: "INVALID_ARGUMENT" } }
+// We surface .message + .status so the log line is actionable.
+function extractGoogleErrorDetail(err: unknown): string {
+  try {
+    const e = err as {
+      response?: { data?: { error?: { message?: string; status?: string } } }
+    }
+
+    const goog = e.response?.data?.error
+
+    if (goog?.message || goog?.status) {
+      return `${goog.status ?? '?'} — ${goog.message ?? '(no message)'}`
+    }
+  } catch {
+    /* fallthrough */
+  }
+
+  return err instanceof Error ? err.message : String(err)
+}
+
 // ─── Gemini helpers ─────────────────────────────────────────────
 
-function mapMessageToGeminiContent(m: LLMMessage): { role: 'user' | 'model'; parts: GeminiPart[] } {
+function mapMessageToGeminiContent(
+  m: LLMMessage
+): { role: 'user' | 'model'; parts: GeminiPart[] } {
   const role = m.role === 'assistant' ? 'model' : 'user'
   const parts: GeminiPart[] = []
 
@@ -423,8 +510,17 @@ function mapMessageToGeminiContent(m: LLMMessage): { role: 'user' | 'model'; par
 
 // Gemini doesn't accept some JSON-Schema dialect features (e.g. `additionalProperties`,
 // `$schema`). Strip them defensively.
-function cleanSchemaForGemini(schema: Record<string, unknown>): Record<string, unknown> {
-  const blocked = new Set(['additionalProperties', '$schema', '$id', '$ref', 'definitions'])
+function cleanSchemaForGemini(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const blocked = new Set([
+    'additionalProperties',
+    '$schema',
+    '$id',
+    '$ref',
+    'definitions',
+  ])
+
   const out: Record<string, unknown> = {}
 
   for (const [k, v] of Object.entries(schema)) {
@@ -472,8 +568,8 @@ function parseGeminiResponse(response: GeminiAPIResponse): LLMResponse {
     candidate.finishReason === 'MAX_TOKENS'
       ? 'length'
       : toolCalls.length > 0
-        ? 'tool_use'
-        : 'stop'
+      ? 'tool_use'
+      : 'stop'
 
   return { content, toolCalls, finishReason }
 }
@@ -515,7 +611,11 @@ interface OpenAIAPIResponse {
     }
     finish_reason: 'stop' | 'tool_calls' | 'length'
   }>
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  usage: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+  }
 }
 
 // ─── Gemini types ───────────────────────────────────────────────
