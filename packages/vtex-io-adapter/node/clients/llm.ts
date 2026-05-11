@@ -320,18 +320,22 @@ export class GeminiClient extends ExternalClient {
     // proper functionResponse parts so Gemini can reason about them.
     const contents = conversation.map((m) => mapMessageToGeminiContent(m))
 
-    // thinkingBudget: Flash supports 0 (disable thinking) so all
-    // maxOutputTokens become real output. Pro requires thinking enabled
-    // with a non-zero budget; setting 0 produces a 400 INVALID_ARGUMENT.
-    // Detect Pro by name and leave thinking config off entirely (Pro's
-    // default thinking budget is sized for its capability).
+    // thinkingBudget tuning:
+    //   - Flash: supports 0 (disable thinking entirely). All
+    //     maxOutputTokens go to real output, latency is minimal.
+    //   - Pro: requires thinking enabled (minimum budget 128). Default
+    //     is dynamic / unbounded and produces noticeable latency on
+    //     simple turns. We cap at 256 — enough headroom for variant
+    //     reasoning ("which SKU did the user pick?") but not so much
+    //     that shopping chat feels sluggish.
+    //
+    // Shopping is not rocket science; we don't need long internal
+    // chains-of-thought. If a future call needs more thinking, callers
+    // can pass a higher maxTokens or set the budget explicitly.
     const isProModel = /\bpro\b/i.test(this.model)
     const generationConfig: Record<string, unknown> = {
       maxOutputTokens: maxTokens,
-    }
-
-    if (!isProModel) {
-      generationConfig.thinkingConfig = { thinkingBudget: 0 }
+      thinkingConfig: { thinkingBudget: isProModel ? 256 : 0 },
     }
 
     const body: Record<string, unknown> = {
