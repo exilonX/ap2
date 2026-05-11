@@ -1601,6 +1601,104 @@ function detectProductListingHallucination(
   return { violated: false, reason: '' }
 }
 
+/**
+ * Scan the conversation for gender signals to determine if a gender has
+ * already been established for this session.
+ *
+ * Counts hits across user messages, assistant messages, AND tool results
+ * (product names / category breadcrumbs like "Damă > Fuste" reveal the
+ * gender as effectively as an explicit user statement). Returns the
+ * dominant gender if it has at least 2 hits — single mentions are too
+ * weak to lock in (could be a passing reference or a typo).
+ */
+function extractEstablishedGender(
+  messages: LLMMessage[]
+): 'damă' | 'bărbați' | 'copil' | null {
+  const damaPattern = /\b(dam[aă]|femei|feminin|woman|women|fust[aă]|rochi[aei])\b/i
+  const barbatiPattern = /\b(b[aă]rba[tț]i?|man|men|blazer\s+cu\s+cravat[aă])\b/i
+  const copilPattern = /\b(copil(ul|i)?|kids?|children|b[aă]ie[tț]el|feti[tț][aă])\b/i
+
+  let damaScore = 0
+  let barbatiScore = 0
+  let copilScore = 0
+
+  for (const msg of messages) {
+    const content = typeof msg.content === 'string' ? msg.content : ''
+
+    if (damaPattern.test(content)) damaScore++
+    if (barbatiPattern.test(content)) barbatiScore++
+    if (copilPattern.test(content)) copilScore++
+
+    // Tool results often have category breadcrumbs ("Damă > Fuste") and
+    // product names with gender markers ("Fustă petrecută") that are the
+    // strongest signals of all.
+    if (msg.toolResults) {
+      for (const tr of msg.toolResults) {
+        const txt = typeof tr.result === 'string' ? tr.result : ''
+
+        if (damaPattern.test(txt)) damaScore++
+        if (barbatiPattern.test(txt)) barbatiScore++
+        if (copilPattern.test(txt)) copilScore++
+      }
+    }
+  }
+
+  const ranked = [
+    { gender: 'damă' as const, score: damaScore },
+    { gender: 'bărbați' as const, score: barbatiScore },
+    { gender: 'copil' as const, score: copilScore },
+  ].sort((a, b) => b.score - a.score)
+
+  // Min 2 hits AND a clear lead over the runner-up (avoid flip-flop
+  // sessions where the user shopped for both genders).
+  if (ranked[0].score >= 2 && ranked[0].score > ranked[1].score) {
+    return ranked[0].gender
+  }
+
+  return null
+}
+
+/**
+ * Detect gender re-ask: the LLM emitted a "Pentru bărbați sau damă?"-style
+ * clarification question even though the conversation already established
+ * a gender via earlier searches / cart contents / user statements.
+ *
+ * Same class as detectProductListingHallucination — a prompt-rule that
+ * the model ignored. The corrective round inlines the established gender
+ * so the next response uses it directly.
+ *
+ * Only triggers when:
+ *   - Established gender is known (extractEstablishedGender returned non-null)
+ *   - Reply text is short (gender questions are typically < 80 chars)
+ *   - Text matches a gender-question pattern
+ */
+function detectGenderReAskHallucination(
+  text: string,
+  establishedGender: string | null
+): { violated: boolean; reason: string } {
+  if (!establishedGender) return { violated: false, reason: '' }
+  if (!text || text.length > 200) return { violated: false, reason: '' }
+
+  const genderQuestionPatterns = [
+    /pentru\s+(?:b[ăa]rba[tț]i|dam[ăa])\s+sau\s+(?:dam[ăa]|b[ăa]rba[tț]i)/i,
+    /dam[ăa]\s+sau\s+b[ăa]rba[tț]i/i,
+    /pentru\s+ce\s+gen/i,
+    /men\s+or\s+women/i,
+    // Gender-clarification suggest_replies textual fallback ("Bărbați? Damă?")
+    /\bb[ăa]rba[tț]i\s*\?\s*dam[ăa]/i,
+    /\bdam[ăa]\s*\?\s*b[ăa]rba[tț]i/i,
+  ]
+
+  if (genderQuestionPatterns.some((p) => p.test(text))) {
+    return {
+      violated: true,
+      reason: `LLM asked for gender clarification but session already established gender as "${establishedGender}"`,
+    }
+  }
+
+  return { violated: false, reason: '' }
+}
+
 // ─── Token Budget Constants ─────────────────────────────────────
 
 const TOKEN_BUDGET = {
@@ -1788,6 +1886,31 @@ export async function chatHandler(ctx: Context) {
           messages.push({
             role: 'user',
             content: `[SYSTEM CORRECTION] Ai listat produse specifice (cu SKU-uri / prețuri) în text DAR nu ai apelat search_products în această tură. Asta înseamnă că produsele sunt FABRICATE — nu există dovadă că sunt în catalog. Apelează ACUM search_products cu o interogare rafinată bazată pe ultimul mesaj al clientului (adaugă calificative ca "non-floral", "abstract", "uni" etc.). Apoi răspunde bazat STRICT pe rezultatele tool-ului. NU repeta lista fabricată.`,
+          })
+          continue
+        }
+
+        // Gender re-ask hallucination — the LLM asked "Pentru bărbați
+        // sau damă?" despite the conversation having already established
+        // a gender (via prior searches, cart contents, or explicit user
+        // statements). Prompt rule alone isn't enough; force a corrective
+        // round that inlines the established gender.
+        const establishedGender = extractEstablishedGender(messages)
+        const genderGuard = detectGenderReAskHallucination(
+          finalText,
+          establishedGender
+        )
+
+        if (genderGuard.violated && round < MAX_TOOL_ROUNDS - 1) {
+          console.warn(
+            `[ACG Chat] Gender re-ask hallucination — ${
+              genderGuard.reason
+            }. Forcing search round ${round + 1}.`
+          )
+          messages.push({ role: 'assistant', content: finalText })
+          messages.push({
+            role: 'user',
+            content: `[SYSTEM CORRECTION] Ai întrebat genul din nou, DAR sesiunea asta a stabilit deja că vorbim despre "${establishedGender}" (vezi căutările anterioare / coș / context). NU MAI ÎNTREBA. Apelează DIRECT search_products cu interogarea clientului plus genul "${establishedGender}" inclus (ex: dacă clientul vrea "cămașă", caută "cămașă ${establishedGender}"; dacă vrea "pantofi", caută "pantofi ${establishedGender}"). Apoi răspunde bazat STRICT pe rezultatele tool-ului.`,
           })
           continue
         }
