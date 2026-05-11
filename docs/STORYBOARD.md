@@ -1,15 +1,40 @@
 # Demo Storyboard — Agent Commerce Gateway (AP2 case study)
 
 **Target length:** 3:30–4:00. Hard cap 4:00.
-**Format:** captions-first (mute-safe). Voice narration optional second pass.
+**Format:** **voice + captions paired**. Voice carries the narrative; captions reinforce the technical detail (signature hashes, DID URLs, JSON fields). Both ship together.
 **Primary surface:** Claude Desktop (most iconic for the AP2 / agentic-commerce story; cleanest to record).
 **Secondary surface:** storefront chat widget (5s B-roll near the close to show "same backend, two surfaces").
 
 ## Production decisions (locked 2026-05-08)
 
-- **Captions:** English only. The user-typed messages (Romanian: *"vreau o camasa"*, *"checkout"*) stay in Romanian for authenticity, with inline English caption translations. Caption track itself is English.
+- **Voice:** present from take 1 — not a second pass. Each scene has a script broken into beats with timestamps. Read the script aloud while watching the silent screen capture in your editing tool.
+- **Captions:** English only, paired with voice. Caption appears on screen at the same beat as the voice line that delivers it. Caption text is *shorter* than the spoken line — caption is for skimmers/mute viewers, voice carries the full narrative.
+- **User-typed Romanian text** stays Romanian for authenticity (e.g. *"vreau o camasa"*). The voice line in English narrates around it ("I ask the agent in Romanian for a shirt…").
 - **Camera:** screen-only, no face cam. Focus stays on the artifacts.
-- **Workspace:** `acg / miniprix` (the current working setup) — already wired end-to-end with RON pricing, Romanian catalog, real products. Don't burn time spinning up an English-language workspace; the Romanian flavor reads as authentic, not a barrier.
+- **Workspace:** `acg / miniprix` (the current working setup) — already wired end-to-end with RON pricing, Romanian catalog, real products.
+
+## Recording workflow
+
+The pro workflow is **screen-first, voice-over-second**, even when you've decided voice is part of the final cut:
+
+1. **Capture screen silently** following the scene actions. Don't worry about pace yet — you'll cut to script timing in post.
+2. **Import into DaVinci Resolve / CapCut.** Cut every dead second, tighten transitions to roughly match the scene timings below.
+3. **Read the voice script aloud while watching playback.** Multiple takes per scene if needed. Record with a half-decent USB mic in a quiet room — no studio gear required.
+4. **Overlay captions** at the timestamps below. Captions appear *on the beat* the voice lands, hold for ~2s after, then fade.
+5. **Mix** — voice front, ambient/music (if used) at –18 dB so the words sit clearly above.
+
+Word budget at conversational pace (~2.5 words/second after natural pauses):
+
+| Scene | Duration | Spoken word budget |
+|---|---|---|
+| 1 — Cold open | 15s | ~30 words |
+| 2 — Live shopping | 45s | ~80 words (long action gaps for tool calls) |
+| 3 — Signing ceremony | 75s | ~120 words (animation reveals need silence) |
+| 4 — Independent verification | 35s | ~65 words |
+| 5 — Rejection branch | 35s | ~65 words |
+| 6 — Architecture + widget | 25s | ~50 words |
+| 7 — Compliance + close | 10s | ~22 words |
+| **Total** | **~3:40** | **~432 words spoken** |
 
 ---
 
@@ -19,150 +44,214 @@ Before you hit record, verify each of these:
 
 - [ ] Adapter linked to fresh workspace (`vtex link` from `packages/vtex-io-adapter`)
 - [ ] App settings populated in VTEX Admin: `acgAllowedOrigins`, `acgAuthToken`, LLM keys, Pinecone keys
-- [ ] Claude Desktop config has `ACG_AUTH_TOKEN` matching the adapter setting; restarted Claude Desktop after the change
-- [ ] MCP server built (`npm run build` in `packages/mcp-server`) — `dist/apps/checkout.html` is the post-Step-6 26 KB version, NOT the April-1 11 KB one
+- [ ] Claude Desktop config has `ACG_AUTH_TOKEN` matching the adapter setting; fully quit + reopen Claude Desktop after the change
+- [ ] MCP server built (`npm run build` in `packages/mcp-server`) — `dist/apps/checkout.html` is the latest version with the on-file panel and the force-reject link
 - [ ] All three `.well-known/did.json` URLs return JSON in your browser:
   - `https://acg--miniprix.myvtex.com/_v/acg/.well-known/did.json`
   - `https://acg--miniprix.myvtex.com/_v/acg/mock-cp/.well-known/did.json`
   - `https://acg--miniprix.myvtex.com/_v/acg/mock-network/.well-known/did.json`
-- [ ] Storefront has shipping address + customer profile pre-set on the demo cart (so 0014.a doesn't trigger awkward prompts mid-recording)
-- [ ] Browser tabs ready in a separate window: a JSON-pretty-printed view of the merchant DID document
-- [ ] Screen resolution locked to 1920×1080 or 16:9 equivalent (1280×720 also fine for smaller files)
+- [ ] Storefront has shipping address + customer profile pre-set on the demo cart
+- [ ] Browser tabs ready in a separate window: the three DID document URLs pre-loaded, JSON-prettified
+- [ ] Screen resolution locked to 1920×1080 or 16:9 equivalent
 - [ ] Hide the dock / taskbar / notifications. Do Not Disturb on.
-- [ ] Run a happy-path dry run end-to-end before the real take. Force-reject too. If anything 403s or hangs, fix before rolling.
+- [ ] Run a happy-path dry run end-to-end before the real take. Force-reject too.
 
 ## Equipment notes
 
 - **Recording tool:** OBS or built-in screen recorder. 1080p, 30fps minimum. Mouse cursor visible.
-- **Editing tool:** DaVinci Resolve (free) or CapCut. Both handle caption tracks cleanly.
-- **Caption font:** sans-serif, ~32–36px at 1080p, white text with a thin black outline OR semi-transparent black background. Caption stays for the FULL duration of the action it describes — viewers need time to read.
-- **Caption position:** lower third, ~80px above the bottom edge. Don't cover the iframe content.
-- **Pacing:** never let a scene run silent for more than 4s without a caption transition or visual change. Mute viewers tune out fast.
+- **Microphone:** USB mic in a quiet room is fine. Avoid built-in laptop mic — its high-frequency noise floor reads as "amateur."
+- **Editing tool:** DaVinci Resolve (free) or CapCut. Both handle voice tracks + caption tracks cleanly.
+- **Caption font:** sans-serif, ~32–36px at 1080p, white text with thin black outline or semi-transparent black background.
+- **Caption position:** lower third, ~80px above the bottom edge.
+- **Caption timing:** appears on the beat, stays for ~2s after the voice line ends, then fades.
 
 ---
 
 ## Scene-by-scene
 
+Each scene below uses this format per beat:
+
+> **(timestamp)** — *action description*
+> **VOICE:** "exact words to read aloud"
+> **CAPTION:** what appears on screen
+
+---
+
 ### Scene 1 — Cold open (0:00 → 0:15)
 
-| | |
-|---|---|
-| **On screen** | Black background fading to a still of the merchant DID document JSON in a browser, key fields highlighted (`id`, `publicKeyHex`). Then crossfade to the Claude Desktop window with cursor in the chat input. |
-| **Caption (sequential)** | (0:02) **Agent commerce on VTEX.**<br>(0:06) **Every signature is real EdDSA.**<br>(0:10) **Every artifact is publicly verifiable.** |
-| **Voice (optional)** | "An AI agent shopping on a real VTEX store. What makes this different from every other 'AI shopping demo': every signature is real Ed25519, every artifact is published, anyone can verify the chain themselves." |
-| **Capture** | Screen recording of browser → Claude Desktop. ~15s total. |
+**Visual:** Black background fading to a still of the merchant DID document JSON in a browser, key fields highlighted (`id`, `publicKeyHex`). Then crossfade to the Claude Desktop window with cursor in the chat input.
+
+> **(0:00-0:03)** — *Black fade-in to DID JSON view.*
+> **VOICE:** "An AI agent shopping on a real VTEX store."
+> **CAPTION:** **Agent commerce on VTEX.**
+
+> **(0:03-0:09)** — *Camera pans across the DID JSON, lingering on `publicKeyHex`.*
+> **VOICE:** "What makes this different from every other AI-shopping demo: every signature is real Ed25519."
+> **CAPTION:** **Every signature is real EdDSA.**
+
+> **(0:09-0:15)** — *Crossfade to Claude Desktop, cursor blinking in chat input.*
+> **VOICE:** "Every artifact is published. Anyone can verify the chain themselves."
+> **CAPTION:** **Every artifact is publicly verifiable.**
 
 ---
 
 ### Scene 2 — Live agent shopping (0:15 → 1:00)
 
-| | |
-|---|---|
-| **On screen** | Claude Desktop window. Type the user message, watch tool calls fire, watch the iframe render. |
-| **User types** (in Romanian, since that's the merchant's language) | *"vreau o camasa si niste pantaloni pentru barbati"* |
-| **Tool calls visible** | `browseProducts` (×2 — one for camasa, one for pantaloni). Iframes render 3 products each with real images. |
-| **Caption (sequential)** | (0:18) **MCP tool call: `browseProducts`**<br>(0:25) **→ VTEX IO adapter → live catalog**<br>(0:35) **Real merchant. Real products. RON pricing.** |
-| **Action** | Click "Add to cart" on one shirt + one pair of pants from the product cards. |
-| **Caption (during add)** | (0:45) **Cart preview rendered server-side from VTEX OrderForm.** |
-| **Voice (optional)** | "I ask the agent for a shirt and some pants. The MCP server proxies the request to a VTEX IO adapter that hits the real catalog. The agent reads the results, builds a card UI, and adds two items to a real shopping cart." |
-| **Capture** | Full Claude Desktop window. Make sure the tool-call expansion is visible at least once so viewers see the MCP plumbing. |
+**Visual:** Claude Desktop window. Type user message, tool calls fire, iframe renders products.
+
+> **(0:15-0:21)** — *Type "vreau o camasa si niste pantaloni pentru barbati" into Claude Desktop.*
+> **VOICE:** "I ask the agent in Romanian for a shirt and some pants."
+> **CAPTION:** **User → agent (Romanian):** *vreau o camasa si niste pantaloni pentru barbati*
+
+> **(0:21-0:30)** — *Tool calls expand, browseProducts × 2 fire.*
+> **VOICE:** "The MCP server proxies the request to a VTEX IO adapter that hits the real catalog."
+> **CAPTION:** **MCP tool call: `browseProducts` → VTEX IO → live catalog**
+
+> **(0:30-0:38)** — *Product cards render in iframes inside the chat — 3 shirts, 3 pants.*
+> **VOICE:** "Real merchant. Real products. Real RON pricing — none of this is mocked."
+> **CAPTION:** **Real catalog. Real prices.**
+
+> **(0:38-0:50)** — *Click "Add to cart" on one shirt + one pair of pants from the product cards.*
+> **VOICE:** "The agent reads the results, adds two items to a real shopping cart, and renders the cart inline."
+> **CAPTION:** **Cart preview rendered server-side from VTEX OrderForm.**
+
+> **(0:50-1:00)** — *Cart preview card visible, totals shown.*
+> **VOICE:** "Same cart you'd see if you opened VTEX checkout in another tab — there's only one cart, shared across surfaces."
+> **CAPTION:** **One orderForm, all surfaces.**
 
 ---
 
 ### Scene 3 — Checkout + signing ceremony (1:00 → 2:15)
 
-| | |
-|---|---|
-| **User types** | *"checkout"* |
-| **On screen** | The checkout iframe opens. AP2 Security panel shows: mandate-id, did:web:acg--miniprix.myvtex.com, cart hash, signed-at timestamp. Pay Now button is enabled. |
-| **Caption (during iframe render)** | (1:05) **Merchant signs CartMandate (Ed25519, JCS-canonicalized).**<br>(1:10) **`did:web:acg--miniprix.myvtex.com` · cart_hash: 78e4a8f01f0ad…** |
-| **Action** | Click **Pay Now**. The 4-step ceremony plays. |
-| **Capture each step's reveal:** | |
-| **Step 1 (caption)** | (1:20) **1. Re-verify CartMandate hasn't drifted from the live cart.** |
-| **Step 2 (caption)** | (1:28) **2. Credentials Provider signs PaymentMandate.**<br>**transaction_data = [hash(CartMandate), hash(PaymentMandateContents)]** |
-| **Step 3 (caption — appears as the 7 checks reveal)** | (1:40) **3. Network independently verifies the chain.**<br>(1:42) **7 checks: merchant sig · CP sig · hash binding · amount · mandate id · two expiries** |
-| **Step 4 (caption)** | (1:58) **4. Order placed. Network signs the PaymentReceipt.** |
-| **Final panel caption** | (2:08) **All three parties cryptographically attested. Three artifact links below.** |
-| **Voice (optional)** | "When I say 'checkout,' the merchant signs a CartMandate — a verifiable digital credential committing to this exact cart. I click Pay Now. The Credentials Provider signs the PaymentMandate, binding the cart hash to the payment hash. The Network independently verifies seven separate properties — signatures, expiries, amount consistency. Each step is a real signed artifact. None of this is theatre." |
-| **Capture note** | Make sure each step's reveal animation completes before moving on. The 80ms-staggered reveal of the 7 checks in step 3 is the most visually rich moment in the whole demo — let it land. |
+**Visual:** User types "checkout"; iframe opens with AP2 Security panel; Pay Now button enabled; click triggers 4-step animated ceremony.
+
+> **(1:00-1:08)** — *Type "checkout"; iframe opens; AP2 Security panel appears.*
+> **VOICE:** "When I say checkout, the merchant signs a CartMandate — a verifiable digital credential committing to this exact cart."
+> **CAPTION:** **Merchant signs CartMandate (Ed25519, JCS-canonicalized).**
+
+> **(1:08-1:18)** — *Camera lingers on AP2 Security panel — mandate ID, DID, cart hash visible.*
+> **VOICE:** "The merchant's DID, the cart hash, the timestamp. All cryptographically committed."
+> **CAPTION:** **`did:web:acg--miniprix.myvtex.com` · cart_hash: 78e4a8f…**
+
+> **(1:18-1:22)** — *Click Pay Now button. Ceremony Step 1 reveals with green check.*
+> **VOICE:** "I click Pay Now. Step one: re-verify the signed cart hasn't drifted from the live cart."
+> **CAPTION:** **1. Re-verify CartMandate against current cart.**
+
+> **(1:22-1:32)** — *Step 2 reveals with green check.*
+> **VOICE:** "Step two: the Credentials Provider signs the PaymentMandate. The transaction_data binds the cart hash to the payment hash — neither can be tampered without invalidating both."
+> **CAPTION:** **2. CP signs PaymentMandate. transaction_data = [hash(Cart), hash(Payment)]**
+
+> **(1:32-1:52)** — *Step 3 reveals; the 7-check checklist animates in at 80ms intervals. Don't speed up.*
+> **VOICE:** "Step three: the Network independently verifies the chain. Seven separate checks — both signatures, the hash binding, the amount, the mandate ID linking, both expiries."
+> **CAPTION:** **3. Network verifies — 7 checks: signatures · hash binding · amount · expiries**
+
+> **(1:52-2:02)** — *Step 4 reveals; "Order placed" with mock order ID.*
+> **VOICE:** "Step four: the Network signs the PaymentReceipt. The order is placed."
+> **CAPTION:** **4. Order placed. Network signs the PaymentReceipt.**
+
+> **(2:02-2:15)** — *Final "Payment authorized" panel; three artifact links visible.*
+> **VOICE:** "Three parties just cryptographically attested. Three artifact links below — let's open them."
+> **CAPTION:** **All three parties signed. Three artifact links.**
 
 ---
 
 ### Scene 4 — Independent verification (2:15 → 2:50)
 
-This is the strongest single beat for AP2 spec compliance. The viewer sees that the ceremony isn't a render — it produces real artifacts that anyone can verify against the published DIDs.
+**Visual:** Click each artifact link in turn; browser tabs open with JSON; key fields highlighted.
 
-| | |
-|---|---|
-| **Action** | Click each of the three artifact links in turn. Each opens a new browser tab with the JSON. |
-| **Tab 1 (CartMandate)** | Browser shows JSON. Highlight `verification.valid: true`, `merchant_authorization` JWT, `signedBy: did:web:acg--miniprix.myvtex.com`. |
-| **Caption (Tab 1)** | (2:18) **CartMandate · verification.valid: true · signed by `did:web:acg--miniprix.myvtex.com`** |
-| **Tab 2 (PaymentMandate)** | Highlight `payment_mandate_contents`, the W3C `payment_response`, the `user_authorization` JWT, `cpDID: did:web:acg--miniprix.myvtex.com:mock-cp`. |
-| **Caption (Tab 2)** | (2:25) **PaymentMandate · `user_authorization` signed by `did:web:…:mock-cp`** |
-| **Tab 3 (PaymentReceipt)** | Highlight `approval_status: approved`, all 7 `verification_checks: true`, `network_authorization` JWT, `networkDID: did:web:acg--miniprix.myvtex.com:mock-network`. |
-| **Caption (Tab 3)** | (2:33) **PaymentReceipt · all 7 verification_checks true · signed by `did:web:…:mock-network`** |
-| **Action (closer)** | Open all three `.well-known/did.json` URLs side-by-side (split-screen or rapid sequential). Highlight that each has a different `publicKeyHex`. |
-| **Caption (closer)** | (2:42) **Three cryptographic identities. Three published keys. Anyone can verify the chain.** |
-| **Voice (optional)** | "Click the artifact links. Each opens the signed JSON. The CartMandate verifies against the merchant's public key. The PaymentMandate against the Credentials Provider's. The PaymentReceipt against the Network's. Three different parties, three different DIDs, three different keypairs — all published, all reachable, all yours to verify." |
+> **(2:15-2:23)** — *Click CartMandate link; tab opens JSON; highlight `verification.valid: true` and `signedBy`.*
+> **VOICE:** "The CartMandate. `verification.valid: true`. Signed by the merchant's DID."
+> **CAPTION:** **CartMandate · verification.valid: true · `did:web:acg--miniprix.myvtex.com`**
+
+> **(2:23-2:31)** — *Click PaymentMandate link; tab opens JSON; highlight `user_authorization` and `cpDID`.*
+> **VOICE:** "The PaymentMandate. `user_authorization` signed by the Credentials Provider."
+> **CAPTION:** **PaymentMandate · `user_authorization` · `did:web:…:mock-cp`**
+
+> **(2:31-2:40)** — *Click PaymentReceipt link; tab opens JSON; highlight `approval_status: "approved"`, all 7 checks true, `networkDID`.*
+> **VOICE:** "The PaymentReceipt. All seven checks true. Signed by the Network's key."
+> **CAPTION:** **PaymentReceipt · 7/7 checks · `did:web:…:mock-network`**
+
+> **(2:40-2:50)** — *Open all three `.well-known/did.json` URLs side-by-side in a split view. Three different `publicKeyHex` values visible.*
+> **VOICE:** "Three cryptographic identities. Three published keys. Anyone with these URLs can verify the chain themselves."
+> **CAPTION:** **Three DIDs. Three keys. Independently verifiable.**
 
 ---
 
 ### Scene 5 — The rejection branch (2:50 → 3:25)
 
-The always-emit invariant. The single most underappreciated property of AP2 in production.
+**Visual:** Reset to Claude Desktop; new cart; click `(force reject — staging only)` link; ceremony plays with one ✗; open rejection receipt JSON.
 
-| | |
-|---|---|
-| **On screen** | Reset to Claude Desktop. New cart, hit `checkout` again, iframe opens. |
-| **Action** | Instead of Pay Now, click the small grey link **`(force reject — staging only)`** below it. |
-| **Caption (immediately)** | (2:55) **Force-reject mode (staging only). The network will fail one check.** |
-| **Action** | Watch the ceremony play: steps 1+2 succeed normally, step 3 reveals 6 ✓ + 1 ✗ on `payment_mandate_not_expired`, step 4 marks failed. |
-| **Caption (during step 3 reveal)** | (3:05) **6 ✓ + 1 ✗. The network rejected the chain.** |
-| **Final panel** | Reads: "Payment rejected · Reason: payment mandate has expired" — and contains the **PaymentReceipt** artifact link. |
-| **Action** | Click the PaymentReceipt link. Browser opens the JSON. |
-| **Highlight in JSON** | `approval_status: "rejected"` AND `verification.valid: true` (top-level). |
-| **Caption (THE punchline)** | (3:15) **Payment rejected — but the receipt is cryptographically valid.**<br>(3:20) **The network *signed the rejection*. This is the always-emit invariant.** |
-| **Voice (optional)** | "Now what happens when something goes wrong? In production this could be insufficient funds, a 3DS step-up failure, a fraud flag — anything. I trigger a rejection. The ceremony plays through, the network finds one check failed, and emits a signed rejection receipt. Watch this: open the receipt. The receipt itself is cryptographically valid. The network signed the rejection. Today, a decline is a string from the acquirer's logs. Tomorrow, it's a signed artifact from the issuer that the merchant, the cardholder, and any auditor can independently verify." |
-| **Capture note** | This is the scene that earns the case study its tweet. Make sure the JSON view of the rejection receipt is fully visible — the contradiction between `approval_status: rejected` and `verification.valid: true` is the entire story. |
+> **(2:50-2:55)** — *New cart, "checkout" typed, iframe re-opens.*
+> **VOICE:** "Now — what happens when something goes wrong?"
+> **CAPTION:** **What if a check fails?**
+
+> **(2:55-3:01)** — *Click the small grey "(force reject — staging only)" link below Pay Now.*
+> **VOICE:** "In production this could be insufficient funds, a 3DS step-up failure, or a fraud flag. Here I force the Network to fail one check."
+> **CAPTION:** **Force-reject mode (staging only).**
+
+> **(3:01-3:13)** — *Ceremony plays: steps 1+2 succeed, step 3 reveals 6 ✓ + 1 ✗ on `payment_mandate_not_expired`, step 4 marks failed.*
+> **VOICE:** "Steps one and two succeed. Step three reveals six green checks and one red. The Network rejected the chain."
+> **CAPTION:** **6 ✓ + 1 ✗ — Network rejected.**
+
+> **(3:13-3:18)** — *Final panel: "Payment rejected · Reason: payment mandate has expired" with PaymentReceipt link.*
+> **VOICE:** "The receipt link is right there. Watch this — open it."
+> **CAPTION:** **PaymentReceipt artifact still emitted →**
+
+> **(3:18-3:25)** — *Click the receipt; JSON opens; highlight `approval_status: "rejected"` AND `verification.valid: true` at the top level.*
+> **VOICE:** "Payment rejected. But the receipt itself is cryptographically valid. The Network *signed the rejection*. Today a decline is a string from the acquirer. Tomorrow it's a signed artifact anyone can verify."
+> **CAPTION:** **approval_status: rejected · verification.valid: true · Always-emit invariant.**
 
 ---
 
 ### Scene 6 — Architecture + secondary surface (3:25 → 3:50)
 
-| | |
-|---|---|
-| **On screen** | Clean diagram (use Excalidraw or hand-draw in tldraw). Three boxes: Merchant Endpoint / Credentials Provider / Payment Network, each with their DID URL. Arrows showing CartMandate signed → PaymentMandate signed → PaymentReceipt emitted. |
-| **Caption (over diagram)** | (3:27) **Mock CP and Network here = production swap-in for Google Pay, Visa, Mastercard.**<br>(3:33) **Same orchestration code. Replace the class, keep the chain.** |
-| **Cut to (5–7 seconds)** | The storefront chat widget showing the same backend in a different UI surface. User typing a quick "*find me a black shirt*" → cards render inline. |
-| **Caption (over widget)** | (3:42) **Same backend. Two surfaces: Claude Desktop, storefront widget. Future: ChatGPT, UCP.** |
-| **Voice (optional)** | "The mock Credentials Provider and Network here are production swap-ins. Replace the class with Google Pay, replace the other with Visa. Orchestration code doesn't change. And this is the Claude Desktop surface — the same backend drives a chat widget on the storefront, and tomorrow a ChatGPT or UCP integration." |
+**Visual:** Diagram with three boxes (Merchant / CP / Network); cut to widget B-roll.
+
+> **(3:25-3:35)** — *Excalidraw / tldraw diagram of the three parties + DIDs + arrows.*
+> **VOICE:** "The mock Credentials Provider and Network here are production swap-ins. Replace one class with Google Pay. Replace the other with Visa. The orchestration code doesn't change."
+> **CAPTION:** **Mock CP + Network → swap-in for Google Pay, Visa, Mastercard.**
+
+> **(3:35-3:45)** — *Cut to storefront chat widget showing the same product search.*
+> **VOICE:** "And the same backend powers a chat widget on the storefront. Tomorrow, a ChatGPT or UCP surface — same engine."
+> **CAPTION:** **One backend. Many surfaces. Claude Desktop · widget · ChatGPT next.**
+
+> **(3:45-3:50)** — *Hold on the widget showing product cards.*
+> **VOICE:** *(silence — let the widget speak for itself)*
+> **CAPTION:** *(none — just the visual)*
 
 ---
 
 ### Scene 7 — Compliance + close (3:50 → 4:00)
 
-| | |
-|---|---|
-| **On screen** | Plain text on dark background. |
-| **Caption (sequential)** | (3:52) **AP2 v0.2 spec faithful · EdDSA Ed25519 · JCS canonicalization · DID:web identities**<br>(3:55) **Documented deviations: ISSUES.md 0017–0020 (W3C-wrap CartMandate, sd-jwt-vc, IntentMandate, 3DS2)**<br>(3:58) **Open source · github.com/exilonX/ap2** |
-| **Voice (optional)** | "Spec-faithful where it lands the demo, with documented deviations on the path to v1. Open source. Build agent commerce that's auditable by design." |
-| **Final frame** | Static, hold for 1.5s before fade out. URL prominent. |
+**Visual:** Plain text on dark background. Final frame.
+
+> **(3:50-3:55)** — *Text appears: AP2 v0.2 · EdDSA · JCS · did:web.*
+> **VOICE:** "AP2 v0.2 spec-faithful where it lands the demo. Documented deviations on the path to v1."
+> **CAPTION:** **AP2 v0.2 · EdDSA Ed25519 · JCS · did:web · Deviations: ISSUES.md 0017–0020**
+
+> **(3:55-4:00)** — *Repo URL prominent.*
+> **VOICE:** "Open source. Build agent commerce that's auditable by design."
+> **CAPTION:** **github.com/exilonX/ap2**
+
+Hold final frame for 1.5s before fade out.
 
 ---
 
 ## Editing notes
 
-- **Cut every dead second.** If Claude is thinking for 2.3s before a tool call appears, jump-cut to the result. The 2-3s of thinking time across multiple tool calls is where viewers drop off.
-- **Speed up scrolling** in the JSON-view scenes (scene 4, scene 5) to 1.5x. The viewer doesn't need to read every byte; they need to see the key fields highlighted.
+- **Cut every dead second.** If Claude is thinking for 2.3s before a tool call appears, jump-cut to the result. The voice script assumes tight cuts.
+- **Speed up scrolling** in the JSON-view scenes (4, 5) to 1.5×. The viewer doesn't need to read every byte; they need to see the highlighted fields.
 - **Highlight key fields** in the JSON with a colored rectangle overlay or zoom-in. Don't expect viewers to spot `verification.valid: true` in a 200-line JSON dump.
-- **The 80ms-staggered 7-check reveal** in scene 3 is the visual centerpiece. Don't speed it up. If anything, slow it slightly (1.2× the natural duration via re-recording with fewer concurrent reveals, or in post via a 0.85x speed clip).
-- **Music:** optional. If using, choose something instrumental, low-energy, no lyrics. Cut entirely for scene 5's punchline so the on-screen contradiction lands in silence.
+- **The 80ms-staggered 7-check reveal** in scene 3 is the visual centerpiece. Don't speed it up. If anything, slow it slightly (0.85× speed clip) so the voice line fits naturally.
+- **Voice mix:** front-and-center. If using music, instrumental only, –18 dB, cut entirely for scene 5's punchline (the contradiction lands harder in silence with just the voice).
+- **Caption styling:** keep monospace formatting for technical fields like `did:web:...`, `cart_hash:`, `approval_status:`. Mixes well with sans-serif for the prose captions.
+- **Pacing safety net:** if total cut runs over 4:00 after voice + tight edits, the cheapest seconds to drop are scene 2's last beat (the "one orderForm" caption — content is covered later) and scene 6's silent hold.
 
 ## After recording — case study writeup
 
 The video is the hook; the case study is the conversion. Pair the recorded video with a 1500–2000 word writeup at `case-study.md` that:
 
-1. Explains why AP2 matters more for declines than approvals (the always-emit invariant)
+1. Explains why AP2 matters more for declines than approvals (the always-emit invariant — the strongest single beat from scene 5)
 2. Walks through the three-party trust chain with the published DID URLs as live links
 3. Documents what's mocked vs production (links to ADR-0003 + AP2_COMPLIANCE.md)
 4. Shows the per-merchant config layer (links to ARCHITECTURE.md)
@@ -171,8 +260,10 @@ The video is the hook; the case study is the conversion. Pair the recorded video
 
 The video gets the viewer hooked in 4 minutes. The case study is what they read when they want to evaluate adopting it.
 
-## Open questions before you record
+## Voice delivery tips
 
-- **Language for captions:** English only, or English + Romanian? English-only reaches a wider audience; Romanian feels more authentic given the merchant. Recommend English captions, leave the Romanian user-typed messages as authentic flavor.
-- **Persona:** are you in front of the camera at any point, or screen-recording-only? Recommend screen-only — keeps focus on the artifacts, no lighting/recording-environment concerns.
-- **Voice version timing:** record voice after the captioned cut is locked. Match voice to existing caption timings; don't re-edit the video around new voice pacing.
+- **Tempo:** slower than you think. Conversational pace, not announcer pace. Resist the urge to fill every silence.
+- **Emphasis:** lean on the contrast in scene 5 — *"Payment rejected. But the receipt itself is cryptographically valid."* The word "but" earns a beat of micro-pause.
+- **Numbers and DIDs:** read DID URLs once; don't repeat them in every sentence. The captions carry the literal text.
+- **Tone:** matter-of-fact, not hype. "Every signature is real" lands harder when said plainly than "amazing real signatures!"
+- **Re-takes:** scenes 3 and 5 are the hardest to nail in one read. Plan 3+ takes for each. The other scenes are short enough that one or two takes typically work.
