@@ -128,11 +128,16 @@ export default new Service({
     initiateCheckout: method({
       POST: [...guarded.mutating, initiateCheckout],
     }),
+    // Direct-navigation endpoints — opened by clicking a link, no Origin
+    // header (browser doesn't add one for top-level navigation) and no
+    // custom auth token (you can't attach headers to a click). Auth comes
+    // from the unguessable session UUID in the path. Same security model
+    // as mandate retrieval. Rate-limited via guarded.publicRead.
     checkoutRedirect: method({
-      GET: [...guarded.read, redirectToCheckout],
+      GET: [...guarded.publicRead, redirectToCheckout],
     }),
     paymentPage: method({
-      GET: [...guarded.read, renderPaymentPage],
+      GET: [...guarded.publicRead, renderPaymentPage],
     }),
     executeCheckout: method({
       POST: [...guarded.mutating, executeCheckout],
