@@ -147,6 +147,34 @@
   .add-btn.added {
     background: #238636;
   }
+  .add-btn.failed {
+    background: linear-gradient(135deg, #da3633 0%, #b62a25 100%);
+  }
+
+  /* Error toast — shown inline inside the product card when addToCart fails. */
+  .add-error-toast {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: rgba(218, 54, 51, 0.15);
+    border: 1px solid #da3633;
+    border-radius: 6px;
+    color: #ff7b72;
+    font-size: 12px;
+    line-height: 1.4;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    animation: toastIn 200ms ease-out;
+  }
+  .add-error-toast::before {
+    content: '⚠';
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
   .out-of-stock .product-image-wrap { opacity: 0.5; }
   .out-of-stock .product-name::after {
@@ -284,10 +312,63 @@
   window.addToCart = function(sku, btn) {
     btn.textContent = 'Adding...';
     btn.disabled = true;
+    // Clear any prior error toast on this card from a previous attempt.
+    var card = btn.closest('.product-card');
+    var oldToast = card && card.querySelector('.add-error-toast');
+    if (oldToast) oldToast.remove();
+
     rpcRequest('tools/call', { name: 'addToCart', arguments: { sku: sku, quantity: 1 } })
-      .then(function() { btn.textContent = 'Added!'; btn.className = 'add-btn added'; })
-      .catch(function() { btn.textContent = 'Add to Cart'; btn.disabled = false; });
+      .then(function(result) {
+        // JSON-RPC envelope success doesn't mean tool success — MCP signals
+        // tool-level failure via result.isError. Check it explicitly.
+        if (result && result.isError) {
+          var raw = (result.content && result.content[0] && result.content[0].text) || '';
+          var msg = pickErrorMessage(raw);
+          showAddError(btn, card, msg);
+          return;
+        }
+        btn.textContent = 'Added!';
+        btn.className = 'add-btn added';
+      })
+      .catch(function(err) {
+        // Network / transport failure (rare — usually means MCP itself dropped)
+        showAddError(btn, card, 'Connection error — try again');
+      });
   };
+
+  function pickErrorMessage(raw) {
+    // Heuristic mapping from raw VTEX error text → user-facing message.
+    // Keep these tight; the toast is meant to be glanceable.
+    if (/transient|connection refused|ECONNREFUSED|ETIMEDOUT|ECONNRESET|\b5\d\d\b/i.test(raw)) {
+      return 'Store temporarily unavailable — try again';
+    }
+    if (/out of stock|available: ?false|unavailable/i.test(raw)) {
+      return 'This variant is out of stock';
+    }
+    if (/Invalid SKU|invalid format/i.test(raw)) {
+      return 'Invalid product — try a different one';
+    }
+    return 'Couldn\'t add to cart — try again';
+  }
+
+  function showAddError(btn, card, msg) {
+    btn.textContent = 'Add to Cart';
+    btn.className = 'add-btn failed';
+    btn.disabled = false;
+    if (!card) return;
+    var toast = document.createElement('div');
+    toast.className = 'add-error-toast';
+    toast.textContent = msg;
+    card.appendChild(toast);
+    notifySize();
+    // Auto-dismiss after 5s; the user can also just click Add again.
+    setTimeout(function() {
+      if (toast.parentNode) toast.remove();
+      // Reset button style back to default after the toast clears
+      if (btn.className === 'add-btn failed') btn.className = 'add-btn';
+      notifySize();
+    }, 5000);
+  }
 
   function notifySize() {
     var height = Math.max(document.body.scrollHeight, 500);

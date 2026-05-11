@@ -21,25 +21,29 @@
  * *uses* an HTTP client.
  */
 
-import type { CheckoutClient, ClientProfileData, VTEXOrderForm } from '../clients/checkout';
-import { mapOrderFormToCart } from '../mappers/cart';
-import type { SimpleCart } from '../types/shared';
+import type {
+  CheckoutClient,
+  ClientProfileData,
+  VTEXOrderForm,
+} from '../clients/checkout'
+import { mapOrderFormToCart } from '../mappers/cart'
+import type { SimpleCart } from '../types/shared'
 import {
   InvalidSkuFormatError,
   ItemNotAddedError,
   ItemNotInCartError,
   OrderFormSubstitutedError,
   TransientCartError,
-} from './errors';
+} from './errors'
 
 export interface Logger {
-  warn?: (msg: string, ...rest: unknown[]) => void;
-  info?: (msg: string, ...rest: unknown[]) => void;
+  warn?: (msg: string, ...rest: unknown[]) => void
+  info?: (msg: string, ...rest: unknown[]) => void
 }
 
 export interface CartDeps {
-  checkout: CheckoutClient;
-  log?: Logger;
+  checkout: CheckoutClient
+  log?: Logger
 }
 
 /**
@@ -49,29 +53,29 @@ export interface CartDeps {
  * always sends `isCorporate: false` to VTEX.
  */
 export interface CustomerProfileInput {
-  email: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  document?: string;
-  documentType?: string;
+  email: string
+  firstName: string
+  lastName: string
+  phone?: string
+  document?: string
+  documentType?: string
 }
 
 /**
  * Address fields accepted by Cart.setShippingAddress.
  */
 export interface ShippingAddressInput {
-  postalCode: string;
-  city: string;
-  state: string;
-  street: string;
-  number: string;
-  neighborhood: string;
-  country?: string;
-  complement?: string;
-  reference?: string;
-  receiverName?: string;
-  addressType?: string;
+  postalCode: string
+  city: string
+  state: string
+  street: string
+  number: string
+  neighborhood: string
+  country?: string
+  complement?: string
+  reference?: string
+  receiverName?: string
+  addressType?: string
 }
 
 /**
@@ -81,10 +85,10 @@ export interface ShippingAddressInput {
  * not cart state.
  */
 export interface ShippingOption {
-  id: string;
-  name: string;
-  price: number; // already in major currency units (e.g. RON), VTEX returns cents
-  estimatedDelivery: string;
+  id: string
+  name: string
+  price: number // already in major currency units (e.g. RON), VTEX returns cents
+  estimatedDelivery: string
 }
 
 /**
@@ -95,12 +99,19 @@ export interface ShippingOption {
  * caller needs to know.
  */
 export interface ApplyCouponResult {
-  cart: SimpleCart;
-  applied: boolean;
-  reason?: string;
+  cart: SimpleCart
+  applied: boolean
+  reason?: string
 }
 
-const ORD003_BACKOFF_MS = 350;
+const TRANSIENT_BACKOFF_MS = 500
+// Patterns that indicate a transient VTEX-side hiccup worth retrying once.
+//  - ORD003 / rates and benefits — VTEX's eventual-consistency message
+//  - 5xx HTTP — generic server error from upstream VTEX services
+//  - Connection refused / ECONNREFUSED / ETIMEDOUT / ECONNRESET —
+//    internal VTEX service-to-service routing flap (e.g. an internal
+//    10.x IP refusing connections during a service restart)
+const TRANSIENT_ERROR_PATTERN = /ORD003|rates and benefits|\b5\d\d\b|Connection refused|ECONNREFUSED|ETIMEDOUT|ECONNRESET/i
 
 export class Cart {
   constructor(private deps: CartDeps) {}
@@ -112,9 +123,11 @@ export class Cart {
    * an orderForm-substitution guard.
    */
   public async getCart(orderFormId: string): Promise<SimpleCart> {
-    const orderForm = await this.deps.checkout.getOrderForm(orderFormId);
-    this.assertSameCart(orderFormId, orderForm);
-    return mapOrderFormToCart(orderForm);
+    const orderForm = await this.deps.checkout.getOrderForm(orderFormId)
+
+    this.assertSameCart(orderFormId, orderForm)
+
+    return mapOrderFormToCart(orderForm)
   }
 
   /**
@@ -135,55 +148,76 @@ export class Cart {
     qty: number
   ): Promise<SimpleCart> {
     if (!/^\d+$/.test(sku)) {
-      throw new InvalidSkuFormatError(sku);
+      throw new InvalidSkuFormatError(sku)
     }
 
     // Snapshot qty-before. If the fetch fails, treat it as 0 — the
     // actually-added check below still catches no-ops (qtyAfter would
     // need to be > 0 to pass).
-    const before = await this.deps.checkout.getOrderForm(orderFormId).catch(() => null);
+    const before = await this.deps.checkout
+      .getOrderForm(orderFormId)
+      .catch(() => null)
+
     if (before) {
-      this.assertSameCart(orderFormId, before);
+      this.assertSameCart(orderFormId, before)
     }
-    const qtyBefore = before?.items?.find((i) => i.id === sku)?.quantity ?? 0;
+
+    const qtyBefore = before?.items?.find((i) => i.id === sku)?.quantity ?? 0
 
     const tryAdd = (): Promise<VTEXOrderForm> =>
-      this.deps.checkout.addItems(orderFormId, [{ id: sku, quantity: qty, seller: '1' }]);
+      this.deps.checkout.addItems(orderFormId, [
+        { id: sku, quantity: qty, seller: '1' },
+      ])
 
-    let orderForm: VTEXOrderForm;
+    let orderForm: VTEXOrderForm
+
     try {
-      orderForm = await tryAdd();
+      orderForm = await tryAdd()
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/ORD003|rates and benefits/i.test(msg)) {
-        await new Promise((r) => setTimeout(r, ORD003_BACKOFF_MS));
+      const msg = err instanceof Error ? err.message : String(err)
+
+      if (TRANSIENT_ERROR_PATTERN.test(msg)) {
+        this.deps.log?.warn?.(
+          `[Cart] transient VTEX error for SKU ${sku}, retrying after ${TRANSIENT_BACKOFF_MS}ms: ${msg}`
+        )
+        await new Promise((r) => setTimeout(r, TRANSIENT_BACKOFF_MS))
         try {
-          orderForm = await tryAdd();
+          orderForm = await tryAdd()
         } catch (retryErr) {
-          const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          const retryMsg =
+            retryErr instanceof Error ? retryErr.message : String(retryErr)
+
+          // Tag the code based on which pattern matched the original error
+          // so callers / metrics can distinguish ORD003 from infra-level
+          // flakes. Defaults to 'TRANSIENT' for the generic 5xx case.
+          const code = /ORD003|rates and benefits/i.test(msg)
+            ? 'ORD003'
+            : 'TRANSIENT'
+
           this.deps.log?.warn?.(
-            `[Cart] ORD003 persisted after retry for SKU ${sku}: ${retryMsg}`
-          );
-          throw new TransientCartError('ORD003');
+            `[Cart] transient VTEX error persisted after retry for SKU ${sku}: ${retryMsg}`
+          )
+          throw new TransientCartError(code)
         }
       } else {
-        throw err;
+        throw err
       }
     }
 
-    this.assertSameCart(orderFormId, orderForm);
+    this.assertSameCart(orderFormId, orderForm)
 
-    const cart = mapOrderFormToCart(orderForm);
-    const added = cart.items.find((i) => i.sku === sku);
-    const qtyAfter = added?.quantity ?? 0;
+    const cart = mapOrderFormToCart(orderForm)
+    const added = cart.items.find((i) => i.sku === sku)
+    const qtyAfter = added?.quantity ?? 0
+
     if (!added || qtyAfter <= qtyBefore) {
       this.deps.log?.warn?.(
         `[Cart] add no-op for SKU ${sku} (qty before/after: ${qtyBefore}/${qtyAfter})`
-      );
-      throw new ItemNotAddedError(sku);
+      )
+      throw new ItemNotAddedError(sku)
     }
 
-    return cart;
+    return cart
   }
 
   /**
@@ -191,14 +225,20 @@ export class Cart {
    *
    * Throws ItemNotInCartError if the SKU isn't in the cart.
    */
-  public async removeBySku(orderFormId: string, sku: string): Promise<SimpleCart> {
-    const orderForm = await this.deps.checkout.getOrderForm(orderFormId);
-    this.assertSameCart(orderFormId, orderForm);
+  public async removeBySku(
+    orderFormId: string,
+    sku: string
+  ): Promise<SimpleCart> {
+    const orderForm = await this.deps.checkout.getOrderForm(orderFormId)
 
-    const index = this.findItemIndexBySku(orderForm, sku);
-    const updated = await this.deps.checkout.removeItem(orderFormId, index);
-    this.assertSameCart(orderFormId, updated);
-    return mapOrderFormToCart(updated);
+    this.assertSameCart(orderFormId, orderForm)
+
+    const index = this.findItemIndexBySku(orderForm, sku)
+    const updated = await this.deps.checkout.removeItem(orderFormId, index)
+
+    this.assertSameCart(orderFormId, updated)
+
+    return mapOrderFormToCart(updated)
   }
 
   /**
@@ -216,18 +256,21 @@ export class Cart {
     qty: number
   ): Promise<SimpleCart> {
     if (!/^\d+$/.test(sku)) {
-      throw new InvalidSkuFormatError(sku);
+      throw new InvalidSkuFormatError(sku)
     }
 
-    const orderForm = await this.deps.checkout.getOrderForm(orderFormId);
-    this.assertSameCart(orderFormId, orderForm);
+    const orderForm = await this.deps.checkout.getOrderForm(orderFormId)
 
-    const index = this.findItemIndexBySku(orderForm, sku);
+    this.assertSameCart(orderFormId, orderForm)
+
+    const index = this.findItemIndexBySku(orderForm, sku)
     const updated = await this.deps.checkout.updateItems(orderFormId, [
       { index, quantity: qty },
-    ]);
-    this.assertSameCart(orderFormId, updated);
-    return mapOrderFormToCart(updated);
+    ])
+
+    this.assertSameCart(orderFormId, updated)
+
+    return mapOrderFormToCart(updated)
   }
 
   /**
@@ -241,33 +284,37 @@ export class Cart {
     orderFormId: string,
     code: string
   ): Promise<ApplyCouponResult> {
-    const before = await this.deps.checkout.getOrderForm(orderFormId);
-    this.assertSameCart(orderFormId, before);
-    const discountBefore = this.discountValue(before);
-    const itemCountBefore = before.items.length;
+    const before = await this.deps.checkout.getOrderForm(orderFormId)
 
-    const after = await this.deps.checkout.addCoupon(orderFormId, code);
-    this.assertSameCart(orderFormId, after);
+    this.assertSameCart(orderFormId, before)
+    const discountBefore = this.discountValue(before)
+    const itemCountBefore = before.items.length
 
-    const cart = mapOrderFormToCart(after);
-    const discountAfter = this.discountValue(after);
-    const delta = discountAfter - discountBefore;
+    const after = await this.deps.checkout.addCoupon(orderFormId, code)
+
+    this.assertSameCart(orderFormId, after)
+
+    const cart = mapOrderFormToCart(after)
+    const discountAfter = this.discountValue(after)
+    const delta = discountAfter - discountBefore
 
     if (delta > 0) {
-      return { cart, applied: true };
+      return { cart, applied: true }
     }
 
     // Try to surface a useful reason. VTEX sometimes embeds coupon-status
     // info on the orderForm (`messages` or `marketingData`). We're
     // conservative — we only label "no eligible items" when item counts
     // didn't change and no discount appeared.
-    let reason: string;
+    let reason: string
+
     if (after.items.length === itemCountBefore) {
-      reason = 'no eligible items';
+      reason = 'no eligible items'
     } else {
-      reason = 'coupon not applied by VTEX';
+      reason = 'coupon not applied by VTEX'
     }
-    return { cart, applied: false, reason };
+
+    return { cart, applied: false, reason }
   }
 
   /**
@@ -288,10 +335,16 @@ export class Cart {
       document: data.document,
       documentType: data.documentType,
       isCorporate: false,
-    };
-    const updated = await this.deps.checkout.addClientProfileData(orderFormId, payload);
-    this.assertSameCart(orderFormId, updated);
-    return mapOrderFormToCart(updated);
+    }
+
+    const updated = await this.deps.checkout.addClientProfileData(
+      orderFormId,
+      payload
+    )
+
+    this.assertSameCart(orderFormId, updated)
+
+    return mapOrderFormToCart(updated)
   }
 
   /**
@@ -306,10 +359,11 @@ export class Cart {
     orderFormId: string,
     data: ShippingAddressInput
   ): Promise<SimpleCart> {
-    const orderForm = await this.deps.checkout.getOrderForm(orderFormId);
-    this.assertSameCart(orderFormId, orderForm);
+    const orderForm = await this.deps.checkout.getOrderForm(orderFormId)
 
-    const logisticsInfo = this.buildLogisticsInfo(orderForm);
+    this.assertSameCart(orderFormId, orderForm)
+
+    const logisticsInfo = this.buildLogisticsInfo(orderForm)
 
     const updated = await this.deps.checkout.addShippingData(orderFormId, {
       clearAddressIfPostalCodeNotFound: false,
@@ -329,9 +383,11 @@ export class Cart {
         },
       ],
       logisticsInfo,
-    });
-    this.assertSameCart(orderFormId, updated);
-    return mapOrderFormToCart(updated);
+    })
+
+    this.assertSameCart(orderFormId, updated)
+
+    return mapOrderFormToCart(updated)
   }
 
   /**
@@ -345,22 +401,32 @@ export class Cart {
    * reflect any totals changes. This is a quirk of the underlying VTEX
    * API; we don't try to "fix" it.
    */
-  public async getShippingOptions(orderFormId: string): Promise<ShippingOption[]> {
-    const orderForm = await this.deps.checkout.simulateOrderForm(orderFormId);
-    this.assertSameCart(orderFormId, orderForm);
+  public async getShippingOptions(
+    orderFormId: string
+  ): Promise<ShippingOption[]> {
+    const orderForm = await this.deps.checkout.simulateOrderForm(orderFormId)
+
+    this.assertSameCart(orderFormId, orderForm)
 
     const logisticsInfo = orderForm.shippingData?.logisticsInfo as
       | Array<{
-          slas?: Array<{ id: string; name: string; price: number; shippingEstimate: string }>;
+          slas?: Array<{
+            id: string
+            name: string
+            price: number
+            shippingEstimate: string
+          }>
         }>
-      | undefined;
-    const slas = logisticsInfo?.[0]?.slas ?? [];
+      | undefined
+
+    const slas = logisticsInfo?.[0]?.slas ?? []
+
     return slas.map((sla) => ({
       id: sla.id,
       name: sla.name,
       price: sla.price / 100,
       estimatedDelivery: sla.shippingEstimate,
-    }));
+    }))
   }
 
   /**
@@ -370,8 +436,9 @@ export class Cart {
    * uniform with the other ops.
    */
   public async createCart(): Promise<SimpleCart> {
-    const orderForm = await this.deps.checkout.createOrderForm();
-    return mapOrderFormToCart(orderForm);
+    const orderForm = await this.deps.checkout.createOrderForm()
+
+    return mapOrderFormToCart(orderForm)
   }
 
   // ─── Private helpers ───────────────────────────────────────────────
@@ -382,7 +449,7 @@ export class Cart {
    */
   private assertSameCart(requested: string, returned: VTEXOrderForm): void {
     if (returned.orderFormId !== requested) {
-      throw new OrderFormSubstitutedError(requested, returned.orderFormId);
+      throw new OrderFormSubstitutedError(requested, returned.orderFormId)
     }
   }
 
@@ -390,11 +457,13 @@ export class Cart {
    * Find the index of an item by SKU, or throw ItemNotInCartError.
    */
   private findItemIndexBySku(orderForm: VTEXOrderForm, sku: string): number {
-    const index = orderForm.items.findIndex((i) => i.id === sku);
+    const index = orderForm.items.findIndex((i) => i.id === sku)
+
     if (index === -1) {
-      throw new ItemNotInCartError(sku);
+      throw new ItemNotInCartError(sku)
     }
-    return index;
+
+    return index
   }
 
   /**
@@ -409,7 +478,7 @@ export class Cart {
       itemIndex: index,
       selectedSla: 'Normal',
       selectedDeliveryChannel: 'delivery',
-    }));
+    }))
   }
 
   /**
@@ -417,8 +486,9 @@ export class Cart {
    * orderForm's totalizers.
    */
   private discountValue(orderForm: VTEXOrderForm): number {
-    const t = orderForm.totalizers?.find((x) => x.id === 'Discounts');
-    return t ? Math.abs(t.value) : 0;
+    const t = orderForm.totalizers?.find((x) => x.id === 'Discounts')
+
+    return t ? Math.abs(t.value) : 0
   }
 }
 
@@ -429,4 +499,4 @@ export {
   ItemNotInCartError,
   TransientCartError,
   OrderFormSubstitutedError,
-} from './errors';
+} from './errors'
