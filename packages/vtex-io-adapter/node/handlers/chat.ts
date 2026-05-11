@@ -390,8 +390,19 @@ Spune DOAR ce ai primit din tool-uri. Nu inventa: nume, SKU-uri, prețuri, stoc,
 ## STIL
 Concis (1-3 fraze). Câmpurile structurate din tool results (produse, coș, mandat) apar automat — NU le repeta în text. Checkout doar la cerere explicită.
 
-## CHECKOUT FLOW
-Default: create_cart_mandate → clientul revizuiește → execute_payment(mandateId) cu mandateId-ul primit. Folosește redirect_to_native_checkout DOAR când clientul cere explicit checkout VTEX standard.
+## CHECKOUT FLOW (CRITIC — citește atent)
+
+Când clientul indică intenția de checkout — "checkout", "finalizez comanda", "plătesc", "cumpăr", "hai la plată", "gata, atât", "finalizare", etc. — apelează IMEDIAT **create_cart_mandate**. Asta semnează mandatul AP2 și afișează badge-ul "Finalizează plata" în UI. Clientul apasă pe badge pentru a continua.
+
+INTERZIS la checkout (clientul are deja datele pre-configurate pe cont):
+- NU apela **set_customer_profile** (nume / email / telefon)
+- NU apela **set_shipping_address** (adresa de livrare)
+- NU apela **get_shipping_options**
+- NU ÎNTREBA clientul pentru date personale / adresă / cod poștal / județ
+
+Dacă mandatul s-a creat cu succes (cartPreview + mandate apar în răspuns), răspunde scurt în text — UN SINGUR RÂND — cum ar fi: "Gata, am pregătit comanda. Apasă pe 'Finalizează plata' din badge." NU repeta în text conținutul mandatului (badge-ul îl afișează automat).
+
+Folosește **redirect_to_native_checkout** DOAR dacă clientul cere EXPLICIT "vreau checkout VTEX standard" sau similar. Default e in-chat ceremony via create_cart_mandate.
 
 ${multiStepSection}
 
@@ -1793,7 +1804,12 @@ export async function chatHandler(ctx: Context) {
     let addedSuccessfully = false
     let removedSuccessfully = false
     const calledTools: string[] = []
-    const MAX_TOOL_ROUNDS = 3
+    // Round budget for the LLM tool loop. 4 is the empirical sweet spot:
+    // a fully-loaded checkout turn legitimately needs (1) get_product_details
+    // (2) suggest_replies for variant (3) add_to_cart (4) confirm. At 3 we
+    // were exhausting on every single-variant add path. At 5+ models drift
+    // into unnecessary follow-up tool spam.
+    const MAX_TOOL_ROUNDS = 4
 
     // Track the most recent non-empty assistant text across rounds.
     // Gemini sometimes returns empty content in later rounds when it already
@@ -2072,8 +2088,23 @@ export async function chatHandler(ctx: Context) {
       config.strings[config.locales.default]?.errorConnection ??
       "I've looked into that for you. Is there anything else I can help with?"
 
+    // Strip the internal "(calling tools)" placeholder if the model echoed
+    // it back as text (it was meant as a non-empty stand-in for an
+    // assistant turn that only carried tool calls — not user-facing text).
+    const sanitizeFinal = (text: string | null | undefined): string | null => {
+      if (!text) return null
+      const cleaned = text
+        .replace(/\(calling tools\)/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+
+      return cleaned.length > 0 ? cleaned : null
+    }
+
     const finalText =
-      finalResponse.content?.trim() || lastAssistantText || fallbackText
+      sanitizeFinal(finalResponse.content) ||
+      sanitizeFinal(lastAssistantText) ||
+      fallbackText
 
     console.log(
       `[ACG Chat] Final reply (${finalText.length}c): ${finalText.slice(
