@@ -198,6 +198,15 @@ export function registerCheckoutTools(server: McpServer, client: VtexClient) {
           ...(params.forceReject ? { forceReject: true } : {}),
         })
 
+        // Order placed (or rejected with a signed receipt) — either way
+        // this cart is done. Forget the cached orderFormId so the next
+        // shopping turn starts a fresh cart instead of inheriting the
+        // committed one. Without this, a new Claude conversation inside
+        // the same Claude Desktop launch silently reuses the prior cart.
+        if (result.success || (result as { paymentReceipt?: unknown }).paymentReceipt) {
+          client.clearOrderFormId()
+        }
+
         return {
           content: [{ type: 'text' as const, text: JSON.stringify(result) }],
         }

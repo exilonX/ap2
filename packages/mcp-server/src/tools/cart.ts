@@ -98,6 +98,43 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
   addToCartTool._meta = { ui: { resourceUri: CART_APP_URI } } as any
 
   /**
+   * Clear cart — forget the cached orderFormId so the next addToCart
+   * creates a fresh VTEX orderForm.
+   *
+   * Why this tool exists: the MCP server is a long-lived child process
+   * of Claude Desktop, NOT of any individual conversation. Without an
+   * explicit reset path, the cached orderFormId leaks across chat
+   * conversations within the same Claude Desktop launch — a user
+   * opens a new conversation expecting a fresh cart but inherits the
+   * old one. This tool gives the agent (or the user via the agent) a
+   * way to start over.
+   *
+   * Called automatically after executePayment success in
+   * tools/checkout.ts. Can also be called explicitly by the agent
+   * when the user says "start over", "new cart", "clear my cart", or
+   * begins a clearly-fresh shopping flow.
+   */
+  server.tool(
+    'clearCart',
+    'Forget the current cart and start a fresh one. Call when the user explicitly asks to start over, abandons their existing cart to begin a new shopping flow, or opens a new conversation that should not inherit the previous cart contents.',
+    {},
+    async () => {
+      const had = client.getOrderFormId()
+      client.clearOrderFormId()
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: had
+              ? `Cart cleared. The next item you add will start a fresh cart. (Previous orderFormId: ${had})`
+              : 'No cart was active — next item will start fresh.',
+          },
+        ],
+      }
+    }
+  )
+
+  /**
    * Get current cart
    */
   const getCartTool = server.tool('getCart', {}, async () => {

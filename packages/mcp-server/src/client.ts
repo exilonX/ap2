@@ -162,4 +162,28 @@ export class VtexClient {
   getBaseUrl(): string {
     return this.client.defaults.baseURL || '';
   }
+
+  /**
+   * Forget the cached orderFormId so the next cart-modifying tool call
+   * provisions a fresh VTEX orderForm.
+   *
+   * Why this exists: the MCP server is a long-lived child process of
+   * Claude Desktop, not of any individual conversation. Without explicit
+   * reset, an in-memory orderFormId leaks across chat conversations
+   * within the same Claude Desktop launch. Callers reset after:
+   *   - successful checkoutInChat (mandate signed → cart is committed)
+   *   - successful executePayment (order placed)
+   *   - explicit clearCart user action
+   */
+  clearOrderFormId(): void {
+    this.orderFormId = null;
+  }
+
+  /**
+   * Returns the currently cached orderFormId, or null if none cached.
+   * Useful for tools that want to display "starting a new cart" feedback.
+   */
+  getOrderFormId(): string | null {
+    return this.orderFormId;
+  }
 }
