@@ -1535,6 +1535,66 @@ function detectCartHallucination(
   return { violated: false, reason: '' }
 }
 
+/**
+ * Detect product-listing hallucination — the LLM emitted text listing
+ * specific products (with SKUs or bulleted prices) WITHOUT having called
+ * search_products in this chat turn.
+ *
+ * Live test on 2026-05-11 captured the failure mode: user asked for
+ * "less floral" alternatives; the LLM mentally filtered (couldn't —
+ * everything was floral) and hallucinated 4 new products with plausible
+ * SKUs from the same numeric range. No tool call = no product cards
+ * with images get rendered = user sees a plain text list of items that
+ * may or may not even exist.
+ *
+ * Detection signals (any one is enough):
+ *   - 2+ "SKU: nnnnnn" references in text without search_products called
+ *   - 3+ bulleted lines each ending in a price (RON/EUR/USD/etc.)
+ *     without search_products called
+ *
+ * False-positive guard: we only trigger if text length > 200 chars.
+ * Short replies like "want to add the floral one?" won't trip it.
+ */
+function detectProductListingHallucination(
+  text: string,
+  calledTools: string[]
+): { violated: boolean; reason: string } {
+  if (!text || text.length < 200) {
+    return { violated: false, reason: '' }
+  }
+
+  if (calledTools.includes('search_products')) {
+    return { violated: false, reason: '' }
+  }
+
+  // SKU references — explicit "SKU: 565804" style or "(SKU 565804)" style.
+  const skuRefs = (text.match(/SKU\s*:?\s*\d{4,}/gi) || []).length
+
+  if (skuRefs >= 2) {
+    return {
+      violated: true,
+      reason: `text lists ${skuRefs} SKU references without calling search_products`,
+    }
+  }
+
+  // Multiple bulleted product lines each with a price — typical
+  // "here are 4 options at X RON" hallucinated list shape.
+  const bulletWithPrice = (
+    text.match(
+      /(?:^|\n)\s*(?:[*\-•]|\d+\.)\s+[^\n]{8,200}?\b(?:RON|EUR|USD|\$|€|lei)\b/gim
+    ) || []
+  ).length
+
+  if (bulletWithPrice >= 3) {
+    return {
+      violated: true,
+      reason: `text lists ${bulletWithPrice} bulleted products with prices without calling search_products`,
+    }
+  }
+
+  return { violated: false, reason: '' }
+}
+
 // ─── Token Budget Constants ─────────────────────────────────────
 
 const TOKEN_BUDGET = {
@@ -1699,6 +1759,29 @@ export async function chatHandler(ctx: Context) {
             content: `[SYSTEM CORRECTION] Răspunsul tău anterior a spus că ai adăugat/scos un produs, DAR nu ai apelat tool-ul corespunzător în acest mesaj. Asta e o halucinare gravă. Tools apelate până acum: ${
               calledTools.join(', ') || '(niciunul)'
             }. Apelează ACUM tool-ul corect (add_to_cart sau remove_from_cart cu SKU-ul exact), apoi confirmă bazat pe rezultatul lui. NU repeta răspunsul fabricat.`,
+          })
+          continue
+        }
+
+        // Product-listing hallucination — LLM listed specific products
+        // in text without ever calling search_products. The widget would
+        // render the message as plain text (no product cards, no images,
+        // no add-to-cart buttons). Force the LLM to actually search.
+        const productGuard = detectProductListingHallucination(
+          finalText,
+          calledTools
+        )
+
+        if (productGuard.violated && round < MAX_TOOL_ROUNDS - 1) {
+          console.warn(
+            `[ACG Chat] Product-listing hallucination — ${
+              productGuard.reason
+            }. Forcing search round ${round + 1}.`
+          )
+          messages.push({ role: 'assistant', content: finalText })
+          messages.push({
+            role: 'user',
+            content: `[SYSTEM CORRECTION] Ai listat produse specifice (cu SKU-uri / prețuri) în text DAR nu ai apelat search_products în această tură. Asta înseamnă că produsele sunt FABRICATE — nu există dovadă că sunt în catalog. Apelează ACUM search_products cu o interogare rafinată bazată pe ultimul mesaj al clientului (adaugă calificative ca "non-floral", "abstract", "uni" etc.). Apoi răspunde bazat STRICT pe rezultatele tool-ului. NU repeta lista fabricată.`,
           })
           continue
         }
