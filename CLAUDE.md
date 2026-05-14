@@ -20,7 +20,6 @@ packages/
   vtex-io-adapter/     vtexeurope.acg-adapter  VTEX IO Node service — ALL business logic
 apps/
   acg-chat-widget/     vtexeurope.acg-chat-widget  pixel app: store-embedded React chat widget
-  payment-page/        (placeholder)
 scripts/
   sync-catalog/        standalone TS: VTEX catalog → OpenAI embeddings → Pinecone (resume-safe)
   sync-types.sh        copies packages/shared/types/*.ts → vtex-io-adapter/node/types/shared.ts

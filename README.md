@@ -269,8 +269,7 @@ The cryptographic shape is **production-grade and spec-faithful**. The mocked ac
 │           ├── core/                    vendored @acg/core (VTEX IO can't reach file: deps)
 │           └── config/profiles/         per-merchant profile (system prompt, brand strings)
 ├── apps/
-│   ├── acg-chat-widget/                 React pixel app for storefront embed
-│   └── payment-page/                    placeholder (currently served by adapter)
+│   └── acg-chat-widget/                 React pixel app for storefront embed
 ├── scripts/
 │   ├── sync-catalog/                    standalone bulk RAG sync (VTEX → embeddings → Pinecone)
 │   ├── sync-types.sh                    syncs shared types into the adapter (auto-runs on vtex link)

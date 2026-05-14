@@ -315,7 +315,7 @@ export async function executePayment(ctx: Context): Promise<void> {
 
 /**
  * Compose the public host URL the iframe will use to retrieve mandates
- * and receipts. Mirrors the pattern in `chat.ts` / `payment-page.ts`.
+ * and receipts. Mirrors the pattern in `chat.ts` / `checkout.ts`.
  */
 async function resolveAdapterBaseUrl(ctx: Context): Promise<string> {
   const workspace = ctx.vtex.workspace || 'master'
