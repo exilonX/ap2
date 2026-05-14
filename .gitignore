@@ -35,6 +35,10 @@ merchant.json
 coverage/
 .nyc_output/
 
+# TypeScript incremental build artifacts
+*.tsbuildinfo
+.tsbuildinfo
+
 # VTEX
 .vtex/
 

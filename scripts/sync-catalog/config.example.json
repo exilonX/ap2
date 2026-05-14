@@ -1,6 +1,6 @@
 {
   "vtex": {
-    "account": "vtexeurope",
+    "account": "your-account",
     "workspace": "master",
     "appKey": "vtexappkey-YOUR-KEY",
     "appToken": "YOUR-TOKEN",

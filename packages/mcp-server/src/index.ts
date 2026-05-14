@@ -30,7 +30,7 @@ import { registerMandateTools } from './tools/mandate'
 
 // Configuration from environment
 const config = {
-  vtexAccount: process.env.VTEX_ACCOUNT || 'vtexeurope',
+  vtexAccount: process.env.VTEX_ACCOUNT || 'your-account',
   vtexWorkspace: process.env.VTEX_WORKSPACE || 'master',
   vtexAppKey: process.env.VTEX_APP_KEY,
   vtexAppToken: process.env.VTEX_APP_TOKEN,

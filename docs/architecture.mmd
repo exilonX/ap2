@@ -1,0 +1,127 @@
+flowchart TD
+
+subgraph group_surfaces["Distribution Surfaces"]
+  node_widget["Chat Widget<br/>react pixel app"]
+  node_mcp_server["MCP Server"]
+end
+
+subgraph group_adapter["VTEX IO Adapter (Merchant Endpoint)"]
+  node_service_routes["Service & Routes<br/>Service entrypoint + middleware<br/>[index.ts]"]
+  node_chat_handler["Chat Handler<br/>LLM tool-call loop<br/>[chat.ts]"]
+  node_agent_tools["AgentTool Registry<br/>AP2 ceremony tool surface"]
+  node_cart_module["Cart Module<br/>VTEX OrderForm wrapper<br/>[cart.ts]"]
+  node_rest_handlers["REST Handlers"]
+  node_profile_config["Profile Config<br/>per-merchant ClientConfig"]
+  node_llm_client["LLM Client<br/>[llm.ts]"]
+end
+
+subgraph group_ap2["AP2 Ceremony"]
+  node_merchant_identity["MerchantIdentity<br/>narrow signing surface"]
+  node_vbase_keystore["VBaseKeyStore<br/>[vbase-keystore.ts]"]
+  node_mandate_orch["MandateOrchestration"]
+  node_payment_orch["PaymentOrchestration<br/>PaymentMandate + Receipt ceremony"]
+  node_mock_cp["Mock Credentials Provider<br/>PaymentMandate user_authorization signer"]
+  node_mock_network["Mock Payment Network<br/>[payment-network.ts]"]
+end
+
+subgraph group_core["@acg/core (Spec Primitives)"]
+  node_core_mandates["Mandate / Receipt Factories"]
+  node_core_jcs_did["JCS · Ed25519 · DID<br/>spec primitives"]
+  node_core_keystore["KeyStore Interface<br/>storage seam<br/>[keystore.ts]"]
+end
+
+subgraph group_discovery["Discovery / RAG"]
+  node_rag_handler["Semantic Search<br/>[rag.ts]"]
+  node_sync_catalog["Bulk Catalog Sync<br/>standalone Node script"]
+end
+
+subgraph group_external["External Services"]
+  node_vbase[("VTEX VBase<br/>key-value store")]
+  node_vtex_apis{{"VTEX Commerce APIs<br/>checkout, catalog, OMS"}}
+  node_llm_apis{{"LLM Providers"}}
+  node_pinecone{{"Pinecone<br/>vector index"}}
+end
+
+node_shared_types["Shared Types<br/>cross-process DTOs"]
+node_verifier(("Public Verifier"))
+
+node_widget -->|"HTTPS /_v/acg/*"| node_service_routes
+node_mcp_server -->|"HTTPS + X-ACG-Auth-Token"| node_service_routes
+node_service_routes -->|"POST /chat"| node_chat_handler
+node_service_routes -->|"cart · checkout · payment · did"| node_rest_handlers
+node_service_routes -->|"GET /config"| node_profile_config
+node_chat_handler -->|"tool-call loop"| node_llm_client
+node_chat_handler -->|"dispatch AP2 tools"| node_agent_tools
+node_chat_handler -->|"cart ops (legacy switch)"| node_cart_module
+node_chat_handler -->|"semantic search"| node_rag_handler
+node_chat_handler -.->|"system prompt + starters"| node_profile_config
+node_agent_tools -->|"create_cart_mandate"| node_mandate_orch
+node_agent_tools -->|"execute_payment"| node_payment_orch
+node_rest_handlers --> node_cart_module
+node_rest_handlers -->|"sign + verify"| node_mandate_orch
+node_rest_handlers -->|"execute payment"| node_payment_orch
+node_cart_module -->|"OrderForm CRUD"| node_vtex_apis
+node_llm_client -->|"chat + tools"| node_llm_apis
+node_mandate_orch -->|"signCartMandate"| node_merchant_identity
+node_mandate_orch -.->|"create + verify + drift"| node_core_mandates
+node_mandate_orch -->|"acg-mandates bucket"| node_vbase
+node_payment_orch -->|"merchant DID + pubkey"| node_merchant_identity
+node_payment_orch -->|"signPaymentMandate"| node_mock_cp
+node_payment_orch -->|"approvePayment (7 checks)"| node_mock_network
+node_payment_orch -->|"payment-mandates · receipts"| node_vbase
+node_merchant_identity --> node_vbase_keystore
+node_merchant_identity -.->|"createCartMandate"| node_core_mandates
+node_mock_cp -->|"acg-mock-cp bucket"| node_vbase_keystore
+node_mock_cp -.->|"createPaymentMandate"| node_core_mandates
+node_mock_network -->|"acg-mock-network bucket"| node_vbase_keystore
+node_mock_network -.->|"createPaymentReceipt + verify"| node_core_mandates
+node_vbase_keystore -.->|"implements"| node_core_keystore
+node_vbase_keystore --> node_vbase
+node_core_mandates -.->|"JCS + Ed25519"| node_core_jcs_did
+node_rag_handler -->|"query embeddings"| node_pinecone
+node_rag_handler -->|"OpenAI embeddings"| node_llm_apis
+node_rag_handler -->|"hydrate prices"| node_vtex_apis
+node_sync_catalog -->|"walk catalog"| node_vtex_apis
+node_sync_catalog -->|"embed (OpenAI)"| node_llm_apis
+node_sync_catalog -->|"upsert vectors"| node_pinecone
+node_shared_types -.->|"DTOs"| node_widget
+node_shared_types -.->|"DTOs"| node_mcp_server
+node_shared_types -.->|"DTOs (synced)"| node_service_routes
+node_verifier -.->|"GET mandates · receipts · did.json"| node_rest_handlers
+
+click node_widget "https://github.com/exilonX/ap2/tree/main/apps/acg-chat-widget"
+click node_mcp_server "https://github.com/exilonX/ap2/tree/main/packages/mcp-server"
+click node_service_routes "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/index.ts"
+click node_chat_handler "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/handlers/chat.ts"
+click node_agent_tools "https://github.com/exilonX/ap2/tree/main/packages/vtex-io-adapter/node/agent-tools"
+click node_cart_module "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/cart/cart.ts"
+click node_rest_handlers "https://github.com/exilonX/ap2/tree/main/packages/vtex-io-adapter/node/handlers"
+click node_profile_config "https://github.com/exilonX/ap2/tree/main/packages/vtex-io-adapter/node/config"
+click node_llm_client "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/clients/llm.ts"
+click node_merchant_identity "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/identity/merchant-identity.ts"
+click node_vbase_keystore "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/identity/vbase-keystore.ts"
+click node_mandate_orch "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/mandates/mandate-orchestration.ts"
+click node_payment_orch "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/payments/payment-orchestration.ts"
+click node_mock_cp "https://github.com/exilonX/ap2/blob/main/packages/acg-mock-payment-network/src/credentials-provider.ts"
+click node_mock_network "https://github.com/exilonX/ap2/blob/main/packages/acg-mock-payment-network/src/payment-network.ts"
+click node_core_mandates "https://github.com/exilonX/ap2/tree/main/packages/core/src/ap2"
+click node_core_jcs_did "https://github.com/exilonX/ap2/tree/main/packages/core/src"
+click node_core_keystore "https://github.com/exilonX/ap2/blob/main/packages/core/src/keystore.ts"
+click node_rag_handler "https://github.com/exilonX/ap2/blob/main/packages/vtex-io-adapter/node/handlers/rag.ts"
+click node_sync_catalog "https://github.com/exilonX/ap2/tree/main/scripts/sync-catalog"
+click node_shared_types "https://github.com/exilonX/ap2/tree/main/packages/shared/types"
+
+classDef toneNeutral fill:#f8fafc,stroke:#334155,stroke-width:1.5px,color:#0f172a
+classDef toneBlue fill:#dbeafe,stroke:#2563eb,stroke-width:1.5px,color:#172554
+classDef toneAmber fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+classDef toneMint fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+classDef toneRose fill:#ffe4e6,stroke:#e11d48,stroke-width:1.5px,color:#881337
+classDef toneIndigo fill:#e0e7ff,stroke:#4f46e5,stroke-width:1.5px,color:#312e81
+classDef toneTeal fill:#ccfbf1,stroke:#0f766e,stroke-width:1.5px,color:#134e4a
+class node_widget,node_mcp_server toneBlue
+class node_service_routes,node_chat_handler,node_agent_tools,node_cart_module,node_rest_handlers,node_profile_config,node_llm_client toneAmber
+class node_merchant_identity,node_vbase_keystore,node_mandate_orch,node_payment_orch,node_mock_cp,node_mock_network toneMint
+class node_core_mandates,node_core_jcs_did,node_core_keystore toneRose
+class node_rag_handler,node_sync_catalog toneIndigo
+class node_vbase,node_vtex_apis,node_llm_apis,node_pinecone toneTeal
+class node_shared_types,node_verifier toneNeutral

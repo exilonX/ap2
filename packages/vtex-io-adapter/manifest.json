@@ -86,22 +86,34 @@
           "chat": {
             "type": "object",
             "properties": {
-              "perMinute": { "type": "number" },
-              "perDay": { "type": "number" }
+              "perMinute": {
+                "type": "number"
+              },
+              "perDay": {
+                "type": "number"
+              }
             }
           },
           "mutating": {
             "type": "object",
             "properties": {
-              "perMinute": { "type": "number" },
-              "perDay": { "type": "number" }
+              "perMinute": {
+                "type": "number"
+              },
+              "perDay": {
+                "type": "number"
+              }
             }
           },
           "read": {
             "type": "object",
             "properties": {
-              "perMinute": { "type": "number" },
-              "perDay": { "type": "number" }
+              "perMinute": {
+                "type": "number"
+              },
+              "perDay": {
+                "type": "number"
+              }
             }
           }
         }
@@ -146,7 +158,7 @@
     {
       "name": "outbound-access",
       "attrs": {
-        "host": "acg-rag-vtexeurope-rlhbm0e.svc.aped-4627-b74a.pinecone.io",
+        "host": "*.pinecone.io",
         "path": "/*"
       }
     },

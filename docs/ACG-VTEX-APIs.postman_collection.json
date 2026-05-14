@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "ACG - VTEX APIs",
-    "description": "All VTEX APIs used by the Agent Commerce Gateway (ACG) adapter.\n\nSet the following variables:\n- {{account}}: Your VTEX account name (e.g., vtexeurope)\n- {{vtexAppKey}}: Your VTEX App Key\n- {{vtexAppToken}}: Your VTEX App Token\n- {{vtexIdClientAutCookie}}: VtexIdclientAutCookie value (for authenticated requests)\n- {{orderFormId}}: OrderForm ID (cart ID) - obtained from Create OrderForm\n- {{transactionId}}: Transaction ID - obtained from Place Order",
+    "description": "All VTEX APIs used by the Agent Commerce Gateway (ACG) adapter.\n\nSet the following variables:\n- {{account}}: Your VTEX account name\n- {{vtexAppKey}}: Your VTEX App Key\n- {{vtexAppToken}}: Your VTEX App Token\n- {{vtexIdClientAutCookie}}: VtexIdclientAutCookie value (for authenticated requests)\n- {{orderFormId}}: OrderForm ID (cart ID) - obtained from Create OrderForm\n- {{transactionId}}: Transaction ID - obtained from Place Order",
     "_postman_id": "acg-vtex-apis-collection",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -23,7 +23,7 @@
   "variable": [
     {
       "key": "account",
-      "value": "vtexeurope",
+      "value": "your-account",
       "type": "string"
     },
     {

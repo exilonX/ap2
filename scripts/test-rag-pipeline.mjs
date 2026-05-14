@@ -15,8 +15,8 @@
  *   node scripts/test-rag-pipeline.mjs
  *
  * Required env vars (or edit CONFIG below):
- *   VTEX_ACCOUNT        — e.g. "vtexeurope"
- *   VTEX_WORKSPACE      — e.g. "acg" (or "master")
+ *   VTEX_ACCOUNT        — your VTEX account name
+ *   VTEX_WORKSPACE      — e.g. "dev" (or "master")
  *   VTEX_APP_KEY        — VTEX API app key
  *   VTEX_APP_TOKEN      — VTEX API app token
  *   OPENAI_API_KEY      — OpenAI key (for embeddings)
@@ -28,7 +28,7 @@
 
 const CONFIG = {
   vtex: {
-    account: process.env.VTEX_ACCOUNT || 'vtexeurope',
+    account: process.env.VTEX_ACCOUNT || 'your-account',
     workspace: process.env.VTEX_WORKSPACE || 'master',
     appKey: process.env.VTEX_APP_KEY || '',
     appToken: process.env.VTEX_APP_TOKEN || '',
