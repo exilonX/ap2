@@ -20,6 +20,7 @@ import {
   getStrings,
   pickLocale,
 } from './services/config-api'
+import { FONT_STACK } from './utils/theme'
 
 const CONTAINER_ID = 'acg-chat-widget-root'
 
@@ -157,8 +158,7 @@ function AcgChatWidget() {
         bottom: '20px',
         right: '20px',
         zIndex: 999999,
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontFamily: FONT_STACK,
       }}
     >
       <ChatPanel

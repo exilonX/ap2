@@ -1,6 +1,13 @@
 import React, { useEffect, useRef } from 'react'
 
 import type { Message } from '../types/domain'
+import {
+  ACCENT_PINK,
+  GRAY_MUTED,
+  GRAY_SURFACE,
+  GRAY_TEXT,
+  WHITE,
+} from '../utils/theme'
 import CartPreviewCard from './CartPreviewCard'
 import MandateBadge from './MandateBadge'
 import ProductGroup from './ProductGroup'
@@ -59,15 +66,15 @@ const BUBBLE_BASE: React.CSSProperties = {
 
 const BUBBLE_USER: React.CSSProperties = {
   ...BUBBLE_BASE,
-  background: '#f71963',
-  color: '#fff',
+  background: ACCENT_PINK,
+  color: WHITE,
   borderBottomRightRadius: '4px',
 }
 
 const BUBBLE_ASSISTANT: React.CSSProperties = {
   ...BUBBLE_BASE,
-  background: '#f4f4f5',
-  color: '#18181b',
+  background: GRAY_SURFACE,
+  color: GRAY_TEXT,
   borderBottomLeftRadius: '4px',
 }
 
@@ -88,7 +95,7 @@ const TYPING_STYLE: React.CSSProperties = {
 const DOT_STYLE: React.CSSProperties = {
   width: '8px',
   height: '8px',
-  background: '#a1a1aa',
+  background: GRAY_MUTED,
   borderRadius: '50%',
   animation: 'acgTypingBounce 1.4s infinite ease-in-out both',
 }

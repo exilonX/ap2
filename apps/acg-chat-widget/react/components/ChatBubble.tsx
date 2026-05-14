@@ -1,5 +1,13 @@
 import React from 'react'
 
+import {
+  ACCENT_PINK,
+  GRAY_BUBBLE_CLOSED,
+  SHADOW_BUBBLE,
+  UNREAD_RED,
+  WHITE,
+} from '../utils/theme'
+
 interface ChatBubbleProps {
   isOpen: boolean
   hasUnread: boolean
@@ -10,21 +18,21 @@ const BUBBLE_STYLE: React.CSSProperties = {
   width: '60px',
   height: '60px',
   borderRadius: '50%',
-  background: '#f71963',
+  background: ACCENT_PINK,
   border: 'none',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#fff',
-  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+  color: WHITE,
+  boxShadow: SHADOW_BUBBLE,
   transition: 'transform 0.2s ease, box-shadow 0.2s ease',
   position: 'relative' as const,
 }
 
 const BUBBLE_OPEN_STYLE: React.CSSProperties = {
   ...BUBBLE_STYLE,
-  background: '#3f3f46',
+  background: GRAY_BUBBLE_CLOSED,
 }
 
 const UNREAD_STYLE: React.CSSProperties = {
@@ -33,9 +41,9 @@ const UNREAD_STYLE: React.CSSProperties = {
   right: '-2px',
   width: '16px',
   height: '16px',
-  background: '#ef4444',
+  background: UNREAD_RED,
   borderRadius: '50%',
-  border: '2px solid #fff',
+  border: `2px solid ${WHITE}`,
 }
 
 function ChatBubble({ isOpen, hasUnread, onClick }: ChatBubbleProps) {

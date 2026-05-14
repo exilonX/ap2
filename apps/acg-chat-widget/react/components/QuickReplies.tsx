@@ -1,5 +1,7 @@
 import React from 'react'
 
+import { ACCENT_PINK, WHITE } from '../utils/theme'
+
 interface QuickRepliesProps {
   suggestions: string[]
   onSelect: (text: string) => void
@@ -16,9 +18,9 @@ const CHIP: React.CSSProperties = {
   fontSize: '13px',
   padding: '7px 12px',
   borderRadius: '999px',
-  border: '1px solid #f71963',
-  background: '#fff',
-  color: '#f71963',
+  border: `1px solid ${ACCENT_PINK}`,
+  background: WHITE,
+  color: ACCENT_PINK,
   cursor: 'pointer',
   fontFamily: 'inherit',
   fontWeight: 500,
@@ -37,12 +39,12 @@ function QuickReplies({ suggestions, onSelect }: QuickRepliesProps) {
           style={CHIP}
           onClick={() => onSelect(text)}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#f71963'
-            e.currentTarget.style.color = '#fff'
+            e.currentTarget.style.background = ACCENT_PINK
+            e.currentTarget.style.color = WHITE
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = '#fff'
-            e.currentTarget.style.color = '#f71963'
+            e.currentTarget.style.background = WHITE
+            e.currentTarget.style.color = ACCENT_PINK
           }}
           type="button"
         >

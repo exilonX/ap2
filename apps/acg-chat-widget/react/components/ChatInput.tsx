@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 
+import { ACCENT_PINK, GRAY_BORDER, WHITE } from '../utils/theme'
+
 interface ChatInputProps {
   onSend: (text: string) => void
   disabled: boolean
@@ -11,12 +13,12 @@ const CONTAINER_STYLE: React.CSSProperties = {
   alignItems: 'flex-end',
   gap: '8px',
   padding: '12px 16px',
-  borderTop: '1px solid #e4e4e7',
+  borderTop: `1px solid ${GRAY_BORDER}`,
 }
 
 const INPUT_STYLE: React.CSSProperties = {
   flex: 1,
-  border: '1px solid #e4e4e7',
+  border: `1px solid ${GRAY_BORDER}`,
   borderRadius: '20px',
   padding: '10px 16px',
   fontSize: '14px',
@@ -31,13 +33,13 @@ const BUTTON_STYLE: React.CSSProperties = {
   width: '40px',
   height: '40px',
   borderRadius: '50%',
-  background: '#f71963',
+  background: ACCENT_PINK,
   border: 'none',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#fff',
+  color: WHITE,
   flexShrink: 0,
 }
 

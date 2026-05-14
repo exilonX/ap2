@@ -4,6 +4,33 @@ import type { Mandate } from '../types/domain'
 import type { PaymentResult } from '../types/api'
 import { executePayment } from '../services/payment-api'
 import { formatCurrencyUnits } from '../utils/format-price'
+import {
+  AP2_REJECTED,
+  AP2_SUCCESS,
+  GRAY_SECONDARY_LINK,
+} from '../utils/theme'
+import {
+  ARTIFACT_LINK,
+  ARTIFACT_ROW,
+  CARD_STYLE,
+  CHECK_DOT,
+  CHECKS_GRID,
+  HEADER_ROW,
+  META_ROW,
+  PRIMARY_CTA,
+  PRIMARY_CTA_DISABLED,
+  RESULT_REJECTED,
+  RESULT_SUCCESS,
+  SECONDARY_LINK,
+  SECONDARY_ROW,
+  SECONDARY_SEP,
+  STEP_ICON_FAIL,
+  STEP_ICON_OK,
+  STEP_LIST,
+  STEP_ROW_FAILED,
+  STEP_ROW_HIDDEN,
+  STEP_ROW_VISIBLE,
+} from './PaymentCeremony.styles'
 
 interface PaymentCeremonyProps {
   mandate: Mandate
@@ -24,195 +51,6 @@ type CeremonyState =
   | { kind: 'rejected'; result: PaymentResult }
   | { kind: 'error'; message: string }
 
-// ─── Visual constants ────────────────────────────────────────────
-const CARD_STYLE: React.CSSProperties = {
-  marginTop: '4px',
-  padding: '12px 14px',
-  background: 'linear-gradient(180deg, #f5fbf6 0%, #ecf7ee 100%)',
-  border: '1px solid #c8e6c9',
-  borderRadius: '12px',
-  fontSize: '13px',
-  lineHeight: '1.5',
-  color: '#1b5e20',
-}
-
-const HEADER_ROW: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  fontWeight: 600,
-  marginBottom: '6px',
-}
-
-const CHECK_DOT: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: '20px',
-  height: '20px',
-  borderRadius: '50%',
-  background: '#2e7d32',
-  color: '#fff',
-  fontSize: '13px',
-  fontWeight: 700,
-  flexShrink: 0,
-}
-
-const META_ROW: React.CSSProperties = {
-  fontSize: '11px',
-  color: '#33691e',
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  wordBreak: 'break-all',
-  marginBottom: '10px',
-}
-
-const PRIMARY_CTA: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '6px',
-  width: '100%',
-  padding: '10px 14px',
-  background: 'linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%)',
-  color: '#fff',
-  fontWeight: 600,
-  fontSize: '13px',
-  borderRadius: '10px',
-  border: 'none',
-  cursor: 'pointer',
-  marginBottom: '8px',
-  fontFamily: 'inherit',
-}
-
-const PRIMARY_CTA_DISABLED: React.CSSProperties = {
-  ...PRIMARY_CTA,
-  opacity: 0.7,
-  cursor: 'not-allowed',
-}
-
-const SECONDARY_ROW: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  gap: '6px',
-  fontSize: '11px',
-  marginTop: '4px',
-}
-
-const SECONDARY_LINK: React.CSSProperties = {
-  color: '#2e7d32',
-  textDecoration: 'underline',
-}
-
-const SECONDARY_SEP: React.CSSProperties = {
-  color: '#9ccc9c',
-}
-
-const STEP_LIST: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-  marginTop: '10px',
-}
-
-const STEP_ROW: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '8px',
-  padding: '8px 10px',
-  background: 'rgba(255,255,255,0.55)',
-  border: '1px solid #c8e6c9',
-  borderRadius: '8px',
-  fontSize: '12px',
-}
-
-const STEP_ROW_HIDDEN: React.CSSProperties = {
-  ...STEP_ROW,
-  opacity: 0,
-  transform: 'translateY(-4px)',
-}
-
-const STEP_ROW_VISIBLE: React.CSSProperties = {
-  ...STEP_ROW,
-  opacity: 1,
-  transform: 'translateY(0)',
-  transition: 'opacity 180ms ease, transform 180ms ease',
-}
-
-const STEP_ROW_FAILED: React.CSSProperties = {
-  ...STEP_ROW_VISIBLE,
-  borderColor: '#cf222e',
-  background: 'rgba(255, 245, 245, 0.7)',
-  color: '#6e1117',
-}
-
-const STEP_ICON: React.CSSProperties = {
-  width: '16px',
-  height: '16px',
-  borderRadius: '50%',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#fff',
-  fontSize: '10px',
-  fontWeight: 700,
-  flexShrink: 0,
-  marginTop: '2px',
-}
-
-const STEP_ICON_OK: React.CSSProperties = { ...STEP_ICON, background: '#2e7d32' }
-const STEP_ICON_FAIL: React.CSSProperties = { ...STEP_ICON, background: '#cf222e' }
-
-const CHECKS_GRID: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, 1fr)',
-  gap: '4px 12px',
-  marginTop: '6px',
-  fontSize: '11px',
-}
-
-const RESULT_PANEL_BASE: React.CSSProperties = {
-  marginTop: '10px',
-  padding: '12px 14px',
-  borderRadius: '10px',
-  fontSize: '12px',
-  lineHeight: '1.5',
-}
-
-const RESULT_SUCCESS: React.CSSProperties = {
-  ...RESULT_PANEL_BASE,
-  background: 'linear-gradient(180deg, #f0f9f1 0%, #e8f5ea 100%)',
-  border: '2px solid #2ea043',
-  color: '#1a5028',
-}
-
-const RESULT_REJECTED: React.CSSProperties = {
-  ...RESULT_PANEL_BASE,
-  background: 'linear-gradient(180deg, #fdf3f3 0%, #fbe9e9 100%)',
-  border: '2px solid #cf222e',
-  color: '#6e1117',
-}
-
-const ARTIFACT_ROW: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '6px',
-  marginTop: '8px',
-}
-
-const ARTIFACT_LINK: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '4px 10px',
-  background: '#fff',
-  border: '1px solid #c8e6c9',
-  borderRadius: '6px',
-  color: '#2e7d32',
-  fontSize: '11px',
-  textDecoration: 'none',
-  fontWeight: 500,
-}
-
-// ─── Format helpers ───────────────────────────────────────────────
 function shortDid(did: string): string {
   return did.replace(/^did:web:/, '')
 }
@@ -363,7 +201,7 @@ function PaymentCeremony({ mandate }: PaymentCeremonyProps) {
           <span style={SECONDARY_SEP}>·</span>
           <a
             href={mandate.checkoutUrl}
-            style={{ ...SECONDARY_LINK, color: '#666' }}
+            style={{ ...SECONDARY_LINK, color: GRAY_SECONDARY_LINK }}
           >
             Or use VTEX standard checkout →
           </a>
@@ -427,7 +265,7 @@ function PaymentCeremony({ mandate }: PaymentCeremonyProps) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
-                        color: ok ? '#1a5028' : '#6e1117',
+                        color: ok ? AP2_SUCCESS.textBody : AP2_REJECTED.text,
                       }}
                     >
                       <span aria-hidden="true">{ok ? '✓' : '✗'}</span>
@@ -521,7 +359,7 @@ function Step({
           {number}. {title}
         </div>
         {detail ? (
-          <div style={{ color: failed ? '#8a1d23' : '#33691e', fontSize: '11px' }}>
+          <div style={{ color: failed ? AP2_REJECTED.textEmph : AP2_SUCCESS.textMuted, fontSize: '11px' }}>
             {detail}
           </div>
         ) : null}

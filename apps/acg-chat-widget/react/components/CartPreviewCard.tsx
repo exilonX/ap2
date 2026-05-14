@@ -2,19 +2,28 @@ import React from 'react'
 
 import type { CartPreview } from '../types/domain'
 import { formatCurrencyCents } from '../utils/format-price'
+import {
+  ACCENT_PINK,
+  GRAY_BORDER,
+  GRAY_DIM,
+  GRAY_SURFACE,
+  GRAY_TEXT,
+  SHADOW_SOFT,
+  WHITE,
+} from '../utils/theme'
 
 interface CartPreviewCardProps {
   cart: CartPreview
 }
 
 const WRAPPER: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #e4e4e7',
+  background: WHITE,
+  border: `1px solid ${GRAY_BORDER}`,
   borderRadius: '12px',
   padding: '14px',
   marginTop: '8px',
   maxWidth: '420px',
-  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+  boxShadow: SHADOW_SOFT,
 }
 
 const HEADER: React.CSSProperties = {
@@ -23,19 +32,19 @@ const HEADER: React.CSSProperties = {
   alignItems: 'center',
   marginBottom: '10px',
   paddingBottom: '8px',
-  borderBottom: '1px solid #f4f4f5',
+  borderBottom: `1px solid ${GRAY_SURFACE}`,
 }
 
 const HEADER_TITLE: React.CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
-  color: '#18181b',
+  color: GRAY_TEXT,
 }
 
 const ITEM_COUNT: React.CSSProperties = {
   fontSize: '11px',
-  color: '#71717a',
-  background: '#f4f4f5',
+  color: GRAY_DIM,
+  background: GRAY_SURFACE,
   padding: '2px 8px',
   borderRadius: '10px',
 }
@@ -59,7 +68,7 @@ const ITEM_IMG: React.CSSProperties = {
   height: '40px',
   objectFit: 'cover',
   borderRadius: '6px',
-  background: '#f4f4f5',
+  background: GRAY_SURFACE,
   flexShrink: 0,
 }
 
@@ -73,7 +82,7 @@ const ITEM_INFO: React.CSSProperties = {
 const ITEM_NAME: React.CSSProperties = {
   fontSize: '12px',
   fontWeight: 500,
-  color: '#18181b',
+  color: GRAY_TEXT,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
@@ -81,14 +90,14 @@ const ITEM_NAME: React.CSSProperties = {
 
 const ITEM_META: React.CSSProperties = {
   fontSize: '11px',
-  color: '#71717a',
+  color: GRAY_DIM,
   marginTop: '2px',
 }
 
 const ITEM_PRICE: React.CSSProperties = {
   fontSize: '13px',
   fontWeight: 600,
-  color: '#18181b',
+  color: GRAY_TEXT,
   marginLeft: '8px',
   whiteSpace: 'nowrap',
 }
@@ -96,7 +105,7 @@ const ITEM_PRICE: React.CSSProperties = {
 const TOTALS: React.CSSProperties = {
   marginTop: '10px',
   paddingTop: '10px',
-  borderTop: '1px solid #f4f4f5',
+  borderTop: `1px solid ${GRAY_SURFACE}`,
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
@@ -105,13 +114,13 @@ const TOTALS: React.CSSProperties = {
 const TOTAL_LABEL: React.CSSProperties = {
   fontSize: '13px',
   fontWeight: 600,
-  color: '#18181b',
+  color: GRAY_TEXT,
 }
 
 const TOTAL_AMOUNT: React.CSSProperties = {
   fontSize: '16px',
   fontWeight: 700,
-  color: '#f71963',
+  color: ACCENT_PINK,
 }
 
 function CartPreviewCard({ cart }: CartPreviewCardProps) {

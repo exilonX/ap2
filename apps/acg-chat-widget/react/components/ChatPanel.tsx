@@ -1,8 +1,24 @@
 import React from 'react'
 
 import type { Message } from '../types/domain'
+import {
+  ACCENT_PINK,
+  OVERLAY_WHITE_10,
+  OVERLAY_WHITE_20,
+  WHITE,
+} from '../utils/theme'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
+import {
+  BODY_STYLE,
+  CLEAR_BTN_STYLE,
+  PANEL_BASE,
+  PANEL_OPEN,
+  POWERED_STYLE,
+  STATUS_DOT,
+  STATUS_STYLE,
+  TITLE_STYLE,
+} from './ChatPanel.styles'
 
 interface ChatPanelProps {
   isOpen: boolean
@@ -21,84 +37,6 @@ interface ChatPanelProps {
   accentColor?: string
 }
 
-const PANEL_BASE: React.CSSProperties = {
-  position: 'absolute',
-  bottom: '72px',
-  right: '0',
-  width: '880px',
-  maxWidth: 'calc(100vw - 40px)',
-  height: '800px',
-  maxHeight: 'calc(100vh - 120px)',
-  background: '#fff',
-  borderRadius: '16px',
-  boxShadow: '0 8px 40px rgba(0, 0, 0, 0.15)',
-  display: 'flex',
-  flexDirection: 'column' as const,
-  overflow: 'hidden',
-  opacity: 0,
-  transform: 'translateY(16px) scale(0.95)',
-  pointerEvents: 'none' as const,
-  transition: 'opacity 0.25s ease, transform 0.25s ease',
-}
-
-const PANEL_OPEN: React.CSSProperties = {
-  ...PANEL_BASE,
-  opacity: 1,
-  transform: 'translateY(0) scale(1)',
-  pointerEvents: 'auto' as const,
-}
-
-const TITLE_STYLE: React.CSSProperties = {
-  fontSize: '16px',
-  fontWeight: 600,
-  lineHeight: '1.3',
-}
-
-const STATUS_STYLE: React.CSSProperties = {
-  fontSize: '12px',
-  opacity: 0.9,
-  display: 'flex',
-  alignItems: 'center',
-  gap: '6px',
-  marginTop: '2px',
-}
-
-const STATUS_DOT: React.CSSProperties = {
-  width: '8px',
-  height: '8px',
-  background: '#4ade80',
-  borderRadius: '50%',
-  display: 'inline-block',
-}
-
-const BODY_STYLE: React.CSSProperties = {
-  flex: 1,
-  overflow: 'hidden',
-}
-
-const POWERED_STYLE: React.CSSProperties = {
-  textAlign: 'center',
-  fontSize: '10px',
-  color: '#a1a1aa',
-  padding: '0 16px 10px',
-}
-
-const CLEAR_BTN_STYLE: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px',
-  padding: '6px 10px',
-  background: 'rgba(255, 255, 255, 0.1)',
-  border: '1px solid rgba(255, 255, 255, 0.3)',
-  borderRadius: '8px',
-  color: '#fff',
-  fontSize: '12px',
-  fontWeight: 500,
-  cursor: 'pointer',
-  transition: 'background 0.15s ease',
-  fontFamily: 'inherit',
-}
-
 function ChatPanel({
   isOpen,
   messages,
@@ -113,11 +51,13 @@ function ChatPanel({
   resetLabel = 'Resetează conversația',
   resetConfirm = 'Resetezi conversația? Istoricul se va șterge.',
   poweredBy = 'Powered by ACG',
-  accentColor = '#f71963',
+  accentColor = ACCENT_PINK,
 }: ChatPanelProps) {
+  // Header style is computed inline because it depends on the profile's
+  // accentColor prop — all other styles live in ChatPanel.styles.ts.
   const headerStyle: React.CSSProperties = {
     background: accentColor,
-    color: '#fff',
+    color: WHITE,
     padding: '16px 20px',
     flexShrink: 0,
     display: 'flex',
@@ -152,10 +92,10 @@ function ChatPanel({
             title={resetLabel}
             type="button"
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
+              e.currentTarget.style.background = OVERLAY_WHITE_20
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+              e.currentTarget.style.background = OVERLAY_WHITE_10
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">

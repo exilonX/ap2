@@ -1,6 +1,7 @@
 import React from 'react'
 
 import type { ProductCard } from '../types/domain'
+import { GRAY_LABEL, GRAY_MUTED } from '../utils/theme'
 import ProductCardComponent from './ProductCard'
 
 interface ProductGroupProps {
@@ -66,13 +67,13 @@ const GROUP_STYLE: React.CSSProperties = {
 const LABEL_STYLE: React.CSSProperties = {
   fontSize: '12px',
   fontWeight: 600,
-  color: '#52525b',
+  color: GRAY_LABEL,
   textTransform: 'capitalize',
   paddingLeft: '2px',
 }
 
 const COUNT_STYLE: React.CSSProperties = {
-  color: '#a1a1aa',
+  color: GRAY_MUTED,
   fontWeight: 400,
 }
 

@@ -2,6 +2,16 @@ import React, { useState } from 'react'
 
 import type { ProductCard } from '../types/domain'
 import { formatCurrencyCents } from '../utils/format-price'
+import {
+  ACCENT_PINK,
+  GRAY_BORDER,
+  GRAY_MUTED,
+  GRAY_SURFACE,
+  GRAY_TEXT,
+  SHADOW_BUTTON,
+  SUCCESS_GREEN,
+  WHITE,
+} from '../utils/theme'
 
 interface ProductCardProps {
   product: ProductCard
@@ -13,8 +23,8 @@ const CARD_STYLE: React.CSSProperties = {
   width: '140px',
   display: 'flex',
   flexDirection: 'column',
-  background: '#fff',
-  border: '1px solid #e4e4e7',
+  background: WHITE,
+  border: `1px solid ${GRAY_BORDER}`,
   borderRadius: '10px',
   overflow: 'hidden',
   position: 'relative',
@@ -27,7 +37,7 @@ const IMAGE_WRAP: React.CSSProperties = {
   position: 'relative',
   width: '100%',
   aspectRatio: '1 / 1',
-  background: '#f4f4f5',
+  background: GRAY_SURFACE,
   overflow: 'hidden',
 }
 
@@ -42,8 +52,8 @@ const DISCOUNT_BADGE: React.CSSProperties = {
   position: 'absolute',
   top: '6px',
   left: '6px',
-  background: '#f71963',
-  color: '#fff',
+  background: ACCENT_PINK,
+  color: WHITE,
   fontSize: '11px',
   fontWeight: 700,
   padding: '3px 7px',
@@ -59,13 +69,13 @@ const ADD_BTN_STYLE: React.CSSProperties = {
   height: '28px',
   border: 'none',
   borderRadius: '50%',
-  background: '#f71963',
-  color: '#fff',
+  background: ACCENT_PINK,
+  color: WHITE,
   fontSize: '18px',
   fontWeight: 700,
   lineHeight: '28px',
   cursor: 'pointer',
-  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+  boxShadow: SHADOW_BUTTON,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -74,7 +84,7 @@ const ADD_BTN_STYLE: React.CSSProperties = {
 
 const ADD_BTN_DONE: React.CSSProperties = {
   ...ADD_BTN_STYLE,
-  background: '#22c55e',
+  background: SUCCESS_GREEN,
   cursor: 'default',
 }
 
@@ -94,7 +104,7 @@ const NAME_STYLE: React.CSSProperties = {
   WebkitLineClamp: 2,
   WebkitBoxOrient: 'vertical',
   overflow: 'hidden',
-  color: '#18181b',
+  color: GRAY_TEXT,
 }
 
 const PRICE_ROW_STYLE: React.CSSProperties = {
@@ -107,12 +117,12 @@ const PRICE_ROW_STYLE: React.CSSProperties = {
 const PRICE_STYLE: React.CSSProperties = {
   fontSize: '13px',
   fontWeight: 700,
-  color: '#f71963',
+  color: ACCENT_PINK,
 }
 
 const LIST_PRICE_STYLE: React.CSSProperties = {
   fontSize: '11px',
-  color: '#a1a1aa',
+  color: GRAY_MUTED,
   textDecoration: 'line-through',
 }
 

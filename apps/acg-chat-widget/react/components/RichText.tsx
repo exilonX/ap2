@@ -1,13 +1,15 @@
 import React from 'react'
 
+import { ACCENT_PINK, WHITE } from '../utils/theme'
+
 const LINK_STYLE: React.CSSProperties = {
-  color: '#f71963',
+  color: ACCENT_PINK,
   textDecoration: 'underline',
   wordBreak: 'break-all',
 }
 
 const LINK_STYLE_ON_PINK: React.CSSProperties = {
-  color: '#fff',
+  color: WHITE,
   textDecoration: 'underline',
   wordBreak: 'break-all',
 }
