@@ -11,9 +11,9 @@
  */
 
 import type { Message } from '../types/domain'
+import { CONVERSATION_TTL_MS } from '../utils/constants'
 
 const STORAGE_KEY = 'acg-chat:conversation'
-const TTL_MS = 60 * 60 * 1000 // 1 hour
 
 interface StoredConversation {
   savedAt: number
@@ -28,7 +28,7 @@ export function loadConversation(): Message[] | null {
 
     const parsed = JSON.parse(raw) as StoredConversation
 
-    if (!parsed.savedAt || Date.now() - parsed.savedAt > TTL_MS) {
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > CONVERSATION_TTL_MS) {
       localStorage.removeItem(STORAGE_KEY)
 
       return null

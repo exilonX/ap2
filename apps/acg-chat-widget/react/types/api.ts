@@ -7,6 +7,11 @@
 
 import type { CartPreview, Mandate, ProductCard } from './domain'
 
+/**
+ * What the chat backend returns from POST /_v/acg/chat.
+ * The `reply` text is what the LLM said; structured fields ride along
+ * for the widget to render as cards/badges instead of as text.
+ */
 export interface ChatAPIResponse {
   reply: string
   products?: ProductCard[]
@@ -17,9 +22,29 @@ export interface ChatAPIResponse {
   error?: string
 }
 
+/**
+ * A single prior turn carried on the wire to the chat backend.
+ * Plain text only — tool calls and tool results don't survive this hop
+ * (known gap; see ISSUES.md #0004).
+ */
 export interface HistoryEntry {
   role: 'user' | 'assistant'
   content: string
+}
+
+/**
+ * Caller-shaped result returned by `sendChatMessage`. Identical to
+ * `ChatAPIResponse` except the LLM text is renamed `content` (matches
+ * the widget's `Message.content`) and `error` is filtered out — the
+ * service throws on backend errors instead of returning them.
+ */
+export interface SendChatResult {
+  content: string
+  products?: ProductCard[]
+  suggestions?: string[]
+  cartPreview?: CartPreview
+  cartUpdated?: boolean
+  mandate?: Mandate
 }
 
 /**

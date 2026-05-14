@@ -1039,3 +1039,36 @@ Real payment networks use 3DS2 for step-up authentication when transactions hit 
 - Iframe handles `step_up_required` by rendering a simulated 3DS2 challenge page (OTP entry, biometric "tap").
 - After challenge, iframe re-calls the network with the step-up result, network finalizes approval.
 - Documented as still-mock — production 3DS2 flows would integrate with the issuer's real challenge endpoints.
+
+---
+
+## 0021 — Smarter chat history: server-side cap + tool-context threading
+
+- **Status:** needs-triage
+- **Created:** 2026-05-14
+- **Demo-blocking:** No
+
+### Context
+
+The widget's `buildHistory` in `apps/acg-chat-widget/react/services/chat-api.ts` now uses head-tail truncation (anchor the opening exchange + most recent N-1 turns) to keep the originating intent ("haine bărbați", "cadou copil") alive across long sessions. That fixes the cheapest case. Two deeper issues remain:
+
+1. **No server-side enforcement of `history` length.** The 10-turn cap is a client hint. A misbehaving or malicious client could send 1000 turns and inflate the merchant's LLM bill. The cost ceiling has to live on the server.
+
+2. **Tool calls + tool results are dropped from history.** Only `{ role, content }` survives the wire hop. On turn N+1 the LLM cannot see what tools it called on turn N, what those tools returned, or which products / variants / cart state were shown in the UI. This is the structural root of ISSUES 0004 (variant-list contradiction) and a contributor to "the LLM forgot we said men's clothes" drift.
+
+### Acceptance
+
+**Part A — server cap (smaller, do first)**
+- Adapter's `/_v/acg/chat` handler clamps incoming `history` to a configurable max (default 10, override via app settings). Logs when it clips so cost-attack patterns are visible.
+- Per-orderForm rate-limit middleware (`sessionCostCap`) is the safety net; this is the in-band cap so a single inflated request can't blow the LLM bill before the rate limiter sees the second one.
+
+**Part B — tool-context threading (bigger, defer until after the demo)**
+- Wire format: `history` entries optionally carry a structured `tool_context` field with the products / cartPreview / mandate the UI rendered for that turn.
+- Server reconstitutes prior tool results into the LLM's transcript so the model sees what its past tools returned. Same for tool calls the LLM made (a thin `tool_calls?: Array<{name, args, summary}>`).
+- Token budget — these structured blocks count against the same context window; the server-side cap from Part A enforces the ceiling.
+- Closes ISSUES.md 0004 as a side-effect.
+
+### What this is NOT
+
+- Not full LLM-driven summarization. That's a separate, more expensive strategy (one extra LLM call per N turns). Worth evaluating only if Part B isn't enough.
+- Not server-side sticky-fact extraction. Same — defer until measured need.

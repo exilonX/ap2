@@ -8,38 +8,68 @@
  * reachable).
  */
 
+import type { Message } from '../types/domain'
 import type {
-  CartPreview,
-  Mandate,
-  Message,
-  ProductCard,
-} from '../types/domain'
-import type { ChatAPIResponse, HistoryEntry } from '../types/api'
+  ChatAPIResponse,
+  HistoryEntry,
+  SendChatResult,
+} from '../types/api'
+import { HISTORY_HEAD_TURNS, HISTORY_MAX_TURNS } from '../utils/constants'
 import { fallbackToMock } from './dev-fallback'
 import { getOrderFormIdFromCookie, triggerCartRefresh } from './cart-refresh'
 
-function buildHistory(
+/**
+ * Build the prior-turn payload the chat backend uses to reconstruct
+ * conversation context.
+ *
+ * Two responsibilities:
+ *
+ * 1. **Strip the trailing duplicate of the new turn.** The widget
+ *    appends the new user message to its local `messages` array BEFORE
+ *    calling `sendChatMessage` (optimistic UI). The backend separately
+ *    receives the new text in `body.message`. Without this guard the
+ *    LLM would see the new turn twice.
+ *
+ * 2. **Pin the opening exchange.** A naive `slice(-N)` sliding window
+ *    drops the first user turn once the conversation grows past N. In
+ *    practice that first turn is where the durable intent lives
+ *    ("haine bărbați", "cadou copil", budget ceilings). We keep the
+ *    first HEAD_TURNS entries and the most recent MAX_TURNS - HEAD_TURNS
+ *    entries — total stays at MAX_TURNS so per-call token cost is
+ *    unchanged.
+ *
+ * Known limitation: only `{ role, content }` survives the hop. Tool
+ * calls and tool results from prior turns are lost across calls — the
+ * LLM has to re-call tools to re-acquire variant data, last search
+ * results, etc. Tracked in ISSUES.md #0004.
+ */
+export function buildHistory(
   messages: Message[],
   currentUserMessage: string
 ): HistoryEntry[] {
-  // The widget pushes the new user message into messages BEFORE calling the API,
-  // and the backend also appends `body.message` itself. Drop the trailing user
-  // turn if it matches what we're about to send to avoid a duplicate role:user.
+  // Drop the optimistic trailing duplicate of the new turn.
   const last = messages[messages.length - 1]
   const dropLast =
     last && last.role === 'user' && last.content === currentUserMessage
-  const slice = dropLast ? messages.slice(-11, -1) : messages.slice(-10)
+  const available = dropLast ? messages.slice(0, -1) : messages
 
-  return slice.map((m) => ({ role: m.role, content: m.content }))
+  if (available.length <= HISTORY_MAX_TURNS) {
+    return available.map(toHistoryEntry)
+  }
+
+  // Skip leading assistant turns when picking the anchor — the canned
+  // greeting carries no intent. Start the head at the first user turn.
+  const firstUserIdx = available.findIndex((m) => m.role === 'user')
+  const headStart = firstUserIdx === -1 ? 0 : firstUserIdx
+  const head = available.slice(headStart, headStart + HISTORY_HEAD_TURNS)
+  const tailSize = HISTORY_MAX_TURNS - head.length
+  const tail = available.slice(-tailSize)
+
+  return [...head, ...tail].map(toHistoryEntry)
 }
 
-export interface SendChatResult {
-  content: string
-  products?: ProductCard[]
-  suggestions?: string[]
-  cartPreview?: CartPreview
-  cartUpdated?: boolean
-  mandate?: Mandate
+function toHistoryEntry(m: Message): HistoryEntry {
+  return { role: m.role, content: m.content }
 }
 
 export async function sendChatMessage(

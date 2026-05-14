@@ -12,7 +12,7 @@
  */
 
 import type { ProductCard } from '../types/domain'
-import type { SendChatResult } from './chat-api'
+import type { SendChatResult } from '../types/api'
 
 const MOCK_PRODUCTS: ProductCard[] = [
   {
