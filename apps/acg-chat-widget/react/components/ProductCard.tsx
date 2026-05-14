@@ -1,18 +1,11 @@
 import React, { useState } from 'react'
 
-import type { ProductCard } from './types'
+import type { ProductCard } from '../types/domain'
+import { formatCurrencyCents } from '../utils/format-price'
 
 interface ProductCardProps {
   product: ProductCard
   onAddToCart?: (sku: string, name: string) => void
-}
-
-function formatPrice(value: number, currency: string): string {
-  return new Intl.NumberFormat('ro-RO', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value / 100)
 }
 
 const CARD_STYLE: React.CSSProperties = {
@@ -169,10 +162,10 @@ function ProductCardComponent({ product, onAddToCart }: ProductCardProps) {
       <div style={INFO_STYLE}>
         <span style={NAME_STYLE}>{product.name}</span>
         <div style={PRICE_ROW_STYLE}>
-          <span style={PRICE_STYLE}>{formatPrice(product.price, product.currency)}</span>
+          <span style={PRICE_STYLE}>{formatCurrencyCents(product.price, product.currency)}</span>
           {hasDiscount && product.listPrice && (
             <span style={LIST_PRICE_STYLE}>
-              {formatPrice(product.listPrice, product.currency)}
+              {formatCurrencyCents(product.listPrice, product.currency)}
             </span>
           )}
         </div>

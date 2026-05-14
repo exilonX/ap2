@@ -1,17 +1,10 @@
 import React from 'react'
 
-import type { CartPreview } from './types'
+import type { CartPreview } from '../types/domain'
+import { formatCurrencyCents } from '../utils/format-price'
 
 interface CartPreviewCardProps {
   cart: CartPreview
-}
-
-function formatPrice(cents: number, currency: string): string {
-  return new Intl.NumberFormat('ro-RO', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(cents / 100)
 }
 
 const WRAPPER: React.CSSProperties = {
@@ -140,17 +133,17 @@ function CartPreviewCard({ cart }: CartPreviewCardProps) {
             <div style={ITEM_INFO}>
               <span style={ITEM_NAME}>{item.name}</span>
               <span style={ITEM_META}>
-                {item.quantity} × {formatPrice(item.unitPrice, cart.currency)}
+                {item.quantity} × {formatCurrencyCents(item.unitPrice, cart.currency)}
               </span>
             </div>
-            <span style={ITEM_PRICE}>{formatPrice(item.totalPrice, cart.currency)}</span>
+            <span style={ITEM_PRICE}>{formatCurrencyCents(item.totalPrice, cart.currency)}</span>
           </div>
         ))}
       </div>
 
       <div style={TOTALS}>
         <span style={TOTAL_LABEL}>Total</span>
-        <span style={TOTAL_AMOUNT}>{formatPrice(cart.total, cart.currency)}</span>
+        <span style={TOTAL_AMOUNT}>{formatCurrencyCents(cart.total, cart.currency)}</span>
       </div>
 
       {/*

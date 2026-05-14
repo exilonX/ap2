@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 
-import type { Message } from './types'
+import type { Message } from '../types/domain'
 import CartPreviewCard from './CartPreviewCard'
 import MandateBadge from './MandateBadge'
 import ProductGroup from './ProductGroup'

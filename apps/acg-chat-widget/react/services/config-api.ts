@@ -5,35 +5,7 @@
  * render with baked-in defaults so the UI has something to show.
  */
 
-export interface StringBundle {
-  greeting: string
-  placeholder: string
-  headerTitle: string
-  headerStatus: string
-  errorConnection: string
-  poweredBy: string
-}
-
-export interface BrandConfig {
-  name: string
-  tone: string
-  accentColor?: string
-  poweredByLabel?: string
-}
-
-export interface ClientConfig {
-  accountMatches: string[]
-  industry: string
-  currency: string
-  locales: {
-    default: string
-    available: string[]
-  }
-  brand: BrandConfig
-  llmContext: string
-  starters: Record<string, string[]>
-  strings: Record<string, StringBundle>
-}
+import type { ClientConfig, StringBundle } from '../types/config'
 
 // Defaults used while the config request is in flight — matches miniprix
 // so the initial render doesn't flash generic English.
@@ -64,6 +36,8 @@ export const FALLBACK_CONFIG: ClientConfig = {
       headerStatus: 'Online',
       errorConnection: 'Am o problemă de conexiune. Mai încearcă odată.',
       poweredBy: 'Powered by ACG',
+      reset: 'Resetează conversația',
+      resetConfirm: 'Resetezi conversația? Istoricul se va șterge.',
     },
   },
 }

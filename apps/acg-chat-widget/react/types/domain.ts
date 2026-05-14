@@ -28,18 +28,6 @@ export interface Mandate {
   currency: string         // ISO-4217 (e.g. RON)
 }
 
-export interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: number
-  products?: ProductCard[]
-  suggestions?: string[]  // quick-reply chips shown under the message
-  cartPreview?: CartPreview // inline cart preview card
-  cartUpdated?: boolean
-  mandate?: Mandate         // present when the merchant signed a CartMandate
-}
-
 export interface ProductCard {
   productId: string
   name: string
@@ -51,6 +39,18 @@ export interface ProductCard {
   currency: string
   url: string
   groupLabel?: string // which search query surfaced this product
+}
+
+export interface Message {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+  products?: ProductCard[]
+  suggestions?: string[]  // quick-reply chips shown under the message
+  cartPreview?: CartPreview // inline cart preview card
+  cartUpdated?: boolean
+  mandate?: Mandate         // present when the merchant signed a CartMandate
 }
 
 export interface ChatWidgetProps {

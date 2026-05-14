@@ -1,6 +1,6 @@
 import React from 'react'
 
-import type { Mandate } from './types'
+import type { Mandate } from '../types/domain'
 import PaymentCeremony from './PaymentCeremony'
 
 interface MandateBadgeProps {

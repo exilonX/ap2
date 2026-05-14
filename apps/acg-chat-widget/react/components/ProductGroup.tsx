@@ -1,6 +1,6 @@
 import React from 'react'
 
-import type { ProductCard } from './types'
+import type { ProductCard } from '../types/domain'
 import ProductCardComponent from './ProductCard'
 
 interface ProductGroupProps {

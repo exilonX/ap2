@@ -10,7 +10,7 @@
  *   - Keyed by account + session cookie so different stores/sessions don't collide
  */
 
-import type { Message } from './types'
+import type { Message } from '../types/domain'
 
 const STORAGE_KEY = 'acg-chat:conversation'
 const TTL_MS = 60 * 60 * 1000 // 1 hour

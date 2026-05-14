@@ -2,44 +2,26 @@ import ReactDOM from 'react-dom'
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { canUseDOM } from 'vtex.render-runtime'
 
-import type { PixelMessage } from './typings/events'
-import type { Message } from './components/ChatWidget/types'
-import ChatBubble from './components/ChatWidget/ChatBubble'
-import ChatPanel from './components/ChatWidget/ChatPanel'
-import { createMessage } from './components/ChatWidget/mockResponses'
-import { sendChatMessage } from './components/ChatWidget/api'
-import { loadConversation, saveConversation, clearConversation } from './components/ChatWidget/persistence'
+import type { Message } from './types/domain'
+import type { ClientConfig } from './types/config'
+import ChatBubble from './components/ChatBubble'
+import ChatPanel from './components/ChatPanel'
+import { createMessage } from './utils/create-message'
+import { sendChatMessage } from './services/chat-api'
+import {
+  loadConversation,
+  saveConversation,
+  clearConversation,
+} from './services/persistence'
 import {
   fetchConfig,
   FALLBACK_CONFIG,
   getStarters,
   getStrings,
   pickLocale,
-} from './components/ChatWidget/config'
-import type { ClientConfig } from './components/ChatWidget/config'
+} from './services/config-api'
 
 const CONTAINER_ID = 'acg-chat-widget-root'
-
-// Pixel event handler — extend later for page-context awareness
-export function handleEvents(e: PixelMessage) {
-  switch (e.data.eventName) {
-    case 'vtex:pageView': {
-      break
-    }
-
-    case 'vtex:productView': {
-      break
-    }
-
-    case 'vtex:addToCart': {
-      break
-    }
-
-    default: {
-      break
-    }
-  }
-}
 
 // Chat widget UI — mounted manually since pixel apps don't render React components
 function AcgChatWidget() {
@@ -190,6 +172,8 @@ function AcgChatWidget() {
         placeholder={strings.placeholder}
         headerTitle={strings.headerTitle}
         headerStatus={strings.headerStatus}
+        resetLabel={strings.reset}
+        resetConfirm={strings.resetConfirm}
         poweredBy={strings.poweredBy}
         accentColor={config.brand.accentColor}
       />
@@ -203,8 +187,6 @@ function AcgChatWidget() {
 }
 
 if (canUseDOM) {
-  window.addEventListener('message', handleEvents)
-
   // Mount chat widget into the DOM
   const mount = () => {
     if (document.getElementById(CONTAINER_ID)) return

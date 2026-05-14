@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 
-import type { Mandate } from './types'
-import { executePayment } from './api'
-import type { PaymentResult } from './api'
+import type { Mandate } from '../types/domain'
+import type { PaymentResult } from '../types/api'
+import { executePayment } from '../services/payment-api'
+import { formatCurrencyUnits } from '../utils/format-price'
 
 interface PaymentCeremonyProps {
   mandate: Mandate
@@ -212,19 +213,6 @@ const ARTIFACT_LINK: React.CSSProperties = {
 }
 
 // ─── Format helpers ───────────────────────────────────────────────
-function formatPrice(total: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat('ro-RO', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(total)
-  } catch {
-    return `${total.toFixed(2)} ${currency}`
-  }
-}
-
 function shortDid(did: string): string {
   return did.replace(/^did:web:/, '')
 }
@@ -339,7 +327,7 @@ function PaymentCeremony({ mandate }: PaymentCeremonyProps) {
         >
           {state.kind === 'pending'
             ? 'Verifying mandate against cart…'
-            : `Finalizează plata — ${formatPrice(mandate.total, mandate.currency)} →`}
+            : `Finalizează plata — ${formatCurrencyUnits(mandate.total, mandate.currency)} →`}
         </button>
 
         {state.kind === 'error' ? (

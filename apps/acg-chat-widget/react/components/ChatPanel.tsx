@@ -1,6 +1,6 @@
 import React from 'react'
 
-import type { Message } from './types'
+import type { Message } from '../types/domain'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 
@@ -15,7 +15,8 @@ interface ChatPanelProps {
   placeholder?: string
   headerTitle?: string
   headerStatus?: string
-  clearLabel?: string
+  resetLabel?: string
+  resetConfirm?: string
   poweredBy?: string
   accentColor?: string
 }
@@ -109,7 +110,8 @@ function ChatPanel({
   placeholder,
   headerTitle = 'Shopping Assistant',
   headerStatus = 'Online',
-  clearLabel = 'Resetează conversația',
+  resetLabel = 'Resetează conversația',
+  resetConfirm = 'Resetezi conversația? Istoricul se va șterge.',
   poweredBy = 'Powered by ACG',
   accentColor = '#f71963',
 }: ChatPanelProps) {
@@ -127,7 +129,7 @@ function ChatPanel({
   const hasUserMessages = messages.some((m) => m.role === 'user')
 
   const handleClearClick = () => {
-    if (window.confirm('Resetezi conversația? Istoricul se va șterge.')) {
+    if (window.confirm(resetConfirm)) {
       onClear()
     }
   }
@@ -146,8 +148,8 @@ function ChatPanel({
           <button
             onClick={handleClearClick}
             style={CLEAR_BTN_STYLE}
-            aria-label={clearLabel}
-            title={clearLabel}
+            aria-label={resetLabel}
+            title={resetLabel}
             type="button"
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)'
