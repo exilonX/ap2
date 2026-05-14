@@ -37,12 +37,33 @@ export function getOrderFormIdFromCookie(): string | null {
 }
 
 /**
- * Trigger the store's mini-cart to refetch the orderForm via three
- * best-effort channels:
- *   1. `vtex:cartChanged` postMessage — Store Framework listens to this
- *   2. `acg:cartUpdated` CustomEvent — for any storefront-side listeners
- *   3. A direct GET to `/api/checkout/pub/orderForm/:id` — forces the
- *      mini-cart badge to update immediately by warming the cache
+ * Best-effort attempt to refresh the storefront's mini-cart after the
+ * widget mutates the orderForm.
+ *
+ * ⚠ Known limitation — all three signals below are effectively no-ops
+ * on a modern VTEX Store Framework storefront. The mini-cart's React
+ * state lives in `OrderFormProvider` (from `vtex.order-manager`) and
+ * is only refreshed by Apollo `refetch()`, by mutations going through
+ * `useOrderItems().addItems/updateItems/removeItem`, or by the
+ * order-manager's internal polling. There is no public window-level,
+ * postMessage, or global API to force it:
+ *
+ *   - `vtex:cartChanged` is an OUTBOUND pixel event the storefront
+ *     EMITS for analytics consumers (GTM, FB). Nothing listens for it.
+ *   - `acg:cartUpdated` is our own custom namespace; nothing built-in
+ *     subscribes.
+ *   - GET /api/checkout/pub/orderForm/:id returns JSON and refreshes
+ *     the server-side cache but does not touch React state.
+ *
+ * Net result: the mini-cart badge stays stale until the next page
+ * load. We keep these calls in place because (a) they're cheap, (b)
+ * the postMessage may be picked up by partner code on bespoke
+ * storefronts, and (c) the GET warms the server cache for the
+ * eventual reload. The proper fix is hook-based — either re-mutate
+ * via `vtex.order-items` from a React-tree component, or have the
+ * adapter return the full orderForm and call
+ * `useOrderForm().setOrderForm(...)` from inside the widget. Both
+ * touch render-runtime and are deferred until after the demo.
  */
 export function triggerCartRefresh(): void {
   try {
