@@ -8,35 +8,28 @@
  * expiry on both mandates) and emits a signed PaymentReceipt evidencing
  * the decision either way.
  *
+ * Extends `IdentityHolder` from `@acg/core` for the DID + public-key
+ * scaffolding; adds the single network-specific method: `approvePayment`.
+ *
  * Production swap-in: the real network is Visa / Mastercard / etc.
  * The interface here is the seam — replace the impl, keep the calling
  * code unchanged.
  */
 
 import {
+  IdentityHolder,
   createPaymentReceipt,
   hashCartMandate,
   hashPaymentMandateContents,
-  loadOrCreateIdentity,
   verifyCartMandate,
   verifyPaymentMandate,
 } from '../core'
 import type {
   CartMandate,
-  DIDDocument,
-  KeyStore,
-  MerchantIdentity as Identity,
   PaymentMandate,
   PaymentReceipt,
   VerificationChecks,
 } from '../core'
-
-export interface MockPaymentNetworkDeps {
-  /** KeyStore the network's keypair is persisted through. */
-  keyStore: KeyStore
-  /** Domain for the network's DID (e.g. "mock-network.acg.example"). */
-  domain: string
-}
 
 export interface ApprovePaymentInput {
   paymentMandate: PaymentMandate
@@ -54,30 +47,13 @@ export interface ApprovePaymentInput {
    * actually-invalid mandate or waiting for natural expiry. Used by the
    * iframe's "force reject" button to record the rejection branch of the
    * ceremony. The receipt is still genuinely signed; only the override
-   * is theatrical. Production gating (workspace !== 'master') happens in
-   * the adapter handler — this class trusts its caller.
+   * is theatrical. Production gating happens in the calling adapter —
+   * this class trusts its caller.
    */
   forceFailCheck?: keyof VerificationChecks
 }
 
-export class MockPaymentNetwork {
-  private cached: Identity | null = null
-
-  constructor(private readonly deps: MockPaymentNetworkDeps) {}
-
-  /** This network's DID (e.g. "did:web:mock-network.acg.example"). */
-  public async getDID(): Promise<string> {
-    return (await this.load()).did
-  }
-
-  public async getDIDDocument(): Promise<DIDDocument> {
-    return (await this.load()).didDocument
-  }
-
-  public async getPublicKey(): Promise<Buffer> {
-    return (await this.load()).keys.publicKey
-  }
-
+export class MockPaymentNetwork extends IdentityHolder {
   /**
    * Run the full AP2 verification chain on a payment authorization
    * request, then emit a signed PaymentReceipt — approved if all checks
@@ -188,16 +164,6 @@ export class MockPaymentNetwork {
       payment_mandate_not_expired: paymentVerification.checks.notExpired,
       cart_mandate_not_expired: cartVerification.checks.notExpired,
     }
-  }
-
-  private async load(): Promise<Identity> {
-    if (this.cached) return this.cached
-    this.cached = await loadOrCreateIdentity(
-      this.deps.domain,
-      this.deps.keyStore
-    )
-
-    return this.cached
   }
 }
 

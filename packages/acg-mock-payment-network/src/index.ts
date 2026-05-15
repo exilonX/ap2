@@ -2,10 +2,11 @@
  * @acg/mock-payment-network
  *
  * Mock AP2 Credentials Provider + Payment Network for the ACG demo.
- * Each role (`MockCredentialsProvider`, `MockPaymentNetwork`) holds
- * its own DID + Ed25519 keypair via the `KeyStore` interface from
- * `@acg/core` — same pattern that the Adapter uses for the merchant
- * identity per ADR-0001.
+ * Both classes extend `IdentityHolder` from `@acg/core` for the keyed-
+ * party scaffolding (DID, DID document, lazy keypair load), and add
+ * their role's signing method on top. Each instance therefore holds
+ * its own DID + Ed25519 keypair via the `KeyStore` interface — same
+ * pattern that the Adapter's `MerchantIdentity` uses (per ADR-0001).
  *
  * The Adapter wires both classes with `VBaseKeyStore` instances
  * scoped to separate buckets so each party persists across requests
@@ -18,12 +19,10 @@
 
 export {
   MockCredentialsProvider,
-  type MockCredentialsProviderDeps,
   type SignPaymentMandateInput,
 } from './credentials-provider';
 
 export {
   MockPaymentNetwork,
-  type MockPaymentNetworkDeps,
   type ApprovePaymentInput,
 } from './payment-network';

@@ -5,13 +5,19 @@
  * from `packages/core/src/*` are vendored here. The source of truth
  * remains `packages/core/`; this directory mirrors its public surface.
  *
- * If you change anything in `packages/core/src/`, run the vendor sync
- * (or, until the script lands, manually copy the relevant files).
+ * If you change anything in `packages/core/src/`, run `npm run sync-types`
+ * from the repo root to refresh.
  *
- * Public surface re-exported from this index matches `@acg/core`:
- *   - `loadOrCreateIdentity`, `KeyStore`, `MerchantIdentity`
+ * Note: this index splits the `import type` re-exports from the value
+ * re-exports rather than using inline `type` modifiers inside one
+ * `export { ... }` block. The adapter's pinned Prettier parser doesn't
+ * accept the inline form; the source package can use either style.
+ *
+ * Public surface re-exported here matches `@acg/core`:
+ *   - `loadOrCreateIdentity`, `KeyStore`, `PartyIdentity`, `IdentityHolder`
  *   - `createCartMandate`, `verifyCartMandate`, `mandateMatchesCart`
  *   - `extractEvidenceBundle`, `EvidenceBundle`
+ *   - PaymentMandate / PaymentReceipt factories + verifiers
  *   - DID and JCS primitives
  */
 
@@ -22,46 +28,43 @@ export {
   verify,
   createDIDDocument,
   didFromDomain,
-  type KeyPair,
-  type DIDDocument,
-} from './did';
+} from './did'
+export type { KeyPair, DIDDocument } from './did'
 
-export {
-  canonicalizeJson,
-  sha256,
-  sha256Bytes,
-  canonicalHash,
-} from './jcs';
+export { canonicalizeJson, sha256, sha256Bytes, canonicalHash } from './jcs'
 
 export {
   loadOrCreateIdentity,
   loadIdentityFromEnv,
   FilesystemKeyStore,
   EnvKeyStore,
-  type KeyStore,
-  type StoredKeys,
-  type MerchantIdentity,
-} from './keystore';
+  IdentityHolder,
+} from './keystore'
+export type {
+  KeyStore,
+  StoredKeys,
+  PartyIdentity,
+  IdentityHolderDeps,
+} from './keystore'
 
 export {
   createCartMandate,
   verifyCartMandate,
   mandateMatchesCart,
-  type PaymentAmount,
-  type PaymentItem,
-  type CartContents,
-  type CartMandate,
-  type MandateJWTPayload,
-  type MandateVerification,
-  type CartLineItem,
-  type CartData,
-} from './mandates';
+} from './mandates'
+export type {
+  PaymentAmount,
+  PaymentItem,
+  CartContents,
+  CartMandate,
+  MandateJWTPayload,
+  MandateVerification,
+  CartLineItem,
+  CartData,
+} from './mandates'
 
-export {
-  extractEvidenceBundle,
-  type EvidenceBundle,
-  type PaymentMandate,
-} from './evidence';
+export { extractEvidenceBundle } from './evidence'
+export type { EvidenceBundle, PaymentMandate } from './evidence'
 
 // ─── AP2 v0.2 — PaymentMandate + PaymentReceipt + W3C PaymentRequest ─
 
@@ -71,39 +74,41 @@ export {
   hashCartMandate,
   hashPaymentMandateContents,
   PAYMENT_MANDATE_DATA_KEY,
-  type PaymentMandateContents,
-  type PaymentMandateJWTPayload,
-  type PaymentMandateVerification,
-  type AgentPresence,
-  type CreatePaymentMandateInput,
-  type CreatePaymentMandateOptions,
-} from './ap2/payment-mandate';
+} from './ap2/payment-mandate'
+export type {
+  PaymentMandateContents,
+  PaymentMandateJWTPayload,
+  PaymentMandateVerification,
+  AgentPresence,
+  CreatePaymentMandateInput,
+  CreatePaymentMandateOptions,
+} from './ap2/payment-mandate'
 
 export {
   createPaymentReceipt,
   verifyPaymentReceipt,
-  type PaymentReceipt,
-  type PaymentReceiptContents,
-  type PaymentReceiptJWTPayload,
-  type PaymentReceiptVerification,
-  type VerificationChecks,
-  type CreatePaymentReceiptInput,
-  type CreatePaymentReceiptOptions,
-} from './ap2/payment-receipt';
+} from './ap2/payment-receipt'
+export type {
+  PaymentReceipt,
+  PaymentReceiptContents,
+  PaymentReceiptJWTPayload,
+  PaymentReceiptVerification,
+  VerificationChecks,
+  CreatePaymentReceiptInput,
+  CreatePaymentReceiptOptions,
+} from './ap2/payment-receipt'
 
-export {
-  type PaymentItem as Ap2PaymentItem,
-  type PaymentCurrencyAmount as Ap2PaymentCurrencyAmount,
-  type PaymentResponse as Ap2PaymentResponse,
-  type PaymentRequest as Ap2PaymentRequest,
-  type PaymentMethodData as Ap2PaymentMethodData,
-  type PaymentDetailsInit as Ap2PaymentDetailsInit,
-  type PaymentDetailsModifier as Ap2PaymentDetailsModifier,
-  type PaymentOptions as Ap2PaymentOptions,
-  type PaymentShippingOption as Ap2PaymentShippingOption,
-  PAYMENT_METHOD_DATA_DATA_KEY,
-} from './ap2/payment-request';
+export { PAYMENT_METHOD_DATA_DATA_KEY } from './ap2/payment-request'
+export type {
+  PaymentItem as Ap2PaymentItem,
+  PaymentCurrencyAmount as Ap2PaymentCurrencyAmount,
+  PaymentResponse as Ap2PaymentResponse,
+  PaymentRequest as Ap2PaymentRequest,
+  PaymentMethodData as Ap2PaymentMethodData,
+  PaymentDetailsInit as Ap2PaymentDetailsInit,
+  PaymentDetailsModifier as Ap2PaymentDetailsModifier,
+  PaymentOptions as Ap2PaymentOptions,
+  PaymentShippingOption as Ap2PaymentShippingOption,
+} from './ap2/payment-request'
 
-export {
-  type ContactAddress as Ap2ContactAddress,
-} from './ap2/contact-address';
+export type { ContactAddress as Ap2ContactAddress } from './ap2/contact-address'

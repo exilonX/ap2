@@ -34,15 +34,17 @@ export {
   canonicalHash,
 } from './jcs';
 
-// Key persistence
+// Key persistence + identity
 export {
   loadOrCreateIdentity,
   loadIdentityFromEnv,
   FilesystemKeyStore,
   EnvKeyStore,
+  IdentityHolder,
   type KeyStore,
   type StoredKeys,
-  type MerchantIdentity,
+  type PartyIdentity,
+  type IdentityHolderDeps,
 } from './keystore';
 
 // Mandate management (AP2-compliant)

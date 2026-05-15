@@ -16,15 +16,25 @@
  * VTEX adapter's `VBaseKeyStore`).
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
-import { generateKeyPair, keyPairFromHex, createDIDDocument, type KeyPair, type DIDDocument } from './did';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { dirname } from 'path'
 
-export interface MerchantIdentity {
-  keys: KeyPair;
-  domain: string;
-  did: string;
-  didDocument: DIDDocument;
+import { generateKeyPair, keyPairFromHex, createDIDDocument } from './did'
+import type { KeyPair, DIDDocument } from './did'
+
+/**
+ * The cryptographic identity of any AP2 party (merchant, credentials
+ * provider, payment network). A keypair plus the published DID and DID
+ * document that together identify the party to verifiers.
+ *
+ * Previously called `PartyIdentity` — renamed because the same
+ * shape backs non-merchant parties (the mock CP, the mock Network).
+ */
+export interface PartyIdentity {
+  keys: KeyPair
+  domain: string
+  did: string
+  didDocument: DIDDocument
 }
 
 /**
@@ -34,10 +44,10 @@ export interface MerchantIdentity {
  * serialised as hex strings so the shape is JSON-safe.
  */
 export interface StoredKeys {
-  publicKeyHex: string;
-  privateKeyHex: string;
-  domain: string;
-  createdAt: string;
+  publicKeyHex: string
+  privateKeyHex: string
+  domain: string
+  createdAt: string
 }
 
 /**
@@ -50,8 +60,8 @@ export interface StoredKeys {
  * Read-only stores (e.g. `EnvKeyStore`) throw from `write`.
  */
 export interface KeyStore {
-  read(): StoredKeys | null | Promise<StoredKeys | null>;
-  write(stored: StoredKeys): void | Promise<void>;
+  read(): StoredKeys | null | Promise<StoredKeys | null>
+  write(stored: StoredKeys): void | Promise<void>
 }
 
 /**
@@ -65,17 +75,20 @@ export class FilesystemKeyStore implements KeyStore {
 
   public read(): StoredKeys | null {
     if (!existsSync(this.path)) {
-      return null;
+      return null
     }
-    return JSON.parse(readFileSync(this.path, 'utf8')) as StoredKeys;
+
+    return JSON.parse(readFileSync(this.path, 'utf8')) as StoredKeys
   }
 
   public write(stored: StoredKeys): void {
-    const dir = dirname(this.path);
+    const dir = dirname(this.path)
+
     if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true })
     }
-    writeFileSync(this.path, JSON.stringify(stored, null, 2), 'utf8');
+
+    writeFileSync(this.path, JSON.stringify(stored, null, 2), 'utf8')
   }
 }
 
@@ -93,22 +106,26 @@ export class FilesystemKeyStore implements KeyStore {
  */
 export class EnvKeyStore implements KeyStore {
   public read(): StoredKeys | null {
-    const publicKeyHex = process.env.MERCHANT_PUBLIC_KEY;
-    const privateKeyHex = process.env.MERCHANT_PRIVATE_KEY;
-    const domain = process.env.MERCHANT_DOMAIN;
+    const publicKeyHex = process.env.MERCHANT_PUBLIC_KEY
+    const privateKeyHex = process.env.MERCHANT_PRIVATE_KEY
+    const domain = process.env.MERCHANT_DOMAIN
+
     if (!publicKeyHex || !privateKeyHex || !domain) {
-      return null;
+      return null
     }
+
     return {
       publicKeyHex,
       privateKeyHex,
       domain,
       createdAt: process.env.MERCHANT_CREATED_AT ?? '',
-    };
+    }
   }
 
   public write(_stored: StoredKeys): void {
-    throw new Error('EnvKeyStore is read-only — cannot persist keys to environment variables');
+    throw new Error(
+      'EnvKeyStore is read-only — cannot persist keys to environment variables'
+    )
   }
 }
 
@@ -125,75 +142,100 @@ export class EnvKeyStore implements KeyStore {
 export function loadOrCreateIdentity(
   domain: string,
   store: KeyStore
-): Promise<MerchantIdentity>;
+): Promise<PartyIdentity>
 export function loadOrCreateIdentity(
   domain: string,
   path: string
-): MerchantIdentity;
+): PartyIdentity
 export function loadOrCreateIdentity(
   domain: string,
   storeOrPath: KeyStore | string
-): MerchantIdentity | Promise<MerchantIdentity> {
+): PartyIdentity | Promise<PartyIdentity> {
   if (typeof storeOrPath === 'string') {
     // Path-based call: synchronous filesystem I/O for backwards
     // compatibility. Delegates to the new shape.
-    return loadOrCreateIdentitySync(domain, new FilesystemKeyStore(storeOrPath));
+    return loadOrCreateIdentitySync(domain, new FilesystemKeyStore(storeOrPath))
   }
-  return loadOrCreateIdentityAsync(domain, storeOrPath);
+
+  return loadOrCreateIdentityAsync(domain, storeOrPath)
 }
 
 /**
  * Synchronous variant — used by the legacy filesystem-path code path
  * and exposed for callers that know their store is synchronous.
  */
-function loadOrCreateIdentitySync(domain: string, store: KeyStore): MerchantIdentity {
-  const existing = store.read();
+function loadOrCreateIdentitySync(
+  domain: string,
+  store: KeyStore
+): PartyIdentity {
+  const existing = store.read()
+
   if (existing instanceof Promise) {
-    throw new Error('loadOrCreateIdentitySync: store.read() returned a Promise; use the async overload instead');
+    throw new Error(
+      'loadOrCreateIdentitySync: store.read() returned a Promise; use the async overload instead'
+    )
   }
+
   if (existing) {
-    return buildIdentity(existing);
+    return buildIdentity(existing)
   }
-  const stored = generateAndPackage(domain);
-  const writeResult = store.write(stored);
+
+  const stored = generateAndPackage(domain)
+  const writeResult = store.write(stored)
+
   if (writeResult instanceof Promise) {
-    throw new Error('loadOrCreateIdentitySync: store.write() returned a Promise; use the async overload instead');
+    throw new Error(
+      'loadOrCreateIdentitySync: store.write() returned a Promise; use the async overload instead'
+    )
   }
-  return buildIdentity(stored);
+
+  return buildIdentity(stored)
 }
 
 /**
  * Async variant — KeyStores backed by network/IO storage (VBase, KMS,
  * vault) implement `read`/`write` as Promises.
  */
-async function loadOrCreateIdentityAsync(domain: string, store: KeyStore): Promise<MerchantIdentity> {
-  const existing = await store.read();
+async function loadOrCreateIdentityAsync(
+  domain: string,
+  store: KeyStore
+): Promise<PartyIdentity> {
+  const existing = await store.read()
+
   if (existing) {
-    return buildIdentity(existing);
+    return buildIdentity(existing)
   }
-  const stored = generateAndPackage(domain);
-  await store.write(stored);
-  return buildIdentity(stored);
+
+  const stored = generateAndPackage(domain)
+
+  await store.write(stored)
+
+  return buildIdentity(stored)
 }
 
 function generateAndPackage(domain: string): StoredKeys {
-  const keys = generateKeyPair();
+  const keys = generateKeyPair()
+
   return {
     publicKeyHex: keys.publicKeyHex,
     privateKeyHex: keys.privateKeyHex,
     domain,
     createdAt: new Date().toISOString(),
-  };
+  }
 }
 
-function buildIdentity(stored: StoredKeys): MerchantIdentity {
+function buildIdentity(stored: StoredKeys): PartyIdentity {
   if (!stored.publicKeyHex || !stored.privateKeyHex || !stored.domain) {
-    throw new Error('KeyStore returned malformed StoredKeys (missing publicKeyHex/privateKeyHex/domain)');
+    throw new Error(
+      'KeyStore returned malformed StoredKeys (missing publicKeyHex/privateKeyHex/domain)'
+    )
   }
-  const keys = keyPairFromHex(stored.publicKeyHex, stored.privateKeyHex);
-  const did = `did:web:${stored.domain}`;
-  const didDocument = createDIDDocument(stored.domain, keys.publicKey);
-  return { keys, domain: stored.domain, did, didDocument };
+
+  const keys = keyPairFromHex(stored.publicKeyHex, stored.privateKeyHex)
+  const did = `did:web:${stored.domain}`
+  const didDocument = createDIDDocument(stored.domain, keys.publicKey)
+
+  return { keys, domain: stored.domain, did, didDocument }
 }
 
 /**
@@ -207,10 +249,83 @@ function buildIdentity(stored: StoredKeys): MerchantIdentity {
  * keys separately. The function exists for compatibility with callers
  * that previously used the same shape.
  */
-export function loadIdentityFromEnv(): MerchantIdentity | null {
-  const stored = new EnvKeyStore().read();
+export function loadIdentityFromEnv(): PartyIdentity | null {
+  const stored = new EnvKeyStore().read()
+
   if (!stored) {
-    return null;
+    return null
   }
-  return buildIdentity(stored);
+
+  return buildIdentity(stored)
+}
+
+// ─── IdentityHolder ─────────────────────────────────────────────────
+//
+// Base class for any AP2 party (merchant, credentials provider, payment
+// network). Owns the lazily-loaded PartyIdentity (keypair + DID + DID
+// document, persisted via the supplied KeyStore), and exposes the safe
+// accessors only. Subclasses extend this class and add their role's
+// signing methods, calling the protected `load()` helper to borrow the
+// keypair for a single operation.
+//
+// The private key never crosses the public surface — there is no
+// `getPrivateKey` method, by design. Subclasses that need to sign call
+// `(await this.load()).keys` inside one operation; the keypair never
+// leaves the call.
+//
+// Previously each party (MerchantIdentity in the adapter, MockCP and
+// MockNetwork in the mock package) duplicated the same cached/load/
+// getDID/getDIDDocument/getPublicKey scaffolding. This base centralises
+// it; subclasses now declare role-specific methods only.
+
+export interface IdentityHolderDeps {
+  /** KeyStore the keypair is persisted through. */
+  keyStore: KeyStore
+  /** Domain the DID is composed from (`did:web:{domain}`). */
+  domain: string
+}
+
+export class IdentityHolder {
+  private cached: PartyIdentity | null = null
+
+  constructor(protected readonly deps: IdentityHolderDeps) {}
+
+  /** This party's DID (e.g. `did:web:merchant.example.com`). */
+  public async getDID(): Promise<string> {
+    return (await this.load()).did
+  }
+
+  /**
+   * The party's published W3C DID document. Anyone with this can
+   * independently verify signatures the party emits.
+   */
+  public async getDIDDocument(): Promise<DIDDocument> {
+    return (await this.load()).didDocument
+  }
+
+  /**
+   * The party's public key. Exposed so other parties (e.g. the
+   * Network verifying a CP signature) can verify without re-fetching
+   * the DID document.
+   */
+  public async getPublicKey(): Promise<Buffer> {
+    return (await this.load()).keys.publicKey
+  }
+
+  /**
+   * Load the full identity (including the keypair). Protected so only
+   * subclasses adding signing methods can borrow the keys — the keypair
+   * never crosses a subclass's public surface.
+   *
+   * Cached after first call.
+   */
+  protected async load(): Promise<PartyIdentity> {
+    if (this.cached) return this.cached
+    this.cached = await loadOrCreateIdentity(
+      this.deps.domain,
+      this.deps.keyStore
+    )
+
+    return this.cached
+  }
 }
