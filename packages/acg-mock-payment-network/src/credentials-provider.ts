@@ -18,24 +18,10 @@
  *     is equivalent. v1.x post-demo work adopts sd-jwt-vc properly.
  */
 
-import {
-  IdentityHolder,
-  createPaymentMandate,
-  type AgentPresence,
-  type Ap2PaymentItem,
-  type Ap2PaymentResponse,
-  type CartMandate,
-  type PaymentMandate,
-} from '@acg/core';
+import { IdentityHolder, createPaymentMandate } from '@acg/core';
+import type { PaymentMandate } from '@acg/core';
 
-export interface SignPaymentMandateInput {
-  cartMandate: CartMandate;
-  payment_details_total: Ap2PaymentItem;
-  payment_response: Ap2PaymentResponse;
-  /** Merchant DID — populated as `merchant_agent` in the contents. */
-  merchant_agent: string;
-  agent_presence: AgentPresence;
-}
+import type { SignPaymentMandateInput } from './types';
 
 export class MockCredentialsProvider extends IdentityHolder {
   /**

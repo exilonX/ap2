@@ -19,22 +19,8 @@
  */
 
 import { IdentityHolder, createPaymentMandate } from '../core'
-import type {
-  AgentPresence,
-  Ap2PaymentItem,
-  Ap2PaymentResponse,
-  CartMandate,
-  PaymentMandate,
-} from '../core'
-
-export interface SignPaymentMandateInput {
-  cartMandate: CartMandate
-  payment_details_total: Ap2PaymentItem
-  payment_response: Ap2PaymentResponse
-  /** Merchant DID — populated as `merchant_agent` in the contents. */
-  merchant_agent: string
-  agent_presence: AgentPresence
-}
+import type { PaymentMandate } from '../core'
+import type { SignPaymentMandateInput } from './types'
 
 export class MockCredentialsProvider extends IdentityHolder {
   /**

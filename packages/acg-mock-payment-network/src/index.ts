@@ -17,12 +17,12 @@
  * The interface is the seam; the calling code stays unchanged.
  */
 
-export {
-  MockCredentialsProvider,
-  type SignPaymentMandateInput,
-} from './credentials-provider';
+export { MockCredentialsProvider } from './credentials-provider';
+export { MockPaymentNetwork } from './payment-network';
+export { verifyChain, firstFailingCheck } from './verify-chain';
 
-export {
-  MockPaymentNetwork,
-  type ApprovePaymentInput,
-} from './payment-network';
+export type {
+  SignPaymentMandateInput,
+  ApprovePaymentInput,
+  VerifyChainInput,
+} from './types';

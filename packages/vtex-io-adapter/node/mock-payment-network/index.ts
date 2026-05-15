@@ -1,5 +1,5 @@
 /**
- * @acg/mock-payment-network — vendored copy.
+ * @acg/mock-payment-network
  *
  * Mock AP2 Credentials Provider + Payment Network for the ACG demo.
  * Both classes extend `IdentityHolder` from `@acg/core` for the keyed-
@@ -11,10 +11,18 @@
  * The Adapter wires both classes with `VBaseKeyStore` instances
  * scoped to separate buckets so each party persists across requests
  * with a stable DID.
+ *
+ * Production swap-in: replace these classes with adapters for real
+ * services (Google Pay / wallet, Visa Intelligent Commerce, etc.).
+ * The interface is the seam; the calling code stays unchanged.
  */
 
 export { MockCredentialsProvider } from './credentials-provider'
-export type { SignPaymentMandateInput } from './credentials-provider'
-
 export { MockPaymentNetwork } from './payment-network'
-export type { ApprovePaymentInput } from './payment-network'
+export { verifyChain, firstFailingCheck } from './verify-chain'
+
+export type {
+  SignPaymentMandateInput,
+  ApprovePaymentInput,
+  VerifyChainInput,
+} from './types'
