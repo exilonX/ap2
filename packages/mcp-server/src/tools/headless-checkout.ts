@@ -26,11 +26,41 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import { VtexClient } from '../client'
 
+interface PaymentMethodItem {
+  id: string
+  name: string
+  group?: string
+}
+
 interface ToolEffectResponse {
   result?: string
   suggestions?: string[]
   cartUpdated?: boolean
+  paymentMethods?: PaymentMethodItem[]
   [k: string]: unknown
+}
+
+/**
+ * Format a list-payment-methods response as a numbered list Claude can
+ * render inline ("Reply with 1, 2, or 3 to pick"). The widget gets the
+ * structured `paymentMethods` field for pill buttons; Claude Desktop
+ * gets this human-readable text since there's no UI extension.
+ */
+function formatPaymentMethods(response: ToolEffectResponse): string {
+  if (!response.paymentMethods || response.paymentMethods.length === 0) {
+    return response.result ?? 'No payment methods returned.'
+  }
+
+  const numbered = response.paymentMethods
+    .map((m, i) => `  ${i + 1}. ${m.name} (id: ${m.id})`)
+    .join('\n')
+
+  return [
+    `Available payment methods:`,
+    numbered,
+    ``,
+    `Reply with the number or method name; I'll call setPaymentMethod with the id, then placeOrder → sendPaymentInfo → authorizeTransaction to finalize.`,
+  ].join('\n')
 }
 
 export function registerHeadlessCheckoutTools(
@@ -47,8 +77,12 @@ export function registerHeadlessCheckoutTools(
         const result = await client.post<ToolEffectResponse>(
           '/checkout/list-payment-methods'
         )
+        // Claude Desktop renders Markdown — surface a numbered list so the
+        // user can reply "1" / "Cash" / etc. without re-reading JSON.
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          content: [
+            { type: 'text' as const, text: formatPaymentMethods(result) },
+          ],
         }
       } catch (error) {
         return {

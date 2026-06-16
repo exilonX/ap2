@@ -93,8 +93,18 @@ async function execute(
       `Available payment methods (${ordered.length}):`,
       lines,
       `Pass the chosen method's id to set_payment_method.`,
+      `The widget renders these as pill buttons automatically — do NOT re-list them in plain text.`,
     ].join('\n'),
+    // Surface both for the LLM (suggestions = quick-reply chips on
+    // surfaces without a dedicated payment-method renderer) and for the
+    // widget (paymentMethods = structured pill buttons it can render
+    // with icons, click-to-pick semantics).
     suggestions: ordered.map((m) => m.name),
+    paymentMethods: ordered.map((m) => ({
+      id: m.id,
+      name: m.name,
+      group: m.group,
+    })),
   }
 }
 

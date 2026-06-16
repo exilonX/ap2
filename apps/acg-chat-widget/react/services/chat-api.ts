@@ -122,6 +122,7 @@ export async function sendChatMessage(
       cartPreview: data.cartPreview,
       cartUpdated: data.cartUpdated,
       mandate: data.mandate,
+      paymentMethods: data.paymentMethods,
     }
   } catch (error) {
     // JSON parse failure on a 200 response — server returned malformed body.

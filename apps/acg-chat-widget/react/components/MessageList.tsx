@@ -10,6 +10,7 @@ import {
 } from '../utils/theme'
 import CartPreviewCard from './CartPreviewCard'
 import MandateBadge from './MandateBadge'
+import PaymentMethodPills from './PaymentMethodPills'
 import ProductGroup from './ProductGroup'
 import QuickReplies from './QuickReplies'
 import RichText from './RichText'
@@ -136,6 +137,12 @@ function MessageList({ messages, isTyping, onAddToCart, onQuickReply }: MessageL
             <ProductGroup products={msg.products} onAddToCart={onAddToCart} />
           )}
           {msg.cartPreview && <CartPreviewCard cart={msg.cartPreview} />}
+          {msg.paymentMethods && msg.paymentMethods.length > 0 && (
+            <PaymentMethodPills
+              methods={msg.paymentMethods}
+              onSelect={onQuickReply}
+            />
+          )}
           {msg.mandate && <MandateBadge mandate={msg.mandate} />}
         </div>
       ))}

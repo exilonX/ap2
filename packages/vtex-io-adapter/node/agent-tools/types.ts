@@ -58,6 +58,22 @@ export interface CartPreviewData {
   checkoutUrl: string
 }
 
+/**
+ * One payment method as surfaced to the widget / Claude Desktop. The
+ * shape stays minimal on purpose — the widget renders pill buttons
+ * keyed on `id`, the LLM picks `id` to pass to set_payment_method, and
+ * `name` is the visible label.
+ *
+ * `group` (e.g. cashPaymentGroup, creditCardPaymentGroup) lets the
+ * widget render differently per category — icons, defaults — without
+ * needing to hardcode ids per merchant.
+ */
+export interface PaymentMethodOption {
+  id: string
+  name: string
+  group?: string
+}
+
 export interface MandateInfo {
   mandateId: string
   retrievalUrl: string
@@ -102,6 +118,12 @@ export interface ToolEffect {
   suggestions?: string[]
   cartPreview?: CartPreviewData
   mandate?: MandateInfo
+  /**
+   * Structured payment methods for the widget to render as pill buttons.
+   * Populated by list_payment_methods; consumed by ChatResponse so the
+   * widget can render them without the LLM having to repeat them in text.
+   */
+  paymentMethods?: PaymentMethodOption[]
 }
 
 // ─── AgentTool — the contract ──────────────────────────────────────

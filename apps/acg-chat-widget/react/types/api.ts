@@ -5,7 +5,12 @@
  * doesn't ripple through the React components.
  */
 
-import type { CartPreview, Mandate, ProductCard } from './domain'
+import type {
+  CartPreview,
+  Mandate,
+  PaymentMethod,
+  ProductCard,
+} from './domain'
 
 /**
  * What the chat backend returns from POST /_v/acg/chat.
@@ -19,6 +24,7 @@ export interface ChatAPIResponse {
   cartPreview?: CartPreview
   cartUpdated?: boolean
   mandate?: Mandate
+  paymentMethods?: PaymentMethod[]
   error?: string
 }
 
@@ -45,6 +51,7 @@ export interface SendChatResult {
   cartPreview?: CartPreview
   cartUpdated?: boolean
   mandate?: Mandate
+  paymentMethods?: PaymentMethod[]
 }
 
 /**

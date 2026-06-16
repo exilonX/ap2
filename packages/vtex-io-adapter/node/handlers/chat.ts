@@ -33,6 +33,7 @@ import {
 import type {
   CartPreviewData,
   MandateInfo,
+  PaymentMethodOption,
   ProductCardData,
   ToolEffect,
 } from '../agent-tools/types'
@@ -57,6 +58,12 @@ interface ChatResponse {
   cartPreview?: CartPreviewData // structured cart snapshot to render inline
   cartUpdated?: boolean
   mandate?: MandateInfo // present when the checkout tool signed a CartMandate
+  /**
+   * Pill buttons for the widget to render. Populated by
+   * list_payment_methods. Latest call wins so the user always sees the
+   * methods relevant to the current cart state.
+   */
+  paymentMethods?: PaymentMethodOption[]
 }
 
 interface AppSettings {
@@ -392,7 +399,15 @@ Concis (1-3 fraze). Câmpurile structurate din tool results (produse, coș, mand
 
 ## CHECKOUT FLOW (CRITIC — citește atent)
 
-Când clientul indică intenția de checkout — "checkout", "finalizez comanda", "plătesc", "cumpăr", "hai la plată", "gata, atât", "finalizare", etc. — apelează IMEDIAT **create_cart_mandate**. Asta semnează mandatul AP2 și afișează badge-ul "Finalizează plata" în UI. Clientul apasă pe badge pentru a continua.
+Când clientul indică intenția de checkout — "checkout", "finalizez comanda", "plătesc", "cumpăr", "hai la plată", "gata, atât", "finalizare", etc. — apelează IMEDIAT **list_payment_methods**. Asta întoarce metodele de plată configurate ale comerciantului ca butoane pe care clientul le apasă (NU le re-lista în text — widget-ul le afișează automat).
+
+Apoi AȘTEAPTĂ alegerea clientului. Când clientul indică o metodă (apasă un buton sau scrie "cash" / "card" / "vreau cu numerar" / numele unei metode), apelează ÎN ACEEAȘI TURĂ:
+1. **set_payment_method** cu id-ul ales (din lista returnată de list_payment_methods)
+2. **place_order** (semnează mandatul AP2 inline și creează comanda în VTEX)
+3. **send_payment_info** (trimite datele la gateway-ul de plăți)
+4. **authorize_transaction** (finalizează tranzacția)
+
+Aceste 4 tool-uri se înlănțuie automat — NU pune întrebări de confirmare între ele.
 
 INTERZIS la checkout (clientul are deja datele pre-configurate pe cont):
 - NU apela **set_customer_profile** (nume / email / telefon)
@@ -400,9 +415,9 @@ INTERZIS la checkout (clientul are deja datele pre-configurate pe cont):
 - NU apela **get_shipping_options**
 - NU ÎNTREBA clientul pentru date personale / adresă / cod poștal / județ
 
-Dacă mandatul s-a creat cu succes (cartPreview + mandate apar în răspuns), răspunde scurt în text — UN SINGUR RÂND — cum ar fi: "Gata, am pregătit comanda. Apasă pe 'Finalizează plata' din badge." NU repeta în text conținutul mandatului (badge-ul îl afișează automat).
+Dacă flow-ul s-a încheiat cu succes (mandate + cartPreview apar în răspuns, authorize_transaction a întors "approved"), răspunde scurt în text — UN SINGUR RÂND — cum ar fi: "Gata, comanda este plasată. Mandatul AP2 confirmă cumpărătura." Widget-ul afișează badge-ul cu cartMandateId și link-ul de verificare automat.
 
-Folosește **redirect_to_native_checkout** DOAR dacă clientul cere EXPLICIT "vreau checkout VTEX standard" sau similar. Default e in-chat ceremony via create_cart_mandate.
+Folosește **redirect_to_native_checkout** DOAR dacă clientul cere EXPLICIT "vreau checkout VTEX standard" sau similar. Default e in-chat headless via cele 4 tool-uri de mai sus.
 
 ${multiStepSection}
 
@@ -1802,6 +1817,7 @@ export async function chatHandler(ctx: Context) {
     let suggestions: string[] | undefined
     let cartPreview: CartPreviewData | undefined
     let mandate: MandateInfo | undefined
+    let paymentMethods: PaymentMethodOption[] | undefined
     let cartUpdated = false
     let addedSuccessfully = false
     let removedSuccessfully = false
@@ -1966,6 +1982,7 @@ export async function chatHandler(ctx: Context) {
           cartPreview,
           cartUpdated,
           mandate,
+          paymentMethods,
         } as ChatResponse
 
         return
@@ -2045,6 +2062,12 @@ export async function chatHandler(ctx: Context) {
 
           if (toolResult.mandate) {
             mandate = toolResult.mandate
+          }
+
+          if (toolResult.paymentMethods) {
+            // Latest call wins — if the user removes / adds items
+            // mid-flow the merchant's available methods can shift.
+            paymentMethods = toolResult.paymentMethods
           }
 
           roundToolResults.push({

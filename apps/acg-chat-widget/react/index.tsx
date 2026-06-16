@@ -113,7 +113,8 @@ function AcgChatWidget() {
         response.products,
         response.suggestions,
         response.cartPreview,
-        response.mandate
+        response.mandate,
+        response.paymentMethods
       )
       const withBot = [...messagesRef.current, botMsg]
 

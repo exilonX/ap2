@@ -1,4 +1,10 @@
-import type { CartPreview, Mandate, Message, ProductCard } from '../types/domain'
+import type {
+  CartPreview,
+  Mandate,
+  Message,
+  PaymentMethod,
+  ProductCard,
+} from '../types/domain'
 
 /**
  * Canonical factory for `Message` objects.
@@ -13,7 +19,8 @@ export function createMessage(
   products?: ProductCard[],
   suggestions?: string[],
   cartPreview?: CartPreview,
-  mandate?: Mandate
+  mandate?: Mandate,
+  paymentMethods?: PaymentMethod[]
 ): Message {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -24,5 +31,6 @@ export function createMessage(
     suggestions,
     cartPreview,
     mandate,
+    paymentMethods,
   }
 }

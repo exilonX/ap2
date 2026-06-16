@@ -28,6 +28,18 @@ export interface Mandate {
   currency: string         // ISO-4217 (e.g. RON)
 }
 
+/**
+ * One payment method as returned by list_payment_methods. The widget
+ * renders these as pill buttons; clicking a pill enqueues a chat turn
+ * like "Plătesc cu <name>" so the LLM routes to set_payment_method →
+ * place_order → send_payment_info → authorize_transaction.
+ */
+export interface PaymentMethod {
+  id: string
+  name: string
+  group?: string
+}
+
 export interface ProductCard {
   productId: string
   name: string
@@ -51,6 +63,7 @@ export interface Message {
   cartPreview?: CartPreview // inline cart preview card
   cartUpdated?: boolean
   mandate?: Mandate         // present when the merchant signed a CartMandate
+  paymentMethods?: PaymentMethod[] // pill buttons under the message
 }
 
 export interface ChatWidgetProps {

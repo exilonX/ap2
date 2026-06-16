@@ -35,6 +35,12 @@ describe('list_payment_methods', () => {
     assert.match(effect.result, /Cash/)
     assert.match(effect.result, /Visa/)
     assert.deepEqual(effect.suggestions, ['Cash', 'Visa'])
+    // Structured pills for the widget — same order as suggestions, with
+    // id + group so the widget can render icons + canned turns.
+    assert.deepEqual(effect.paymentMethods, [
+      { id: '47', name: 'Cash', group: 'cashPaymentGroup' },
+      { id: '2', name: 'Visa', group: 'creditCardPaymentGroup' },
+    ])
   })
 
   it('returns a graceful error when there is no active cart', async () => {
