@@ -15,7 +15,10 @@
  * pre-signed mandate; the only writer is `MandateOrchestration.signAndPersist`.
  */
 
-import { MandateOrchestration } from '../mandates/mandate-orchestration'
+import {
+  MandateOrchestration,
+  readOrderGroupMandateIndex,
+} from '../mandates/mandate-orchestration'
 import { buildMerchantIdentity, resolveMerchantDomain } from './did'
 
 export async function getMandate(ctx: Context) {
@@ -62,6 +65,63 @@ export async function getMandate(ctx: Context) {
     ctx.status = 500
     ctx.body = {
       error: 'Failed to retrieve mandate',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+/**
+ * GET /_v/acg/mandates/by-order/:orderGroup
+ *
+ * Lookup the mandate ref by orderGroup — the seam the PPP payment
+ * connector calls during its `authorize` callback, where it only knows
+ * the OMS-side identifier.
+ *
+ * Response shape:
+ *   { orderGroup, ref: { cartMandateId, didDocumentUrl, signedAt,
+ *                        signedBy?, transactionId? },
+ *     mandateUrl: 'https://.../_v/acg/mandates/:cartMandateId' }
+ *
+ * 404 when the orderGroup has no index entry (typical for orders placed
+ * outside the ACG flow).
+ */
+export async function getMandateByOrderGroup(ctx: Context) {
+  try {
+    const orderGroup =
+      ctx.vtex.route?.params?.orderGroup ?? ctx.params?.orderGroup
+
+    if (!orderGroup || typeof orderGroup !== 'string') {
+      ctx.status = 400
+      ctx.body = { error: 'Missing orderGroup' }
+
+      return
+    }
+
+    const ref = await readOrderGroupMandateIndex(ctx.clients.vbase, orderGroup)
+
+    if (!ref) {
+      ctx.status = 404
+      ctx.body = {
+        error: 'No mandate index entry for this orderGroup',
+        orderGroup,
+      }
+
+      return
+    }
+
+    const host = resolveMerchantDomain(ctx)
+
+    ctx.body = {
+      orderGroup,
+      ref,
+      mandateUrl: `https://${host}/_v/acg/mandates/${ref.cartMandateId}`,
+      didDocumentUrl: `https://${host}/_v/acg/.well-known/did.json`,
+    }
+  } catch (error) {
+    console.error('Get mandate by orderGroup error:', error)
+    ctx.status = 500
+    ctx.body = {
+      error: 'Failed to look up mandate by orderGroup',
       message: error instanceof Error ? error.message : 'Unknown error',
     }
   }

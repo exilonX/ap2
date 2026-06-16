@@ -43,6 +43,7 @@ import {
   MandateOrchestration,
   readOrderFormState,
   saveOrderFormState,
+  saveOrderGroupMandateIndex,
 } from '../mandates/mandate-orchestration'
 import type { Ap2CustomData } from '../mandates/mandate-orchestration'
 import type { AgentTool, ToolContext, ToolEffect } from './types'
@@ -237,6 +238,11 @@ async function execute(
   // `create_cart_mandate` step into place_order so the LLM has a
   // single entry point and cannot skip signing.
   let ap2: Ap2CustomData = existing
+  // Captured during the inline-sign branch and forwarded into the
+  // orderGroup index. When ap2 was already populated by an earlier
+  // create_cart_mandate call, the index entry omits signedBy — callers
+  // can re-derive it from the EvidenceBundle if needed.
+  let signedByFromInlineSign: string | undefined
 
   if (!ap2.cartMandateId) {
     console.log(
@@ -281,6 +287,7 @@ async function execute(
       didDocumentUrl: `https://${host}/_v/acg/.well-known/did.json`,
       signedAt: bundle.signedAt,
     }
+    signedByFromInlineSign = bundle.signedBy
 
     console.log(
       `${TAG} → vbase.save acg-orderform-state/${ctx.orderFormId} { cartMandateId=${bundle.mandateId} }`
@@ -429,6 +436,32 @@ async function execute(
 
     console.warn(
       `${TAG} ⚠ orderForm state write failed (order still placed): ${msg}`
+    )
+  }
+
+  // ── 4. Index the mandate by orderGroup for the PPP connector ──
+  //
+  // The connector only knows orderId/orderGroup during its authorize
+  // callback — not orderFormId. This second VBase write keyed by
+  // orderGroup is what makes `GET /_v/acg/mandates/by-order/:orderGroup`
+  // work. Soft failure: the order is real either way.
+  console.log(
+    `${TAG} → vbase.save acg-order-mandate-index/${orderGroup} { cartMandateId=${ap2.cartMandateId} }`
+  )
+  try {
+    await saveOrderGroupMandateIndex(ctx.clients.vbase, orderGroup, {
+      cartMandateId: ap2.cartMandateId!,
+      didDocumentUrl: ap2.didDocumentUrl,
+      signedAt: ap2.signedAt,
+      signedBy: signedByFromInlineSign,
+      transactionId,
+    })
+    console.log(`${TAG} ← orderGroup index persisted`)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+
+    console.warn(
+      `${TAG} ⚠ orderGroup index write failed (order still placed): ${msg}`
     )
   }
 

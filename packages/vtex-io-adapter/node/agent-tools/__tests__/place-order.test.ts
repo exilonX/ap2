@@ -15,6 +15,7 @@ import { placeOrderTool } from '../place-order'
 import {
   MandateOrchestration,
   readOrderFormState,
+  readOrderGroupMandateIndex,
   saveOrderFormState,
 } from '../../mandates/mandate-orchestration'
 import { MerchantIdentity } from '../../identity/merchant-identity'
@@ -109,6 +110,28 @@ describe('place_order', () => {
       'mandate-test-1',
       'original cartMandateId preserved'
     )
+  })
+
+  it('writes the orderGroup → mandate index so the PPP connector can look it up', async () => {
+    const deps = makeFakeToolContext()
+
+    await prepareReadyCart(deps)
+
+    await placeOrderTool.execute({}, deps.ctx)
+
+    // The fake places an order with orderGroup of the form og-<n>.
+    // We discover it via the orderForm state record (already verified
+    // in the previous test) and assert the index entry mirrors it.
+    const ap2 = await readOrderFormState(deps.vbase, deps.ctx.orderFormId!)
+    const { orderGroup } = ap2
+
+    assert.ok(orderGroup, 'orderGroup persisted on state record')
+
+    const ref = await readOrderGroupMandateIndex(deps.vbase, orderGroup!)
+
+    assert.ok(ref, 'index entry exists for orderGroup')
+    assert.equal(ref!.cartMandateId, 'mandate-test-1')
+    assert.equal(ref!.transactionId, ap2.transactionId)
   })
 
   it('uses the cartMandateId as VTEX referenceId', async () => {
@@ -240,5 +263,17 @@ describe('place_order', () => {
 
     assert.ok(retrieved, 'auto-signed mandate persisted in VBase')
     assert.equal(retrieved!.mandateId, capturedReferenceId)
+
+    // The orderGroup index entry carries signedBy from the inline-sign
+    // bundle (the re-use branch leaves it undefined). This is the field
+    // the PPP connector uses to fetch the merchant DID document.
+    const ref = await readOrderGroupMandateIndex(deps.vbase, ap2.orderGroup!)
+
+    assert.ok(ref, 'index entry exists for orderGroup')
+    assert.equal(ref!.cartMandateId, capturedReferenceId)
+    assert.ok(
+      ref!.signedBy && ref!.signedBy.length > 0,
+      'signedBy captured from inline-sign bundle'
+    )
   })
 })

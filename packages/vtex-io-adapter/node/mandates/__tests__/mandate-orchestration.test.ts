@@ -25,9 +25,12 @@ import assert from 'node:assert/strict'
 import {
   MandateOrchestration,
   MANDATE_BUCKET,
+  ORDER_MANDATE_INDEX_BUCKET,
   ORDERFORM_STATE_BUCKET,
   readOrderFormState,
+  readOrderGroupMandateIndex,
   saveOrderFormState,
+  saveOrderGroupMandateIndex,
 } from '../mandate-orchestration'
 import { MerchantIdentity } from '../../identity/merchant-identity'
 import { VBaseKeyStore } from '../../identity/vbase-keystore'
@@ -429,5 +432,69 @@ describe('readOrderFormState', () => {
     const out = await readOrderFormState(vbase, 'of-junk')
 
     assert.deepEqual(out, {})
+  })
+})
+
+describe('saveOrderGroupMandateIndex / readOrderGroupMandateIndex', () => {
+  it('persists the mandate ref keyed by orderGroup', async () => {
+    const vbase = new FakeVBase()
+
+    await saveOrderGroupMandateIndex(vbase, 'og-100', {
+      cartMandateId: 'mandate-100',
+      didDocumentUrl: 'https://example.com/.well-known/did.json',
+      signedAt: '2026-06-15T10:00:00Z',
+      signedBy: 'did:web:example.com',
+      transactionId: 'tx-100',
+    })
+
+    const stored = await vbase.getJSON<Record<string, unknown>>(
+      ORDER_MANDATE_INDEX_BUCKET,
+      'og-100',
+      true
+    )
+
+    assert.ok(stored)
+    assert.equal(stored!.cartMandateId, 'mandate-100')
+    assert.equal(stored!.signedBy, 'did:web:example.com')
+  })
+
+  it('round-trips through read', async () => {
+    const vbase = new FakeVBase()
+
+    await saveOrderGroupMandateIndex(vbase, 'og-101', {
+      cartMandateId: 'mandate-101',
+      didDocumentUrl: 'https://example.com/.well-known/did.json',
+      signedAt: '2026-06-15T11:00:00Z',
+    })
+
+    const ref = await readOrderGroupMandateIndex(vbase, 'og-101')
+
+    assert.ok(ref)
+    assert.equal(ref!.cartMandateId, 'mandate-101')
+    assert.equal(
+      ref!.didDocumentUrl,
+      'https://example.com/.well-known/did.json'
+    )
+    assert.equal(ref!.signedBy, undefined)
+    assert.equal(ref!.transactionId, undefined)
+  })
+
+  it('returns null when no entry exists for the orderGroup', async () => {
+    const vbase = new FakeVBase()
+    const ref = await readOrderGroupMandateIndex(vbase, 'og-missing')
+
+    assert.equal(ref, null)
+  })
+
+  it('returns null when the entry lacks cartMandateId (corrupted)', async () => {
+    const vbase = new FakeVBase()
+
+    await vbase.saveJSON(ORDER_MANDATE_INDEX_BUCKET, 'og-broken', {
+      signedAt: '2026-06-15T12:00:00Z',
+    })
+
+    const ref = await readOrderGroupMandateIndex(vbase, 'og-broken')
+
+    assert.equal(ref, null)
   })
 })

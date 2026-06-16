@@ -110,6 +110,32 @@ Two seams keep the chain stitched together across stateless calls:
    ```
    Steps ⑧ and ⑨ read it to rediscover the in-flight transaction.
 
+3. **`acg-order-mandate-index` VBase bucket** — per-orderGroup mandate ref,
+   the seam a future PPP payment connector reads during its `authorize`
+   callback (the connector only knows `orderId`/`orderGroup`, not
+   `orderFormId`):
+   ```json
+   {
+     "cartMandateId": "mandate-...",
+     "didDocumentUrl": "https://.../did.json",
+     "signedAt": "ISO-8601",
+     "signedBy": "did:web:acg--...",  // present when place_order auto-signed
+     "transactionId": "..."
+   }
+   ```
+   Written at the end of step ⑦. Public lookup via
+   `GET /_v/acg/mandates/by-order/:orderGroup` returns `{orderGroup, ref,
+   mandateUrl, didDocumentUrl}` — connector follows `mandateUrl` to
+   `/mandates/:cartMandateId` for the signed EvidenceBundle and verifies
+   Ed25519 against `didDocumentUrl`.
+
+   Why this bucket, NOT `orderForm.customData.ap2` or `Order.customData`:
+   VTEX's `customData` namespace requires the `appId` to be pre-registered
+   as a custom app in the merchant's checkout-UI config, and the only
+   documented write is per-single-field; whole-namespace PUT returns 404.
+   VBase needs no registration and gives atomic read/write of the whole
+   record, with the same merchant-key ACL as the mandate registry itself.
+
 ## Settlement states (per gateway response status)
 
 `auth.status` returned by `/pvt/authorization-request` can be string OR number:
@@ -133,6 +159,7 @@ Cash after `send_payment_info`).
 - **OMS** ([admin/orders/{orderGroup}-01]) — status "În procesare" → "Aprobată"
 - **PCI Gateway transaction** — bandă verde **APROBATĂ**, "Decontare automată programată..." footer (Cash)
 - **AP2 mandate** retrievable at `GET /_v/acg/mandates/{cartMandateId}`
+- **PPP connector lookup** via `GET /_v/acg/mandates/by-order/{orderGroup}` returns the same `cartMandateId` plus the merchant DID URL for independent verification
 
 ## Known sharp edges
 

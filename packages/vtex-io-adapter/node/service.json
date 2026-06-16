@@ -101,6 +101,10 @@
       "path": "/_v/acg/mandates/:mandateId",
       "public": true
     },
+    "getMandateByOrderGroup": {
+      "path": "/_v/acg/mandates/by-order/:orderGroup",
+      "public": true
+    },
     "didDocument": {
       "path": "/_v/acg/.well-known/did.json",
       "public": true

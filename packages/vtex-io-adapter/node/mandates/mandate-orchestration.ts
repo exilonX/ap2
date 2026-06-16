@@ -48,6 +48,28 @@ export const MANDATE_BUCKET = 'acg-mandates'
 export const ORDERFORM_STATE_BUCKET = 'acg-orderform-state'
 
 /**
+ * VBase bucket where finalized orders' mandate refs are indexed by
+ * `orderGroup` (the OMS-side identifier).
+ *
+ * Why a separate bucket from `acg-orderform-state`: that one is keyed by
+ * `orderFormId` (a pre-order, ephemeral identifier). A future PPP payment
+ * connector receives an `orderId` / `orderGroup` in its authorize callback
+ * and has NO way back to the originating orderFormId — so we need an
+ * index keyed by what the connector actually has.
+ *
+ * Lifecycle:
+ *   - written by `place_order` immediately after VTEX's `/transaction`
+ *     POST returns (we have both orderGroup and cartMandateId at that
+ *     point)
+ *   - read by the PPP connector during its `authorize` callback, and by
+ *     the public `GET /_v/acg/mandates/by-order/:orderGroup` lookup route
+ *
+ * Shape mirrors `Ap2CustomData` but trimmed to the lookup-only fields a
+ * downstream verifier needs.
+ */
+export const ORDER_MANDATE_INDEX_BUCKET = 'acg-order-mandate-index'
+
+/**
  * Shape of the per-orderForm state record persisted to
  * `ORDERFORM_STATE_BUCKET` keyed by `orderFormId`.
  *
@@ -138,6 +160,70 @@ export async function readOrderFormState(
   }
 
   return out
+}
+
+/**
+ * Lookup-only shape returned by `readOrderGroupMandateIndex`. A future
+ * PPP connector reads exactly these fields and then calls
+ * `GET /_v/acg/mandates/:cartMandateId` to fetch the signed EvidenceBundle.
+ */
+export interface OrderMandateRef {
+  cartMandateId: string
+  didDocumentUrl?: string
+  signedAt?: string
+  signedBy?: string
+  transactionId?: string
+}
+
+/**
+ * Index the mandate ref by orderGroup so the PPP connector (which only
+ * knows orderId/orderGroup) can recover it.
+ */
+export async function saveOrderGroupMandateIndex(
+  vbase: VBaseClient,
+  orderGroup: string,
+  ref: OrderMandateRef
+): Promise<void> {
+  const fields: Record<string, unknown> = {}
+
+  for (const [k, v] of Object.entries(ref)) {
+    if (v !== undefined) fields[k] = v
+  }
+
+  await vbase.saveJSON(ORDER_MANDATE_INDEX_BUCKET, orderGroup, fields)
+}
+
+/**
+ * Read the mandate ref by orderGroup. Returns null when no entry exists
+ * (e.g. for orders placed outside the ACG flow).
+ */
+export async function readOrderGroupMandateIndex(
+  vbase: VBaseClient,
+  orderGroup: string
+): Promise<OrderMandateRef | null> {
+  const fields = await vbase
+    .getJSON<Record<string, unknown> | null>(
+      ORDER_MANDATE_INDEX_BUCKET,
+      orderGroup,
+      true
+    )
+    .catch(() => null)
+
+  if (!fields || typeof fields.cartMandateId !== 'string') return null
+
+  const ref: OrderMandateRef = { cartMandateId: fields.cartMandateId }
+
+  if (typeof fields.didDocumentUrl === 'string') {
+    ref.didDocumentUrl = fields.didDocumentUrl
+  }
+
+  if (typeof fields.signedAt === 'string') ref.signedAt = fields.signedAt
+  if (typeof fields.signedBy === 'string') ref.signedBy = fields.signedBy
+  if (typeof fields.transactionId === 'string') {
+    ref.transactionId = fields.transactionId
+  }
+
+  return ref
 }
 
 export interface MandateOrchestrationDeps {

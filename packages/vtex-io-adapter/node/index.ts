@@ -30,7 +30,7 @@ import {
   sendPaymentInfoHandler,
   setPaymentMethodHandler,
 } from './handlers/headless-checkout'
-import { getMandate } from './handlers/mandate'
+import { getMandate, getMandateByOrderGroup } from './handlers/mandate'
 import { executePayment } from './handlers/payment'
 import {
   serveMockCpDIDDocument,
@@ -186,6 +186,9 @@ export default new Service({
     // AP2 case study's "anyone can verify" beat. No origin check; rate-limit only.
     getMandate: method({
       GET: [...guarded.publicRead, getMandate],
+    }),
+    getMandateByOrderGroup: method({
+      GET: [...guarded.publicRead, getMandateByOrderGroup],
     }),
     didDocument: method({
       GET: [...guarded.publicRead, serveDIDDocument],
