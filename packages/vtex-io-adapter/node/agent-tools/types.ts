@@ -150,6 +150,12 @@ export interface ToolEffect {
    * widget can render them without the LLM having to repeat them in text.
    */
   paymentMethods?: PaymentMethodOption[]
+  /**
+   * Payment method the customer just confirmed. Populated by
+   * set_payment_method so the Claude Desktop checkout iframe can render
+   * "Pay {total} · {method}" on the confirm button.
+   */
+  selectedPayment?: PaymentMethodOption
 }
 
 // ─── AgentTool — the contract ──────────────────────────────────────

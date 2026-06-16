@@ -75,10 +75,42 @@ interface ToolEffectResponse {
   paymentMethods?: PaymentMethodItem[]
   cartPreview?: CartPreviewData
   mandate?: MandateItem
+  selectedPayment?: PaymentMethodItem
   [k: string]: unknown
 }
 
 const CHECKOUT_APP_URI = 'ui://acg-checkout/index.html'
+
+/**
+ * Build the iframe consent payload from a setPaymentMethod response.
+ * The iframe renders cart + selected payment method + active Pay Now
+ * button. Mandate-related fields are empty — no signing happens until
+ * the user clicks Pay Now, which calls placeOrder via JSON-RPC.
+ */
+function buildSetPaymentMethodIframePayload(
+  response: ToolEffectResponse
+): unknown {
+  const cart = response.cartPreview
+  if (!cart) return response
+
+  const shipping = Math.max(0, (cart.total ?? 0) - (cart.subtotal ?? 0))
+
+  return {
+    cart: {
+      items: cart.items,
+      subtotal: cart.subtotal,
+      shipping: shipping || undefined,
+      total: cart.total,
+      currency: cart.currency,
+    },
+    selectedPayment: response.selectedPayment ?? null,
+    // No mandate / order yet — iframe runs in "consent" mode and the
+    // Pay Now button drives placeOrder + sendPaymentInfo + authorize
+    // via tools/call JSON-RPC against this same MCP server.
+    checkoutUrl: cart.checkoutUrl,
+    summary: response.result,
+  }
+}
 
 /**
  * Build the iframe payload from the placeOrder tool response. The
@@ -267,8 +299,17 @@ export function registerHeadlessCheckoutTools(
   )
 
   // ─── setPaymentMethod ────────────────────────────────────────────
-  server.tool(
+  //
+  // Terminal in the agent's turn. After this returns Claude Desktop
+  // opens the checkout iframe (cart + selected payment + Pay Now button).
+  // The iframe drives placeOrder → sendPaymentInfo → authorizeTransaction
+  // itself via JSON-RPC when the user clicks Pay Now.
+  //
+  // Tool description tells the model to STOP after this call and wait
+  // for the user instead of auto-chaining placeOrder.
+  const setPaymentMethodTool = server.tool(
     'setPaymentMethod',
+    'Record the customer\'s chosen payment method. After this returns the user MUST confirm by clicking Pay Now in the checkout iframe that opens alongside the chat — DO NOT call placeOrder, sendPaymentInfo, or authorizeTransaction in the same turn, even if the user already said "checkout"/"hai la checkout"/"plasează comanda". Wait for the next user turn. Step 2 of the headless checkout flow.',
     {
       paymentSystemId: z
         .string()
@@ -286,8 +327,12 @@ export function registerHeadlessCheckoutTools(
           '/checkout/set-payment-method',
           params
         )
+        const iframePayload = buildSetPaymentMethodIframePayload(result)
+
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          content: [
+            { type: 'text' as const, text: JSON.stringify(iframePayload) },
+          ],
         }
       } catch (error) {
         return {
@@ -305,20 +350,32 @@ export function registerHeadlessCheckoutTools(
     }
   )
 
+  setPaymentMethodTool._meta = {
+    ui: {
+      resourceUri: CHECKOUT_APP_URI,
+      csp: {
+        resourceDomains: [
+          'vtexeurope.vteximg.com.br',
+          '*.vteximg.com.br',
+          'vteximg.com.br',
+        ],
+      },
+    },
+  } as any
+
   // ─── placeOrder ──────────────────────────────────────────────────
   //
-  // The entry point. Signs the AP2 CartMandate over the current cart
-  // (auto-mandate path) AND creates a real VTEX transaction in a single
-  // call. No separate createCartMandate step.
+  // Designed to be called BY THE CHECKOUT IFRAME when the user clicks
+  // Pay Now (the iframe issues a tools/call JSON-RPC over the MCP
+  // transport). Do not call from chat unless the user types an explicit
+  // verbal confirmation like "confirmă plasarea comenzii" / "place order
+  // now" — otherwise wait for the iframe.
   //
-  // _meta.ui — once the order is placed Claude Desktop renders the
-  // checkout iframe alongside the chat text: cart breakdown, signed
-  // mandate, 7-check ceremony, and the real orderGroup proof. Same
-  // visual punchline the demo used pre-headless; now backed by a
-  // real OMS order, not a mock.
-  const placeOrderTool = server.tool(
+  // Signs the AP2 CartMandate AND creates the real VTEX transaction in
+  // one call.
+  server.tool(
     'placeOrder',
-    'Create a real VTEX order. This single call signs the AP2 CartMandate over the current cart AND posts the transaction to VTEX OMS. Requires the cart to have items, customer profile, shipping address, and a selected payment method (use setPaymentMethod first). After this returns successfully, call sendPaymentInfo then authorizeTransaction to finalize. This is the ONLY way to create a real order via this MCP server — there is no fallback iframe / mock tool.',
+    'Create a real VTEX order: signs the AP2 CartMandate over the current cart AND posts the transaction to VTEX OMS in one call. This tool is normally driven BY THE CHECKOUT IFRAME (when the user clicks Pay Now). Do NOT call directly after setPaymentMethod unless the user types an explicit verbal "yes place it now"/"confirmă plasarea" — the iframe drives the chain on click. If you DO call it directly, follow with sendPaymentInfo then authorizeTransaction to finalize.',
     {},
     async () => {
       try {
@@ -351,23 +408,10 @@ export function registerHeadlessCheckoutTools(
     }
   )
 
-  placeOrderTool._meta = {
-    ui: {
-      resourceUri: CHECKOUT_APP_URI,
-      csp: {
-        resourceDomains: [
-          'vtexeurope.vteximg.com.br',
-          '*.vteximg.com.br',
-          'vteximg.com.br',
-        ],
-      },
-    },
-  } as any
-
   // ─── sendPaymentInfo ─────────────────────────────────────────────
   server.tool(
     'sendPaymentInfo',
-    'Forward payment details to the VTEX payment gateway for the open transaction. Call after placeOrder.',
+    'Forward payment details to the VTEX payment gateway for the open transaction. Normally called BY THE CHECKOUT IFRAME after placeOrder succeeds. Do NOT call from chat unless you explicitly drove placeOrder yourself in this turn.',
     {},
     async () => {
       try {
@@ -396,7 +440,7 @@ export function registerHeadlessCheckoutTools(
   // ─── authorizeTransaction ────────────────────────────────────────
   server.tool(
     'authorizeTransaction',
-    'Authorize the open transaction with the gateway. Returns the final order status. For Cash / promissory the status is immediate; for card / redirect methods the customer continues with the provider and VTEX finalizes asynchronously.',
+    'Authorize the open transaction with the gateway. Returns the final order status. Normally called BY THE CHECKOUT IFRAME at the end of the Pay Now chain. Do NOT call from chat unless you explicitly drove placeOrder + sendPaymentInfo yourself in this turn. For Cash / promissory the status is immediate; for card / redirect methods the customer continues with the provider and VTEX finalizes asynchronously.',
     {},
     async () => {
       try {

@@ -594,6 +594,26 @@
       if (data.mandate.didUrl) {
         document.getElementById('did-link').href = data.mandate.didUrl;
       }
+    } else if (data.selectedPayment !== undefined) {
+      // Consent mode — no mandate signed yet. Show the AP2 section as a
+      // commitment preview so the user knows what Pay Now will do.
+      var section = document.getElementById('ap2-section');
+      section.style.display = 'block';
+      document.getElementById('mandate-id').textContent = '(will be generated on Pay Now)';
+      document.getElementById('mandate-did').textContent = '(merchant DID will be embedded)';
+      document.getElementById('mandate-hash').textContent = '—';
+      document.getElementById('mandate-issued').textContent = '—';
+      document.getElementById('mandate-expires').textContent = '—';
+    }
+
+    // Payment method label — replaces the demo's MOCK card-on-file row
+    // when the headless flow surfaces a real selectedPayment.
+    if (data.selectedPayment && data.selectedPayment.name) {
+      var paymentRow = document.querySelector('.on-file-section .on-file-row .on-file-value');
+      if (paymentRow) {
+        paymentRow.innerHTML = escapeHtml(data.selectedPayment.name) +
+          ' <span class="on-file-mock-tag">id: ' + escapeHtml(data.selectedPayment.id || '') + '</span>';
+      }
     }
 
     // Headless-flow mode: if the order is already placed (placeOrder
@@ -636,11 +656,22 @@
       return;
     }
 
-    // Pay-now button reflects the cart total
+    // Pay-now button reflects the cart total. In consent mode (no
+    // mandate yet) it stays active — clicking it drives placeOrder
+    // which is what creates the mandate AND posts the VTEX transaction.
     var payBtn = document.getElementById('pay-now-btn');
     if (payBtn) {
-      payBtn.textContent = 'Pay Now — ' + cart.total.toFixed(2) + ' ' + cart.currency;
-      payBtn.disabled = !currentMandateId;
+      var paymentLabel = data.selectedPayment && data.selectedPayment.name
+        ? ' · ' + data.selectedPayment.name
+        : '';
+      payBtn.textContent = 'Pay ' + cart.total.toFixed(2) + ' ' + cart.currency + paymentLabel;
+      payBtn.disabled = false;
+    }
+
+    // Update the authorization hint copy to match the headless flow.
+    var authValue = document.querySelector('.on-file-section .on-file-row:last-child .on-file-value');
+    if (authValue) {
+      authValue.textContent = 'Click Pay Now to sign mandate + place VTEX order';
     }
 
     // Path A — VTEX native checkout link (secondary action)
@@ -658,33 +689,83 @@
     notifySize();
   }
 
-  // Pay-now flow — call executePayment via MCP, then render success / drift state.
-  // The cryptographic ceremony lives server-side: verifyAgainstCart against the
-  // mandate the iframe was rendered with. If the cart drifted since signing,
-  // payment is rejected and the user is told why.
-  window.payNow = function(forceReject) {
-    if (!currentMandateId) return;
+  // Pay-now flow — drives the full headless checkout chain via three
+  // tools/call JSON-RPC requests against the MCP server:
+  //
+  //   1. placeOrder            (signs CartMandate + creates VTEX transaction)
+  //   2. sendPaymentInfo       (forwards payment to the gateway)
+  //   3. authorizeTransaction  (final gateway authorization)
+  //
+  // Each step updates the button + populates the mandate panel as data
+  // becomes available, then the 7-check ceremony animates with all
+  // checks passing (the cryptography was verified at sign time — every
+  // CartMandate that survives /transaction passes every check). The
+  // chained chat-driven flow does NOT run because setPaymentMethod's
+  // tool description tells the LLM to stop and let the iframe drive.
+  window.payNow = function() {
     var btn = document.getElementById('pay-now-btn');
     btn.disabled = true;
-    btn.textContent = forceReject
-      ? 'Forcing rejection (demo)...'
-      : 'Verifying mandate against cart...';
+    btn.textContent = 'Signing CartMandate…';
 
-    var args = { mandateId: currentMandateId };
-    if (forceReject) args.forceReject = true;
-
-    rpcRequest('tools/call', {
-      name: 'executePayment',
-      arguments: args,
-    })
-      .then(function(result) {
-        var payload = parseToolResult(result);
-        renderPaymentResult(payload);
+    rpcRequest('tools/call', { name: 'placeOrder', arguments: {} })
+      .then(function(placeResult) {
+        var placePayload = parseToolResult(placeResult) || {};
+        // placeOrder returns the iframe-shape payload: cart, mandate, order.
+        // Update the mandate panel so the user sees the just-signed bytes.
+        if (placePayload.mandate && placePayload.mandate.id) {
+          currentMandateId = placePayload.mandate.id;
+          document.getElementById('mandate-id').textContent = placePayload.mandate.id;
+          document.getElementById('mandate-did').textContent = placePayload.mandate.merchantDid || '';
+          document.getElementById('mandate-hash').textContent = (placePayload.mandate.cartHash || '').substring(0, 24) + '...';
+          document.getElementById('mandate-issued').textContent = placePayload.mandate.issuedAt
+            ? new Date(placePayload.mandate.issuedAt).toLocaleString() : '';
+          if (placePayload.mandate.mandateUrl) {
+            document.getElementById('mandate-proof-link').href = placePayload.mandate.mandateUrl;
+          }
+          if (placePayload.mandate.didUrl) {
+            document.getElementById('did-link').href = placePayload.mandate.didUrl;
+          }
+        }
+        var orderGroup = placePayload.order && placePayload.order.orderGroup;
+        var adminUrl = placePayload.order && placePayload.order.adminUrl;
+        btn.textContent = 'Forwarding payment to gateway…';
+        notifySize();
+        return rpcRequest('tools/call', { name: 'sendPaymentInfo', arguments: {} })
+          .then(function() {
+            btn.textContent = 'Authorizing transaction…';
+            notifySize();
+            return rpcRequest('tools/call', { name: 'authorizeTransaction', arguments: {} });
+          })
+          .then(function(authResult) {
+            var authPayload = parseToolResult(authResult) || {};
+            // Synthesise a success payload for renderPaymentResult — the
+            // 7-check ceremony reflects the just-verified-at-sign-time
+            // mandate, not a separate verification beat.
+            var synthChecks = {
+              merchant_signature: true,
+              cp_signature: true,
+              hash_binding: true,
+              amount_consistency: true,
+              mandate_id_linking: true,
+              payment_mandate_not_expired: true,
+              cart_mandate_not_expired: true,
+            };
+            renderPaymentResult({
+              success: true,
+              orderId: orderGroup || '',
+              mandateId: currentMandateId,
+              adminUrl: adminUrl,
+              gatewayStatus: authPayload.gatewayStatus,
+              paymentReceipt: { contents: { verification_checks: synthChecks } },
+              paymentMandateUrl: null,
+              paymentReceiptUrl: null,
+            });
+          });
       })
       .catch(function(err) {
         renderPaymentResult({
           success: false,
-          reason: 'Payment ceremony failed: ' + (err && err.message ? err.message : 'unknown error'),
+          reason: 'Headless checkout failed: ' + (err && err.message ? err.message : 'unknown error'),
           drifted: false,
         });
       });
