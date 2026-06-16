@@ -353,7 +353,7 @@ async function execute(
       `Order ${ap2.orderGroup} created in OMS but final authorization status is unclear.`,
       `Verify the order state in admin → orders.`,
     ].join(' '),
-    mandate: buildMandatePatch(ap2, undefined),
+    mandatePatch: buildMandatePatch(ap2, undefined),
   }
 }
 
