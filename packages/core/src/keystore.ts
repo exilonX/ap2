@@ -18,7 +18,8 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import { generateKeyPair, keyPairFromHex, createDIDDocument, type KeyPair, type DIDDocument } from './did';
+import { generateKeyPair, keyPairFromHex, createDIDDocument } from './did';
+import type { KeyPair, DIDDocument } from './did';
 
 /**
  * The cryptographic identity of any AP2 party (merchant, credentials

@@ -45,6 +45,15 @@ Prețurile sunt în RON.`,
   // 'stepwise' = pas cu pas, ghidat. 'parallel' = tot deodată.
   multiStepFlow: 'stepwise',
 
+  // Preferred payment systems for the headless order flow.
+  //
+  // Empty for now — populate after a one-off `getAvailablePaymentSystems`
+  // call against the live miniprix store reveals which paymentSystem ids
+  // (Cash / promissory / Netopia card / etc.) the merchant has actually
+  // configured. Until then, `list_payment_methods` surfaces VTEX's
+  // natural ordering.
+  preferredPaymentMethods: [],
+
   /**
    * Merchant-specific extra rules appended to the system prompt.
    * Each entry becomes a bullet under "## CUSTOM RULES".

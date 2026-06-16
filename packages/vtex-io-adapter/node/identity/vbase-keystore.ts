@@ -13,7 +13,7 @@
  * existing keys are picked up unchanged.
  */
 
-import type { KeyStore, StoredKeys } from '../core';
+import type { KeyStore, StoredKeys } from '../core'
 
 /**
  * Minimal interface of `ctx.clients.vbase` used by the keystore. Kept
@@ -25,12 +25,16 @@ import type { KeyStore, StoredKeys } from '../core';
  * structural type must stay assignable from the real client.
  */
 export interface VBaseClient {
-  getJSON<T>(bucket: string, key: string, conflictsTrigger?: boolean): Promise<T>;
-  saveJSON<T>(bucket: string, key: string, value: T): Promise<unknown>;
+  getJSON<T>(
+    bucket: string,
+    key: string,
+    conflictsTrigger?: boolean
+  ): Promise<T>
+  saveJSON<T>(bucket: string, key: string, value: T): Promise<unknown>
 }
 
-const DEFAULT_BUCKET = 'acg-identity';
-const DEFAULT_KEY = 'merchant-did';
+const DEFAULT_BUCKET = 'acg-identity'
+const DEFAULT_KEY = 'merchant-did'
 
 export class VBaseKeyStore implements KeyStore {
   constructor(
@@ -43,18 +47,23 @@ export class VBaseKeyStore implements KeyStore {
     try {
       // `conflictsTrigger: true` matches the previous handler behavior;
       // we read through any concurrent writes.
-      const stored = await this.vbase.getJSON<StoredKeys>(this.bucket, this.key, true);
+      const stored = await this.vbase.getJSON<StoredKeys>(
+        this.bucket,
+        this.key,
+        true
+      )
+
       // VBase returns the value when it exists; surface-level shape
       // validation lives in @acg/core's `loadOrCreateIdentity`.
-      return stored ?? null;
+      return stored ?? null
     } catch {
       // VBase throws when the key doesn't exist yet. The KeyStore
       // contract distinguishes "missing" from errors via `null`.
-      return null;
+      return null
     }
   }
 
   public async write(stored: StoredKeys): Promise<void> {
-    await this.vbase.saveJSON<StoredKeys>(this.bucket, this.key, stored);
+    await this.vbase.saveJSON<StoredKeys>(this.bucket, this.key, stored)
   }
 }

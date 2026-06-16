@@ -15,9 +15,9 @@ export type Locale = string // e.g. 'ro', 'en', 'pt'
 
 export interface BrandConfig {
   name: string
-  tone: string                // free-form guidance for the LLM system prompt
-  accentColor?: string        // '#f71963' — used by widget UI
-  poweredByLabel?: string     // footer text in the widget
+  tone: string // free-form guidance for the LLM system prompt
+  accentColor?: string // '#f71963' — used by widget UI
+  poweredByLabel?: string // footer text in the widget
 }
 
 export interface StringBundle {
@@ -51,10 +51,10 @@ export type MultiStepFlow = 'parallel' | 'stepwise'
 
 export interface ClientConfig {
   // Which account this profile matches (or 'default')
-  accountMatches: string[]     // VTEX account names to match; ['*'] = fallback
+  accountMatches: string[] // VTEX account names to match; ['*'] = fallback
 
   industry: Industry
-  currency: string             // ISO 4217 (RON, EUR, USD, ...)
+  currency: string // ISO 4217 (RON, EUR, USD, ...)
 
   locales: {
     default: Locale
@@ -89,6 +89,18 @@ export interface ClientConfig {
    * Default: 'stepwise'.
    */
   multiStepFlow?: MultiStepFlow
+
+  /**
+   * Preferred payment systems for the headless order flow, as VTEX
+   * paymentSystem ids (string form — same shape `list_payment_methods`
+   * returns). Surfaced top-of-list to the LLM so it picks the merchant's
+   * preferred method when the customer doesn't express one. Methods not
+   * in this list still appear, just below the preferred ones.
+   *
+   * Example: `['47', '203']` would prefer Cash, then a custom card
+   * connector if Cash is unavailable.
+   */
+  preferredPaymentMethods?: string[]
 
   /**
    * Quick-reply chips shown on the empty state, per locale.

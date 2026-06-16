@@ -3,3 +3,4 @@ config.json
 .sync-state/
 logs/
 *.log
+config.miniprix.json

@@ -7,26 +7,32 @@
  * Uses Node.js built-in crypto module (Ed25519 support since Node 16).
  */
 
-import { generateKeyPairSync, sign as cryptoSign, verify as cryptoVerify, createPublicKey, createPrivateKey } from 'crypto';
+import {
+  generateKeyPairSync,
+  sign as cryptoSign,
+  verify as cryptoVerify,
+  createPublicKey,
+  createPrivateKey,
+} from 'crypto'
 
 export interface KeyPair {
-  publicKey: Buffer;
-  privateKey: Buffer;
-  publicKeyHex: string;
-  privateKeyHex: string;
+  publicKey: Buffer
+  privateKey: Buffer
+  publicKeyHex: string
+  privateKeyHex: string
 }
 
 export interface DIDDocument {
-  '@context': string[];
-  id: string;
+  '@context': string[]
+  id: string
   verificationMethod: Array<{
-    id: string;
-    type: string;
-    controller: string;
-    publicKeyHex: string;
-  }>;
-  authentication: string[];
-  assertionMethod: string[];
+    id: string
+    type: string
+    controller: string
+    publicKeyHex: string
+  }>
+  authentication: string[]
+  assertionMethod: string[]
 }
 
 /**
@@ -36,29 +42,32 @@ export function generateKeyPair(): KeyPair {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519', {
     publicKeyEncoding: { type: 'spki', format: 'der' },
     privateKeyEncoding: { type: 'pkcs8', format: 'der' },
-  });
+  })
 
   return {
     publicKey: publicKey as Buffer,
     privateKey: privateKey as Buffer,
     publicKeyHex: (publicKey as Buffer).toString('hex'),
     privateKeyHex: (privateKey as Buffer).toString('hex'),
-  };
+  }
 }
 
 /**
  * Restore a key pair from hex-encoded keys.
  */
-export function keyPairFromHex(publicKeyHex: string, privateKeyHex: string): KeyPair {
-  const publicKey = Buffer.from(publicKeyHex, 'hex');
-  const privateKey = Buffer.from(privateKeyHex, 'hex');
+export function keyPairFromHex(
+  publicKeyHex: string,
+  privateKeyHex: string
+): KeyPair {
+  const publicKey = Buffer.from(publicKeyHex, 'hex')
+  const privateKey = Buffer.from(privateKeyHex, 'hex')
 
   return {
     publicKey,
     privateKey,
     publicKeyHex,
     privateKeyHex,
-  };
+  }
 }
 
 /**
@@ -71,10 +80,11 @@ export function sign(message: Uint8Array, privateKeyDer: Buffer): string {
     key: privateKeyDer,
     format: 'der',
     type: 'pkcs8',
-  });
+  })
 
-  const signature = cryptoSign(null, Buffer.from(message), keyObject);
-  return signature.toString('hex');
+  const signature = cryptoSign(null, Buffer.from(message), keyObject)
+
+  return signature.toString('hex')
 }
 
 /**
@@ -92,9 +102,14 @@ export function verify(
     key: publicKeyDer,
     format: 'der',
     type: 'spki',
-  });
+  })
 
-  return cryptoVerify(null, Buffer.from(message), keyObject, Buffer.from(signature, 'hex'));
+  return cryptoVerify(
+    null,
+    Buffer.from(message),
+    keyObject,
+    Buffer.from(signature, 'hex')
+  )
 }
 
 /**
@@ -104,8 +119,11 @@ export function verify(
  * Example: did:web:ap2--vtexeurope.myvtex.com
  *        → https://ap2--vtexeurope.myvtex.com/.well-known/did.json
  */
-export function createDIDDocument(domain: string, publicKey: Buffer): DIDDocument {
-  const did = `did:web:${domain}`;
+export function createDIDDocument(
+  domain: string,
+  publicKey: Buffer
+): DIDDocument {
+  const did = `did:web:${domain}`
 
   return {
     '@context': [
@@ -123,12 +141,12 @@ export function createDIDDocument(domain: string, publicKey: Buffer): DIDDocumen
     ],
     authentication: [`${did}#key-1`],
     assertionMethod: [`${did}#key-1`],
-  };
+  }
 }
 
 /**
  * Get the DID string from a domain.
  */
 export function didFromDomain(domain: string): string {
-  return `did:web:${domain}`;
+  return `did:web:${domain}`
 }

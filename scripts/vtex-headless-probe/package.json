@@ -1,0 +1,19 @@
+{
+  "name": "vtex-headless-probe",
+  "version": "0.0.1",
+  "description": "Standalone script that drives the full VTEX headless checkout flow end-to-end, logging every request/response. Use it as the ground-truth oracle when debugging the adapter's headless flow — fix here first, port back.",
+  "private": true,
+  "scripts": {
+    "probe": "tsx run.ts",
+    "compare": "tsx compare-orders.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.7.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.3",
+    "@types/node": "^20.10.0"
+  }
+}

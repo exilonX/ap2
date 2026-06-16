@@ -4,84 +4,84 @@
  * Wraps VTEX Catalog Search API for product discovery.
  */
 
-import { ExternalClient, InstanceOptions, IOContext } from '@vtex/api';
-
+import type { InstanceOptions, IOContext } from '@vtex/api'
+import { ExternalClient } from '@vtex/api'
 
 export interface VTEXProduct {
-  productId: string;
-  productName: string;
-  brand: string;
-  brandId: number;
-  linkText: string;
-  productReference: string;
-  categoryId: string;
-  productTitle: string;
-  metaTagDescription: string;
-  releaseDate: string;
-  clusterHighlights: Record<string, string>;
-  productClusters: Record<string, string>;
-  searchableClusters: Record<string, string>;
-  categories: string[];
-  categoriesIds: string[];
-  link: string;
-  allSpecifications: string[];
-  allSpecificationsGroups: string[];
-  description: string;
-  items: VTEXSku[];
+  productId: string
+  productName: string
+  brand: string
+  brandId: number
+  linkText: string
+  productReference: string
+  categoryId: string
+  productTitle: string
+  metaTagDescription: string
+  releaseDate: string
+  clusterHighlights: Record<string, string>
+  productClusters: Record<string, string>
+  searchableClusters: Record<string, string>
+  categories: string[]
+  categoriesIds: string[]
+  link: string
+  allSpecifications: string[]
+  allSpecificationsGroups: string[]
+  description: string
+  items: VTEXSku[]
 }
 
 export interface VTEXSku {
-  itemId: string;
-  name: string;
-  nameComplete: string;
-  complementName: string;
-  ean: string;
-  referenceId: Array<{ Key: string; Value: string }>;
-  measurementUnit: string;
-  unitMultiplier: number;
-  modalType: string;
-  isKit: boolean;
+  itemId: string
+  name: string
+  nameComplete: string
+  complementName: string
+  ean: string
+  referenceId: Array<{ Key: string; Value: string }>
+  measurementUnit: string
+  unitMultiplier: number
+  modalType: string
+  isKit: boolean
   images: Array<{
-    imageId: string;
-    imageLabel: string;
-    imageTag: string;
-    imageUrl: string;
-    imageText: string;
-  }>;
+    imageId: string
+    imageLabel: string
+    imageTag: string
+    imageUrl: string
+    imageText: string
+  }>
   sellers: Array<{
-    sellerId: string;
-    sellerName: string;
-    addToCartLink: string;
-    sellerDefault: boolean;
+    sellerId: string
+    sellerName: string
+    addToCartLink: string
+    sellerDefault: boolean
     commertialOffer: {
-      DeliverySlaSamplesPerRegion: Record<string, unknown>;
+      DeliverySlaSamplesPerRegion: Record<string, unknown>
       Installments: Array<{
-        Value: number;
-        InterestRate: number;
-        TotalValuePlusInterestRate: number;
-        NumberOfInstallments: number;
-        PaymentSystemName: string;
-        PaymentSystemGroupName: string;
-        Name: string;
-      }>;
-      DiscountHighLight: unknown[];
-      GiftSkuIds: unknown[];
-      Teasers: unknown[];
-      BuyTogether: unknown[];
-      ItemMetadataAttachment: unknown[];
-      Price: number;
-      ListPrice: number;
-      PriceWithoutDiscount: number;
-      RewardValue: number;
-      PriceValidUntil: string;
-      AvailableQuantity: number;
-      Tax: number;
-      DeliverySlaSamples: unknown[];
-      GetInfoErrorMessage: string | null;
-      CacheVersionUsedToCallCheckout: string;
-    };
-  }>;
-  variations: Array<{ name: string; values: string[] }>;
+        Value: number
+        InterestRate: number
+        TotalValuePlusInterestRate: number
+        NumberOfInstallments: number
+        PaymentSystemName: string
+        PaymentSystemGroupName: string
+        Name: string
+      }>
+      DiscountHighLight: unknown[]
+      GiftSkuIds: unknown[]
+      Teasers: unknown[]
+      BuyTogether: unknown[]
+      ItemMetadataAttachment: unknown[]
+      Price: number
+      ListPrice: number
+      PriceWithoutDiscount: number
+      RewardValue: number
+      PriceValidUntil: string
+      AvailableQuantity: number
+      Tax: number
+      DeliverySlaSamples: unknown[]
+      GetInfoErrorMessage: string | null
+      CacheVersionUsedToCallCheckout: string
+    }
+  }>
+  variations: Array<{ name: string; values: string[] }>
 }
 
 export class SearchClient extends ExternalClient {
@@ -94,7 +94,7 @@ export class SearchClient extends ExternalClient {
         Accept: 'application/json',
         'X-Vtex-Use-Https': 'true',
       },
-    });
+    })
   }
 
   /**
@@ -102,7 +102,7 @@ export class SearchClient extends ExternalClient {
    */
   public async searchProducts(
     query: string,
-    limit: number = 10
+    limit = 10
   ): Promise<VTEXProduct[]> {
     // Using VTEX legacy search API
     // For Intelligent Search, would use different endpoint
@@ -115,7 +115,7 @@ export class SearchClient extends ExternalClient {
         },
         metric: 'acg-search',
       }
-    );
+    )
   }
 
   /**
@@ -131,10 +131,11 @@ export class SearchClient extends ExternalClient {
           },
           metric: 'acg-product-detail',
         }
-      );
-      return products[0] || null;
+      )
+
+      return products[0] || null
     } catch {
-      return null;
+      return null
     }
   }
 }

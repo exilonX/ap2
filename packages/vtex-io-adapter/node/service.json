@@ -69,6 +69,30 @@
       "path": "/_v/acg/payment/execute",
       "public": true
     },
+    "createMandate": {
+      "path": "/_v/acg/checkout/create-mandate",
+      "public": true
+    },
+    "listPaymentMethods": {
+      "path": "/_v/acg/checkout/list-payment-methods",
+      "public": true
+    },
+    "setPaymentMethod": {
+      "path": "/_v/acg/checkout/set-payment-method",
+      "public": true
+    },
+    "placeOrder": {
+      "path": "/_v/acg/checkout/place-order",
+      "public": true
+    },
+    "sendPaymentInfo": {
+      "path": "/_v/acg/checkout/send-payment-info",
+      "public": true
+    },
+    "authorizeTransaction": {
+      "path": "/_v/acg/checkout/authorize",
+      "public": true
+    },
     "orderStatus": {
       "path": "/_v/acg/orders/:orderId",
       "public": true

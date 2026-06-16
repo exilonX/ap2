@@ -11,15 +11,15 @@
  *     "read or create-and-cookie".
  */
 
-import { v4 as uuid } from 'uuid';
+import { v4 as uuid } from 'uuid'
 
-import type { Cart } from '../cart/cart';
+import type { Cart } from '../cart/cart'
 
 // Header used by the MCP server to pass orderFormId
-const ORDER_FORM_HEADER = 'x-acg-order-form-id';
+const ORDER_FORM_HEADER = 'x-acg-order-form-id'
 
 // Cookie used by browser-based clients
-const ORDER_FORM_COOKIE = 'checkout.vtex.com';
+const ORDER_FORM_COOKIE = 'checkout.vtex.com'
 
 /**
  * Get orderFormId from request context.
@@ -28,21 +28,24 @@ const ORDER_FORM_COOKIE = 'checkout.vtex.com';
  */
 export function getOrderFormIdFromRequest(ctx: Context): string | null {
   // 1. Check header (from MCP server)
-  const headerValue = ctx.get(ORDER_FORM_HEADER);
+  const headerValue = ctx.get(ORDER_FORM_HEADER)
+
   if (headerValue) {
-    return headerValue;
+    return headerValue
   }
 
   // 2. Check cookie (from browser)
-  const cookieValue = ctx.cookies.get(ORDER_FORM_COOKIE);
+  const cookieValue = ctx.cookies.get(ORDER_FORM_COOKIE)
+
   if (cookieValue) {
-    const match = cookieValue.match(/__ofid=([^;]+)/);
+    const match = cookieValue.match(/__ofid=([^;]+)/)
+
     if (match) {
-      return match[1];
+      return match[1]
     }
   }
 
-  return null;
+  return null
 }
 
 /**
@@ -56,7 +59,7 @@ export function setOrderFormCookie(ctx: Context, orderFormId: string): void {
     httpOnly: false,
     secure: true,
     path: '/',
-  });
+  })
 }
 
 /**
@@ -70,43 +73,47 @@ export async function resolveOrderFormId(
   ctx: Context,
   cart: Cart
 ): Promise<string> {
-  const existing = getOrderFormIdFromRequest(ctx);
+  const existing = getOrderFormIdFromRequest(ctx)
+
   if (existing) {
-    return existing;
+    return existing
   }
-  const newCart = await cart.createCart();
-  setOrderFormCookie(ctx, newCart.id);
-  return newCart.id;
+
+  const newCart = await cart.createCart()
+
+  setOrderFormCookie(ctx, newCart.id)
+
+  return newCart.id
 }
 
 /**
  * Generate a unique session ID for checkout sessions.
  */
 export function generateSessionId(): string {
-  return uuid();
+  return uuid()
 }
 
 /**
  * Check if a session is expired.
  */
 export function isSessionExpired(expiresAt: number): boolean {
-  return Date.now() > expiresAt;
+  return Date.now() > expiresAt
 }
 
 /**
  * Get remaining time in human-readable format.
  */
 export function getRemainingTime(expiresAt: number): string {
-  const remaining = expiresAt - Date.now();
+  const remaining = expiresAt - Date.now()
 
-  if (remaining <= 0) return 'expired';
+  if (remaining <= 0) return 'expired'
 
-  const minutes = Math.floor(remaining / 60000);
-  const seconds = Math.floor((remaining % 60000) / 1000);
+  const minutes = Math.floor(remaining / 60000)
+  const seconds = Math.floor((remaining % 60000) / 1000)
 
   if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
+    return `${minutes}m ${seconds}s`
   }
 
-  return `${seconds}s`;
+  return `${seconds}s`
 }

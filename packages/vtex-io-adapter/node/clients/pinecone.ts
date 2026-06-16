@@ -5,7 +5,8 @@
  * Free tier: 100K vectors, 1 index, 2GB storage.
  */
 
-import { ExternalClient, IOContext, InstanceOptions } from '@vtex/api'
+import type { IOContext, InstanceOptions } from '@vtex/api'
+import { ExternalClient } from '@vtex/api'
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ interface QueryResponse {
   namespace: string
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface DeleteResponse {}
 
 // ─── Client ────────────────────────────────────────────────────
@@ -66,7 +68,9 @@ export class PineconeClient extends ExternalClient {
 
     for (let i = 0; i < vectors.length; i += BATCH_SIZE) {
       const batch = vectors.slice(i, i + BATCH_SIZE)
-
+      // Sequential batches by design — don't hammer Pinecone with 100
+      // parallel requests; their rate limits are per-second on writes.
+      // eslint-disable-next-line no-await-in-loop
       const response = await this.http.post<UpsertResponse>(
         '/vectors/upsert',
         {
@@ -87,7 +91,7 @@ export class PineconeClient extends ExternalClient {
    */
   public async query(
     vector: number[],
-    topK: number = 5,
+    topK = 5,
     filter?: Record<string, unknown>
   ): Promise<PineconeMatch[]> {
     const body: Record<string, unknown> = {
@@ -101,11 +105,9 @@ export class PineconeClient extends ExternalClient {
       body.filter = filter
     }
 
-    const response = await this.http.post<QueryResponse>(
-      '/query',
-      body,
-      { metric: 'acg-pinecone-query' }
-    )
+    const response = await this.http.post<QueryResponse>('/query', body, {
+      metric: 'acg-pinecone-query',
+    })
 
     return response.matches
   }

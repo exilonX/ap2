@@ -24,6 +24,7 @@
 import type {
   CheckoutClient,
   ClientProfileData,
+  PaymentSystem,
   VTEXOrderForm,
 } from '../clients/checkout'
 import { mapOrderFormToCart } from '../mappers/cart'
@@ -56,8 +57,21 @@ export interface CustomerProfileInput {
   email: string
   firstName: string
   lastName: string
+  /**
+   * Country-local phone format. For VTEX Europe (RO) this is the
+   * 10-digit leading-zero local form (e.g. "0700000000"); E.164 with the
+   * "+40" prefix is accepted with HTTP 200 but VTEX persists `phone: null`
+   * silently, causing the field to render blank in the admin. The
+   * `Cart.setCustomerProfile` boundary normalizes "+40…" → "0…" so any
+   * caller (chat tools, MCP, future surfaces) is safe.
+   */
   phone?: string
   document?: string
+  /**
+   * Defaults to "document" (VTEX's generic EU value) when omitted.
+   * Brazilian "cpf" is silently rejected on VTEX EU and persisted as
+   * null.
+   */
   documentType?: string
 }
 
@@ -70,7 +84,13 @@ export interface ShippingAddressInput {
   state: string
   street: string
   number: string
-  neighborhood: string
+  /**
+   * Optional — VTEX EU stores `null` when omitted, matching the
+   * reference order on Bucharest/RO addresses without a neighborhood.
+   * Older callers that hardcoded `neighborhood: ''` should drop the
+   * empty default; the request body now omits the field entirely.
+   */
+  neighborhood?: string
   country?: string
   complement?: string
   reference?: string
@@ -89,6 +109,39 @@ export interface ShippingOption {
   name: string
   price: number // already in major currency units (e.g. RON), VTEX returns cents
   estimatedDelivery: string
+}
+
+/**
+ * Normalized shape Cart.getAvailablePaymentSystems returns.
+ *
+ * Strips the noisy fields VTEX returns on `paymentData.paymentSystems[]`
+ * (templates, validators, dueDates) down to what an agent needs to pick
+ * a method: an id to pass to setPaymentData, a name for the LLM to
+ * surface to the user, and the payment group VTEX expects on the
+ * paymentData write.
+ */
+export interface PaymentMethodOption {
+  id: string
+  name: string
+  group: string
+  requiresAuthentication: boolean
+}
+
+/**
+ * Args for Cart.setPaymentData.
+ *
+ * `value` defaults to the current cart total (in cents) — callers
+ * usually want to pay for the whole cart with one method. Pass an
+ * explicit value to split payments across multiple methods.
+ *
+ * `installments` defaults to 1 (single-shot, no interest).
+ */
+export interface SetPaymentDataInput {
+  paymentSystemId: string
+  paymentSystemName?: string
+  group?: string
+  installments?: number
+  value?: number // in cents; defaults to orderForm.value
 }
 
 /**
@@ -327,13 +380,26 @@ export class Cart {
     orderFormId: string,
     data: CustomerProfileInput
   ): Promise<SimpleCart> {
+    // VTEX RO accepts E.164 numbers ("+40…") with HTTP 200 but persists
+    // phone:null silently, leaving the field blank in admin. Rewrite the
+    // common "+40 → 0" prefix here at the Cart boundary so every caller
+    // path (chat, MCP, future surfaces) is protected uniformly.
+    const normalizedPhone = data.phone?.startsWith('+40')
+      ? `0${data.phone.slice(3).replace(/\D/g, '')}`
+      : data.phone
+
+    // "cpf" is Brazilian and silently rejected on VTEX EU. Default to
+    // "document" (the generic value the reference RO order uses) when
+    // the caller omits documentType.
+    const documentType = data.documentType ?? 'document'
+
     const payload: ClientProfileData = {
       email: data.email,
       firstName: data.firstName,
       lastName: data.lastName,
-      phone: data.phone,
+      phone: normalizedPhone,
       document: data.document,
-      documentType: data.documentType,
+      documentType,
       isCorporate: false,
     }
 
@@ -365,19 +431,39 @@ export class Cart {
 
     const logisticsInfo = this.buildLogisticsInfo(orderForm)
 
+    // When the caller omits receiverName, derive it from the cart's
+    // existing clientProfileData (set on a prior turn). Leaves empty
+    // string as the last-resort fallback so this path stays non-throwing
+    // even when the LLM sets shipping before profile.
+    const profile = orderForm.clientProfileData as
+      | { firstName?: string; lastName?: string }
+      | null
+      | undefined
+
+    const derivedName =
+      profile && (profile.firstName || profile.lastName)
+        ? [profile.firstName, profile.lastName].filter(Boolean).join(' ')
+        : ''
+
+    const receiverName = data.receiverName ?? derivedName
+
     const updated = await this.deps.checkout.addShippingData(orderFormId, {
       clearAddressIfPostalCodeNotFound: false,
       selectedAddresses: [
         {
           addressType: data.addressType ?? 'residential',
-          receiverName: data.receiverName ?? '',
+          receiverName,
           postalCode: data.postalCode,
           city: data.city,
           state: data.state,
           country: data.country ?? 'ROU',
           street: data.street,
           number: data.number,
-          neighborhood: data.neighborhood,
+          // Omit neighborhood entirely when undefined so VTEX persists
+          // `null` (matches reference RO orders) instead of "".
+          ...(data.neighborhood !== undefined
+            ? { neighborhood: data.neighborhood }
+            : {}),
           complement: data.complement,
           reference: data.reference,
         },
@@ -427,6 +513,129 @@ export class Cart {
       price: sla.price / 100,
       estimatedDelivery: sla.shippingEstimate,
     }))
+  }
+
+  /**
+   * Get the payment methods the merchant has configured for this cart's
+   * sales channel.
+   *
+   * Reads `orderForm.paymentData.paymentSystems[]` and normalizes each
+   * entry into a `PaymentMethodOption`. Filters out entries with no
+   * `groupName` (defensive — observed in stale catalog configs).
+   *
+   * The returned `id` is `stringId` if VTEX provided one, else `String(id)`.
+   * Use that id verbatim when calling `setPaymentData` — VTEX accepts
+   * either string or numeric form and the string is safer for ids that
+   * exceed JS's safe integer range.
+   */
+  public async getAvailablePaymentSystems(
+    orderFormId: string
+  ): Promise<PaymentMethodOption[]> {
+    const orderForm = await this.deps.checkout.getOrderForm(orderFormId)
+
+    this.assertSameCart(orderFormId, orderForm)
+
+    const systems: PaymentSystem[] = orderForm.paymentData?.paymentSystems ?? []
+
+    return systems
+      .filter((s) => Boolean(s.groupName))
+      .map((s) => ({
+        id: s.stringId ?? String(s.id),
+        name: s.name,
+        group: s.groupName,
+        requiresAuthentication: Boolean(s.requiresAuthentication),
+      }))
+  }
+
+  /**
+   * Set the payment method on the cart.
+   *
+   * Wraps `CheckoutClient.addPaymentData` with the minimal payload that
+   * matches the headless-checkout Postman flow. Resolves the cart total
+   * automatically when `value` is omitted (the common case — pay the
+   * whole cart with one method).
+   *
+   * If `paymentSystemName` / `group` aren't provided, looks them up
+   * against the merchant's configured payment systems. That second
+   * round-trip is the price of letting the LLM pass just the id; callers
+   * that already know the system (e.g. profile-driven defaults) can
+   * pass all three fields to skip it.
+   */
+  public async setPaymentData(
+    orderFormId: string,
+    input: SetPaymentDataInput
+  ): Promise<SimpleCart> {
+    const current = await this.deps.checkout.getOrderForm(orderFormId)
+
+    this.assertSameCart(orderFormId, current)
+
+    let { paymentSystemName } = input
+    let { group } = input
+
+    if (!paymentSystemName || !group) {
+      const systems = current.paymentData?.paymentSystems ?? []
+      const match = systems.find(
+        (s) => (s.stringId ?? String(s.id)) === input.paymentSystemId
+      )
+
+      if (!match) {
+        throw new Error(
+          `Cart.setPaymentData: paymentSystem ${input.paymentSystemId} is not configured on this orderForm. Call getAvailablePaymentSystems to see the merchant's configured methods.`
+        )
+      }
+
+      paymentSystemName = paymentSystemName ?? match.name
+      group = group ?? match.groupName
+    }
+
+    const value = input.value ?? current.value
+    const installments = input.installments ?? 1
+
+    // Pull buyer identity from clientProfileData so VTEX surfaces the
+    // name + document badges on the PCI Gateway transaction widget
+    // ("Ionel Merca" + "document" in reference orders; without these
+    // the widget renders "Fără denumire"/No name).
+    const profile = current.clientProfileData as
+      | {
+          firstName?: string
+          lastName?: string
+          document?: string | null
+          documentType?: string | null
+        }
+      | null
+      | undefined
+
+    const buyerIdentity: {
+      firstName?: string
+      lastName?: string
+      document?: string
+      documentType?: string
+    } = {}
+
+    if (profile?.firstName) buyerIdentity.firstName = profile.firstName
+    if (profile?.lastName) buyerIdentity.lastName = profile.lastName
+    if (profile?.document) buyerIdentity.document = profile.document
+    if (profile?.documentType) buyerIdentity.documentType = profile.documentType
+
+    const updated = await this.deps.checkout.addPaymentData(orderFormId, {
+      payments: [
+        {
+          paymentSystem: input.paymentSystemId,
+          paymentSystemName,
+          group,
+          value,
+          installments,
+          installmentsInterestRate: 0,
+          referenceValue: value,
+          hasDefaultBillingAddress: false,
+          ...buyerIdentity,
+        },
+      ],
+    })
+
+    this.assertSameCart(orderFormId, updated)
+
+    return mapOrderFormToCart(updated)
   }
 
   /**

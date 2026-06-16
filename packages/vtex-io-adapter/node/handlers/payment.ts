@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- demo-quality stdout instrumentation; tracked by issue 0005 */
 /**
  * Payment handler — POST /_v/acg/payment/execute
  *
@@ -8,6 +9,12 @@
  * exposed for the MCP server (Claude Desktop iframe payment widget) so
  * it can drive the same ceremony from a non-chat surface. Issue 04
  * (post-demo, shared catalogue) reconciles the duplication.
+ *
+ * NOTE: This route does NOT call any VTEX checkout/transaction API. The
+ * only VTEX call is `getOrderForm` (to read the cart for drift detection).
+ * The "orderId" returned is `ACG-{Date.now()}` — a synthetic id, not a
+ * real VTEX orderGroup. For real VTEX orders use the headless flow tools
+ * (create_cart_mandate → place_order → send_payment_info → authorize_transaction).
  *
  * Request body: { mandateId: string }
  * Response: { success: true,  orderId, mandateId, signedBy }
@@ -99,12 +106,18 @@ interface ExecutePaymentFailure {
   paymentReceiptUrl?: string
 }
 
+const TAG = '[ACG executePayment]'
+
 export async function executePayment(ctx: Context): Promise<void> {
+  console.log(`${TAG} start (LEGACY MOCK — does NOT create a real VTEX order)`)
   let body: ExecutePaymentRequest
 
   try {
     body = (await json(ctx.req)) as ExecutePaymentRequest
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+
+    console.log(`${TAG} EXIT 400: invalid request body — ${msg}`)
     ctx.status = 400
     ctx.body = {
       success: false,
@@ -116,9 +129,16 @@ export async function executePayment(ctx: Context): Promise<void> {
     return
   }
 
+  console.log(
+    `${TAG} request body: mandateId=${body.mandateId ?? '<none>'} forceReject=${
+      body.forceReject ?? false
+    }`
+  )
+
   const { mandateId } = body
 
   if (!mandateId || typeof mandateId !== 'string') {
+    console.log(`${TAG} EXIT 400: missing or non-string mandateId`)
     ctx.status = 400
     ctx.body = {
       success: false,
@@ -132,7 +152,12 @@ export async function executePayment(ctx: Context): Promise<void> {
 
   const orderFormId = getOrderFormIdFromRequest(ctx)
 
+  console.log(`${TAG} orderFormId from request = ${orderFormId ?? '<none>'}`)
+
   if (!orderFormId) {
+    console.log(
+      `${TAG} EXIT 400: no orderFormId in cookie or X-ACG-Order-Form-Id header`
+    )
     ctx.status = 400
     ctx.body = {
       success: false,
@@ -147,10 +172,17 @@ export async function executePayment(ctx: Context): Promise<void> {
   const cart = new Cart({ checkout: ctx.clients.checkout })
   let currentCart
 
+  console.log(`${TAG} → GET /api/checkout/pub/orderForm/${orderFormId}`)
   try {
     currentCart = await cart.getCart(orderFormId)
+    console.log(
+      `${TAG} ← cart: items=${currentCart.items.length} total=${currentCart.total} ${currentCart.currency}`
+    )
   } catch (err) {
     if (err instanceof OrderFormSubstitutedError) {
+      console.log(
+        `${TAG} EXIT 409: orderForm substituted by VTEX (requested=${err.requested} received=${err.received})`
+      )
       ctx.status = 409
       ctx.body = {
         success: false,
@@ -163,6 +195,9 @@ export async function executePayment(ctx: Context): Promise<void> {
       return
     }
 
+    const msg = err instanceof Error ? err.message : String(err)
+
+    console.log(`${TAG} ✗ getCart threw: ${msg}`)
     throw err
   }
 
@@ -172,9 +207,17 @@ export async function executePayment(ctx: Context): Promise<void> {
     vbase: ctx.clients.vbase,
   })
 
+  console.log(`${TAG} verifying mandate ${mandateId} against current cart…`)
   const verdict = await orchestration.verifyAgainstCart(mandateId, currentCart)
 
+  console.log(
+    `${TAG} verdict: verification.valid=${
+      verdict.verification.valid
+    } cartMatches=${verdict.cartMatches} reason=${verdict.reason ?? '<none>'}`
+  )
+
   if (!verdict.verification.valid) {
+    console.log(`${TAG} EXIT 200 success:false — mandate signature invalid`)
     ctx.status = 200
     ctx.body = {
       success: false,
@@ -187,6 +230,7 @@ export async function executePayment(ctx: Context): Promise<void> {
   }
 
   if (!verdict.cartMatches) {
+    console.log(`${TAG} EXIT 200 success:false — cart drifted`)
     ctx.status = 200
     ctx.body = {
       success: false,
@@ -255,6 +299,9 @@ export async function executePayment(ctx: Context): Promise<void> {
       ? ('payment_mandate_not_expired' as const)
       : undefined
 
+  console.log(
+    `${TAG} starting mock AP2 ceremony (CP signs PaymentMandate → Network verifies + signs PaymentReceipt)…`
+  )
   const { paymentMandate, paymentReceipt } = await payments.signAndSubmit({
     cartMandate: bundle.cartMandate,
     // Per Q11 — hardcoded for v1 (interactive flows only). Autonomous
@@ -275,7 +322,14 @@ export async function executePayment(ctx: Context): Promise<void> {
   // injected between our sign and the network call). Surface the
   // rejection with the signed receipt; the iframe still renders the
   // 7-check checklist with the failing dimensions.
+  console.log(
+    `${TAG} ceremony done: paymentMandateId=${paymentMandateId} paymentReceiptId=${paymentReceiptId} approval_status=${paymentReceipt.contents.approval_status}`
+  )
+
   if (paymentReceipt.contents.approval_status === 'rejected') {
+    console.log(
+      `${TAG} EXIT 200 success:false — network rejected: ${paymentReceipt.contents.rejection_reason}`
+    )
     ctx.status = 200
     ctx.body = {
       success: false,
@@ -293,6 +347,10 @@ export async function executePayment(ctx: Context): Promise<void> {
   }
 
   const orderId = `ACG-${Date.now()}`
+
+  console.log(
+    `${TAG} ✓ done — returning synthetic orderId=${orderId} (this is NOT a real VTEX order)`
+  )
 
   ctx.status = 200
   ctx.body = {

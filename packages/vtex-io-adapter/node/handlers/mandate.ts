@@ -15,36 +15,40 @@
  * pre-signed mandate; the only writer is `MandateOrchestration.signAndPersist`.
  */
 
-import { MandateOrchestration } from '../mandates/mandate-orchestration';
-import { buildMerchantIdentity, resolveMerchantDomain } from './did';
+import { MandateOrchestration } from '../mandates/mandate-orchestration'
+import { buildMerchantIdentity, resolveMerchantDomain } from './did'
 
 export async function getMandate(ctx: Context) {
   try {
-    const mandateId = ctx.vtex.route?.params?.mandateId ?? ctx.params?.mandateId;
+    const mandateId = ctx.vtex.route?.params?.mandateId ?? ctx.params?.mandateId
+
     if (!mandateId || typeof mandateId !== 'string') {
-      ctx.status = 400;
-      ctx.body = { error: 'Missing mandate ID' };
-      return;
+      ctx.status = 400
+      ctx.body = { error: 'Missing mandate ID' }
+
+      return
     }
 
-    const identity = buildMerchantIdentity(ctx);
+    const identity = buildMerchantIdentity(ctx)
     const orchestration = new MandateOrchestration({
       identity,
       vbase: ctx.clients.vbase,
-    });
+    })
 
     const [bundle, verification] = await Promise.all([
       orchestration.retrieve(mandateId),
       orchestration.verify(mandateId),
-    ]);
+    ])
 
     if (!bundle) {
-      ctx.status = 404;
-      ctx.body = { error: 'Mandate not found' };
-      return;
+      ctx.status = 404
+      ctx.body = { error: 'Mandate not found' }
+
+      return
     }
 
-    const host = resolveMerchantDomain(ctx);
+    const host = resolveMerchantDomain(ctx)
+
     ctx.body = {
       bundle,
       verification: {
@@ -52,13 +56,13 @@ export async function getMandate(ctx: Context) {
         checks: verification.checks,
         didDocumentUrl: `https://${host}/_v/acg/.well-known/did.json`,
       },
-    };
+    }
   } catch (error) {
-    console.error('Get mandate error:', error);
-    ctx.status = 500;
+    console.error('Get mandate error:', error)
+    ctx.status = 500
     ctx.body = {
       error: 'Failed to retrieve mandate',
       message: error instanceof Error ? error.message : 'Unknown error',
-    };
+    }
   }
 }

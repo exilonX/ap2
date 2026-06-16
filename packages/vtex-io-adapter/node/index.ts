@@ -22,6 +22,14 @@ import {
   getOrderStatus,
 } from './handlers/checkout'
 import { serveDIDDocument } from './handlers/did'
+import {
+  authorizeTransactionHandler,
+  createMandateHandler,
+  listPaymentMethodsHandler,
+  placeOrderHandler,
+  sendPaymentInfoHandler,
+  setPaymentMethodHandler,
+} from './handlers/headless-checkout'
 import { getMandate } from './handlers/mandate'
 import { executePayment } from './handlers/payment'
 import {
@@ -145,6 +153,31 @@ export default new Service({
     executePayment: method({
       POST: [...guarded.mutating, executePayment],
     }),
+
+    // Headless order flow — six AgentTool-backed routes that drive a
+    // real VTEX order to completion. Used by the MCP-side proxy tools so
+    // Claude Desktop / Claude Code can drive the same flow the widget does.
+    // Entry point: createMandate signs the AP2 cart mandate AND writes its
+    // id into orderForm.customData.ap2 so the rest of the chain can find it.
+    createMandate: method({
+      POST: [...guarded.mutating, createMandateHandler],
+    }),
+    listPaymentMethods: method({
+      POST: [...guarded.read, listPaymentMethodsHandler],
+    }),
+    setPaymentMethod: method({
+      POST: [...guarded.mutating, setPaymentMethodHandler],
+    }),
+    placeOrder: method({
+      POST: [...guarded.mutating, placeOrderHandler],
+    }),
+    sendPaymentInfo: method({
+      POST: [...guarded.mutating, sendPaymentInfoHandler],
+    }),
+    authorizeTransaction: method({
+      POST: [...guarded.mutating, authorizeTransactionHandler],
+    }),
+
     orderStatus: method({
       GET: [...guarded.read, getOrderStatus],
     }),

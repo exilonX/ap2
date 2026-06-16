@@ -10,19 +10,19 @@
  * sees the complete tool surface in a single list.
  */
 
-import type { LLMTool } from '../clients/llm';
-import type { AgentTool, ToolContext, ToolEffect } from './types';
+import type { LLMTool } from '../clients/llm'
+import type { AgentTool, ToolContext, ToolEffect } from './types'
 
 // ─── Built-in registry (module-scoped) ─────────────────────────────
 
-const tools = new Map<string, AgentTool>();
+const tools = new Map<string, AgentTool>()
 
 /**
  * Register an AgentTool. Idempotent — re-registering the same name
  * overwrites the prior entry (useful for testing).
  */
 export function register(tool: AgentTool): void {
-  tools.set(tool.definition.name, tool);
+  tools.set(tool.definition.name, tool)
 }
 
 /**
@@ -30,7 +30,7 @@ export function register(tool: AgentTool): void {
  * Used by the chat handler to build the tool list it sends to the LLM.
  */
 export function getDefinitions(): LLMTool[] {
-  return Array.from(tools.values()).map((t) => t.definition);
+  return Array.from(tools.values()).map((t) => t.definition)
 }
 
 /**
@@ -45,16 +45,18 @@ export async function dispatch(
   args: Record<string, unknown>,
   ctx: ToolContext
 ): Promise<ToolEffect | null> {
-  const tool = tools.get(name);
-  if (!tool) return null;
-  return tool.execute(args, ctx);
+  const tool = tools.get(name)
+
+  if (!tool) return null
+
+  return tool.execute(args, ctx)
 }
 
 /**
  * Test/debug helper — list registered tool names. Not used at runtime.
  */
 export function listRegistered(): string[] {
-  return Array.from(tools.keys());
+  return Array.from(tools.keys())
 }
 
 /**
@@ -63,6 +65,7 @@ export function listRegistered(): string[] {
  *
  * @internal
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export function _clear(): void {
-  tools.clear();
+  tools.clear()
 }

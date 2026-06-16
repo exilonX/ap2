@@ -8,8 +8,8 @@
  * persistence, and DID composition all live in the identity module.
  */
 
-import { MerchantIdentity } from '../identity/merchant-identity';
-import { VBaseKeyStore } from '../identity/vbase-keystore';
+import { MerchantIdentity } from '../identity/merchant-identity'
+import { VBaseKeyStore } from '../identity/vbase-keystore'
 
 /**
  * Build the merchant DID domain from the request context.
@@ -18,10 +18,11 @@ import { VBaseKeyStore } from '../identity/vbase-keystore';
  * are namespaced (matches VTEX's myvtex.com URL convention).
  */
 export function resolveMerchantDomain(ctx: Context): string {
-  const workspace = ctx.vtex.workspace || 'master';
+  const workspace = ctx.vtex.workspace || 'master'
+
   return workspace === 'master'
     ? `${ctx.vtex.account}.myvtex.com`
-    : `${workspace}--${ctx.vtex.account}.myvtex.com`;
+    : `${workspace}--${ctx.vtex.account}.myvtex.com`
 }
 
 /**
@@ -31,9 +32,10 @@ export function resolveMerchantDomain(ctx: Context): string {
  * memoised inside `MerchantIdentity` after first load.
  */
 export function buildMerchantIdentity(ctx: Context): MerchantIdentity {
-  const keyStore = new VBaseKeyStore(ctx.clients.vbase);
-  const domain = resolveMerchantDomain(ctx);
-  return new MerchantIdentity({ keyStore, domain });
+  const keyStore = new VBaseKeyStore(ctx.clients.vbase)
+  const domain = resolveMerchantDomain(ctx)
+
+  return new MerchantIdentity({ keyStore, domain })
 }
 
 /**
@@ -42,17 +44,18 @@ export function buildMerchantIdentity(ctx: Context): MerchantIdentity {
  */
 export async function serveDIDDocument(ctx: Context) {
   try {
-    const identity = buildMerchantIdentity(ctx);
-    const didDocument = await identity.getDIDDocument();
-    ctx.set('Content-Type', 'application/did+ld+json');
-    ctx.set('Cache-Control', 'public, max-age=3600');
-    ctx.body = didDocument;
+    const identity = buildMerchantIdentity(ctx)
+    const didDocument = await identity.getDIDDocument()
+
+    ctx.set('Content-Type', 'application/did+ld+json')
+    ctx.set('Cache-Control', 'public, max-age=3600')
+    ctx.body = didDocument
   } catch (error) {
-    console.error('DID document error:', error);
-    ctx.status = 500;
+    console.error('DID document error:', error)
+    ctx.status = 500
     ctx.body = {
       error: 'Failed to serve DID document',
       message: error instanceof Error ? error.message : 'Unknown error',
-    };
+    }
   }
 }

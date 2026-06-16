@@ -10,29 +10,29 @@
 
 export class InvalidSkuFormatError extends Error {
   constructor(public sku: string) {
-    super(`Invalid SKU format: ${sku}`);
-    this.name = 'InvalidSkuFormatError';
+    super(`Invalid SKU format: ${sku}`)
+    this.name = 'InvalidSkuFormatError'
   }
 }
 
 export class ItemNotAddedError extends Error {
   constructor(public sku: string) {
-    super(`SKU ${sku} not added by VTEX (likely unknown or out of stock)`);
-    this.name = 'ItemNotAddedError';
+    super(`SKU ${sku} not added by VTEX (likely unknown or out of stock)`)
+    this.name = 'ItemNotAddedError'
   }
 }
 
 export class ItemNotInCartError extends Error {
   constructor(public sku: string) {
-    super(`SKU ${sku} not in cart`);
-    this.name = 'ItemNotInCartError';
+    super(`SKU ${sku} not in cart`)
+    this.name = 'ItemNotInCartError'
   }
 }
 
 export class TransientCartError extends Error {
   constructor(public code: string) {
-    super(`Transient VTEX cart error: ${code}`);
-    this.name = 'TransientCartError';
+    super(`Transient VTEX cart error: ${code}`)
+    this.name = 'TransientCartError'
   }
 }
 
@@ -40,7 +40,7 @@ export class OrderFormSubstitutedError extends Error {
   constructor(public requested: string, public received: string) {
     super(
       `VTEX substituted orderFormId: requested ${requested}, received ${received}`
-    );
-    this.name = 'OrderFormSubstitutedError';
+    )
+    this.name = 'OrderFormSubstitutedError'
   }
 }

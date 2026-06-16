@@ -5,14 +5,62 @@
  * Handle product search and detail requests.
  */
 
+import type { PineconeMatch } from '../clients/pinecone'
 import { mapProduct, mapProductDetail } from '../mappers/product'
+import type { SimpleProduct } from '../types/shared'
+import { semanticSearch } from './rag'
 
 // Cache store currency to avoid repeated orderForm creation
 let cachedCurrency: string | null = null
 
 /**
+ * Map a Pinecone match (carrying sync-catalog-emitted metadata) to a
+ * SimpleProduct. Mirrors `mapProduct`'s output shape so the response is
+ * identical regardless of whether semantic or legacy search served the result.
+ *
+ * Falls back gracefully on missing fields — the chat handler's hydration step
+ * downstream (when the agent does `get_product_details` for a specific SKU)
+ * will refresh anything stale.
+ */
+export function pineconeMatchToProduct(match: PineconeMatch): SimpleProduct {
+  const meta = match.metadata ?? {}
+  const sku = String(meta.sku ?? match.id)
+  const price = Number(meta.price ?? 0)
+  const originalPrice = Number(meta.originalPrice ?? 0)
+  const rawCategory = String(meta.category ?? '')
+  const category = rawCategory
+    ? rawCategory
+        .replace(/\//g, ' > ')
+        .replace(/^ > | > $/g, '')
+        .trim()
+    : undefined
+
+  return {
+    sku,
+    name: String(meta.name ?? 'Unknown'),
+    price,
+    originalPrice: originalPrice > price ? originalPrice : undefined,
+    image: meta.image ? String(meta.image) : undefined,
+    available: meta.available !== false,
+    category,
+    brand: meta.brand ? String(meta.brand) : undefined,
+  }
+}
+
+/**
  * GET /_v/acg/search
  * Search for products
+ *
+ * Two-tier strategy:
+ *   1. Semantic search via Pinecone (semanticSearch in handlers/rag.ts) —
+ *      matches the chat handler's behavior so queries like "rochie" /
+ *      "dress" / "rochiță damă" find products even when their literal
+ *      tokens aren't in the catalog text.
+ *   2. Falls back to VTEX legacy `/catalog_system/pub/products/search/{q}`
+ *      when Pinecone is unconfigured, errored, or returned no hits.
+ *
+ * Both paths feed the same filters + qualifier-conflict pass before
+ * responding, so the output shape is identical regardless of source.
  */
 export async function searchProducts(ctx: Context) {
   const {
@@ -27,6 +75,8 @@ export async function searchProducts(ctx: Context) {
     return
   }
 
+  const parsedLimit = parseInt(limit as string, 10)
+
   try {
     console.log('[ACG Search] Request:', {
       q,
@@ -36,18 +86,35 @@ export async function searchProducts(ctx: Context) {
       maxPrice,
     })
 
-    const vtexProducts = await search.searchProducts(
-      q as string,
-      parseInt(limit as string, 10)
-    )
+    let products: SimpleProduct[] = []
+    let source: 'semantic' | 'legacy' = 'semantic'
 
-    console.log(
-      '[ACG Search] VTEX Response:',
-      `${vtexProducts.length} products found`
-    )
+    // Tier 1: semantic search via Pinecone.
+    const ragResult = await semanticSearch(ctx, q as string, parsedLimit, {
+      available: true,
+    })
 
-    // Map to simple format
-    let products = vtexProducts.map(mapProduct)
+    if (!ragResult.fallback && ragResult.results.length > 0) {
+      products = ragResult.results.map(pineconeMatchToProduct)
+      console.log(
+        '[ACG Search] Pinecone Response:',
+        `${products.length} products found (top score ${(
+          (ragResult.results[0]?.score ?? 0) * 100
+        ).toFixed(0)}%)`
+      )
+    } else {
+      // Tier 2: legacy VTEX catalog search.
+      source = 'legacy'
+      const vtexProducts = await search.searchProducts(q as string, parsedLimit)
+
+      console.log(
+        '[ACG Search] VTEX Response:',
+        `${vtexProducts.length} products found (semantic ${
+          ragResult.fallback ? 'unavailable' : 'returned 0'
+        })`
+      )
+      products = vtexProducts.map(mapProduct)
+    }
 
     // Apply filters (if provided)
     if (category) {
@@ -111,11 +178,12 @@ export async function searchProducts(ctx: Context) {
       total: products.length,
       query: q,
       currency,
+      source,
     }
 
     console.log(
       '[ACG Search] Response:',
-      `${response.products?.length ?? 0} products, currency: ${
+      `${response.products?.length ?? 0} products via ${source}, currency: ${
         response.currency ?? 'unknown'
       }`
     )

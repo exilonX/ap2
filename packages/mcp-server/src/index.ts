@@ -26,6 +26,7 @@ import { VtexClient } from './client'
 import { registerSearchTools } from './tools/search'
 import { registerCartTools } from './tools/cart'
 import { registerCheckoutTools } from './tools/checkout'
+import { registerHeadlessCheckoutTools } from './tools/headless-checkout'
 import { registerMandateTools } from './tools/mandate'
 
 // Configuration from environment
@@ -68,6 +69,7 @@ async function main() {
   registerSearchTools(server, vtexClient)
   registerCartTools(server, vtexClient)
   registerCheckoutTools(server, vtexClient)
+  registerHeadlessCheckoutTools(server, vtexClient)
   registerMandateTools(server, vtexClient)
 
   // Connect via stdio (for Claude Desktop) — must be AFTER all tools registered

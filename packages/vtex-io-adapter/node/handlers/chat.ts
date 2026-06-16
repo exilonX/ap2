@@ -1102,7 +1102,9 @@ async function executeTool(
           postalCode: args.postalCode as string,
           country: args.country as string,
           complement: (args.complement as string) || '',
-          neighborhood: '',
+          ...(typeof args.neighborhood === 'string' && args.neighborhood
+            ? { neighborhood: args.neighborhood }
+            : {}),
         })
 
         return {

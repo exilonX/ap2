@@ -14,7 +14,8 @@
 import { randomBytes, createPrivateKey, createPublicKey } from 'crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { canonicalHash } from './jcs';
-import { didFromDomain, type KeyPair } from './did';
+import { didFromDomain } from './did';
+import type { KeyPair } from './did';
 
 // ─── AP2-Aligned Types ───────────────────────────────────────────
 

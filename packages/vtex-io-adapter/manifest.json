@@ -1,7 +1,7 @@
 {
   "name": "acg-adapter",
   "vendor": "vtexeurope",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "title": "Agent Commerce Gateway Adapter",
   "description": "VTEX IO adapter for AI agent commerce operations",
   "mustUpdateAt": "2025-01-01",
@@ -63,6 +63,16 @@
       "pineconeIndexHost": {
         "title": "Pinecone Index Host",
         "description": "Pinecone index host (e.g., acg-products-xxxxx.svc.aped-1234.pinecone.io)",
+        "type": "string"
+      },
+      "vtexAppKey": {
+        "title": "VTEX App Key",
+        "description": "AppKey of a VTEX API key with the 'Payments Gateway' role. Required to authorize card transactions via /pvt/ endpoints. Leave empty for Cash/promissory-only flows — the 401 soft-success fallback keeps working.",
+        "type": "string"
+      },
+      "vtexAppToken": {
+        "title": "VTEX App Token",
+        "description": "AppToken paired with vtexAppKey.",
         "type": "string"
       },
       "acgAllowedOrigins": {
@@ -137,6 +147,13 @@
     {
       "name": "outbound-access",
       "attrs": {
+        "host": "{{account}}.vtexpayments.com.br",
+        "path": "*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
         "host": "api.anthropic.com",
         "path": "/v1/*"
       }
@@ -159,6 +176,20 @@
       "name": "outbound-access",
       "attrs": {
         "host": "*.pinecone.io",
+        "path": "/*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
+        "host": "*.svc.aped-4627-b74a.pinecone.io",
+        "path": "/*"
+      }
+    },
+    {
+      "name": "outbound-access",
+      "attrs": {
+        "host": "acg-rag-vtexeurope-rlhbm0e.svc.aped-4627-b74a.pinecone.io",
         "path": "/*"
       }
     },

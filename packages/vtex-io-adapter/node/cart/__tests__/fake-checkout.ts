@@ -18,10 +18,13 @@
 
 import type {
   ClientProfileData,
+  PaymentData,
+  PaymentSystem,
+  PlaceOrderResponse,
   ShippingData,
   VTEXOrderForm,
   VTEXOrderFormItem,
-} from '../../clients/checkout';
+} from '../../clients/checkout'
 
 type FakeMethod =
   | 'getOrderForm'
@@ -31,19 +34,25 @@ type FakeMethod =
   | 'addCoupon'
   | 'addClientProfileData'
   | 'addShippingData'
+  | 'addPaymentData'
+  | 'setCustomData'
+  | 'placeOrder'
+  | 'processOrder'
   | 'simulateOrderForm'
-  | 'createOrderForm';
+  | 'createOrderForm'
 
-let fakeIdCounter = 1;
+let fakeIdCounter = 1
 
 function newOrderFormId(): string {
-  return `of-fake-${fakeIdCounter++}`;
+  return `of-fake-${fakeIdCounter++}`
 }
 
 /**
  * Build a minimal-but-realistic empty VTEXOrderForm with the given id.
  */
-export function makeEmptyOrderForm(id: string = newOrderFormId()): VTEXOrderForm {
+export function makeEmptyOrderForm(
+  id: string = newOrderFormId()
+): VTEXOrderForm {
   return {
     orderFormId: id,
     salesChannel: '1',
@@ -102,7 +111,7 @@ export function makeEmptyOrderForm(id: string = newOrderFormId()): VTEXOrderForm
     subscriptionData: null,
     merchantContextData: null,
     itemsOrdination: null,
-  };
+  }
 }
 
 /**
@@ -111,7 +120,7 @@ export function makeEmptyOrderForm(id: string = newOrderFormId()): VTEXOrderForm
 export function makeItem(
   sku: string,
   quantity: number,
-  unitPriceCents: number = 5000
+  unitPriceCents = 5000
 ): VTEXOrderFormItem {
   return {
     uniqueId: `unique-${sku}`,
@@ -162,7 +171,7 @@ export function makeItem(
     unitMultiplier: 1,
     manufacturerCode: null,
     priceDefinition: null,
-  };
+  }
 }
 
 /**
@@ -172,48 +181,55 @@ function recomputeTotals(orderForm: VTEXOrderForm): void {
   orderForm.value = orderForm.items.reduce(
     (sum, i) => sum + i.sellingPrice * i.quantity,
     0
-  );
-  const itemsTotalizer = orderForm.totalizers.find((t) => t.id === 'Items');
+  )
+  const itemsTotalizer = orderForm.totalizers.find((t) => t.id === 'Items')
+
   if (itemsTotalizer) {
-    itemsTotalizer.value = orderForm.value;
+    itemsTotalizer.value = orderForm.value
   } else {
-    orderForm.totalizers.push({ id: 'Items', name: 'Items', value: orderForm.value });
+    orderForm.totalizers.push({
+      id: 'Items',
+      name: 'Items',
+      value: orderForm.value,
+    })
   }
 }
 
 function setDiscount(orderForm: VTEXOrderForm, discountCents: number): void {
-  const t = orderForm.totalizers.find((x) => x.id === 'Discounts');
+  const t = orderForm.totalizers.find((x) => x.id === 'Discounts')
+
   if (t) {
-    t.value = -Math.abs(discountCents);
+    t.value = -Math.abs(discountCents)
   } else {
     orderForm.totalizers.push({
       id: 'Discounts',
       name: 'Discounts',
       value: -Math.abs(discountCents),
-    });
+    })
   }
-  orderForm.value = orderForm.value - Math.abs(discountCents);
+
+  orderForm.value -= Math.abs(discountCents)
 }
 
 function clone<T>(x: T): T {
-  return JSON.parse(JSON.stringify(x)) as T;
+  return JSON.parse(JSON.stringify(x)) as T
 }
 
 export interface CouponRule {
   /** Code that triggers a discount when applied. */
-  code: string;
+  code: string
   /** Discount in cents to subtract from value. */
-  discountCents: number;
+  discountCents: number
 }
 
 export class FakeCheckoutClient {
-  private store: Map<string, VTEXOrderForm> = new Map();
+  private store: Map<string, VTEXOrderForm> = new Map()
 
   // Injection state
-  private silentlyAcceptedSkus: Set<string> = new Set();
-  private nextFailures: Map<FakeMethod, Error> = new Map();
-  private nextSubstitutedId: string | null = null;
-  private couponRules: Map<string, number> = new Map(); // code -> discount cents
+  private silentlyAcceptedSkus: Set<string> = new Set()
+  private nextFailures: Map<FakeMethod, Error> = new Map()
+  private nextSubstitutedId: string | null = null
+  private couponRules: Map<string, number> = new Map() // code -> discount cents
 
   // ─── Test injection points ────────────────────────────────────────
 
@@ -223,7 +239,7 @@ export class FakeCheckoutClient {
    * silent-success on unknown SKUs. Persistent (does not consume itself).
    */
   public silentlyAccepts(sku: string): void {
-    this.silentlyAcceptedSkus.add(sku);
+    this.silentlyAcceptedSkus.add(sku)
   }
 
   /**
@@ -231,7 +247,7 @@ export class FakeCheckoutClient {
    * after the matching call.
    */
   public failNextCall(method: FakeMethod, error: Error): void {
-    this.nextFailures.set(method, error);
+    this.nextFailures.set(method, error)
   }
 
   /**
@@ -239,7 +255,7 @@ export class FakeCheckoutClient {
    * instead — simulating VTEX silently swapping orderFormId. One-shot.
    */
   public substituteNextOrderFormId(replacement: string): void {
-    this.nextSubstitutedId = replacement;
+    this.nextSubstitutedId = replacement
   }
 
   /**
@@ -247,7 +263,7 @@ export class FakeCheckoutClient {
    * orderForm.
    */
   public addCouponRule(code: string, discountCents: number): void {
-    this.couponRules.set(code, discountCents);
+    this.couponRules.set(code, discountCents)
   }
 
   // ─── Test helpers ─────────────────────────────────────────────────
@@ -256,100 +272,134 @@ export class FakeCheckoutClient {
    * Insert a pre-built orderForm into the store (for setting up fixtures).
    */
   public seed(orderForm: VTEXOrderForm): void {
-    this.store.set(orderForm.orderFormId, orderForm);
+    this.store.set(orderForm.orderFormId, orderForm)
+  }
+
+  /**
+   * Seed the merchant's configured payment systems onto an existing
+   * orderForm — what `addPaymentData` then resolves against, and what
+   * `Cart.getAvailablePaymentSystems` reads back.
+   *
+   * Idempotent — replaces any previously-seeded systems.
+   */
+  public seedPaymentSystems(
+    orderFormId: string,
+    systems: PaymentSystem[]
+  ): void {
+    const of = this.requireOrderForm(orderFormId)
+
+    of.paymentData.paymentSystems = systems
   }
 
   // ─── Methods that mirror CheckoutClient ───────────────────────────
 
   public async createOrderForm(): Promise<VTEXOrderForm> {
-    this.tripFailure('createOrderForm');
-    const of = makeEmptyOrderForm();
-    this.store.set(of.orderFormId, of);
-    return this.maybeSubstituteId(of);
+    this.tripFailure('createOrderForm')
+    const of = makeEmptyOrderForm()
+
+    this.store.set(of.orderFormId, of)
+
+    return this.maybeSubstituteId(of)
   }
 
   public async getOrderForm(orderFormId: string): Promise<VTEXOrderForm> {
-    this.tripFailure('getOrderForm');
-    const of = this.store.get(orderFormId);
+    this.tripFailure('getOrderForm')
+    const of = this.store.get(orderFormId)
+
     if (!of) {
-      throw new Error(`FakeCheckoutClient: orderForm ${orderFormId} not found`);
+      throw new Error(`FakeCheckoutClient: orderForm ${orderFormId} not found`)
     }
-    return this.maybeSubstituteId(clone(of));
+
+    return this.maybeSubstituteId(clone(of))
   }
 
   public async addItems(
     orderFormId: string,
     items: Array<{ id: string; quantity: number; seller: string }>
   ): Promise<VTEXOrderForm> {
-    this.tripFailure('addItems');
-    const of = this.requireOrderForm(orderFormId);
+    this.tripFailure('addItems')
+    const of = this.requireOrderForm(orderFormId)
+
     for (const req of items) {
       if (this.silentlyAcceptedSkus.has(req.id)) {
         // Silent success: do not modify state.
-        continue;
+        continue
       }
-      const existing = of.items.find((i) => i.id === req.id);
+
+      const existing = of.items.find((i) => i.id === req.id)
+
       if (existing) {
-        existing.quantity += req.quantity;
+        existing.quantity += req.quantity
       } else {
-        of.items.push(makeItem(req.id, req.quantity));
+        of.items.push(makeItem(req.id, req.quantity))
       }
     }
-    recomputeTotals(of);
-    return this.maybeSubstituteId(clone(of));
+
+    recomputeTotals(of)
+
+    return this.maybeSubstituteId(clone(of))
   }
 
   public async updateItems(
     orderFormId: string,
     items: Array<{ index: number; quantity: number }>
   ): Promise<VTEXOrderForm> {
-    this.tripFailure('updateItems');
-    const of = this.requireOrderForm(orderFormId);
+    this.tripFailure('updateItems')
+    const of = this.requireOrderForm(orderFormId)
     // Sort descending so splices don't shift indexes we still need.
-    const sorted = [...items].sort((a, b) => b.index - a.index);
+    const sorted = [...items].sort((a, b) => b.index - a.index)
+
     for (const req of sorted) {
       if (req.index < 0 || req.index >= of.items.length) {
-        throw new Error(`FakeCheckoutClient: bad item index ${req.index}`);
+        throw new Error(`FakeCheckoutClient: bad item index ${req.index}`)
       }
+
       if (req.quantity === 0) {
-        of.items.splice(req.index, 1);
+        of.items.splice(req.index, 1)
       } else {
-        of.items[req.index].quantity = req.quantity;
+        of.items[req.index].quantity = req.quantity
       }
     }
-    recomputeTotals(of);
-    return this.maybeSubstituteId(clone(of));
+
+    recomputeTotals(of)
+
+    return this.maybeSubstituteId(clone(of))
   }
 
   public async removeItem(
     orderFormId: string,
     itemIndex: number
   ): Promise<VTEXOrderForm> {
-    this.tripFailure('removeItem');
-    return this.updateItems(orderFormId, [{ index: itemIndex, quantity: 0 }]);
+    this.tripFailure('removeItem')
+
+    return this.updateItems(orderFormId, [{ index: itemIndex, quantity: 0 }])
   }
 
   public async addCoupon(
     orderFormId: string,
     couponCode: string
   ): Promise<VTEXOrderForm> {
-    this.tripFailure('addCoupon');
-    const of = this.requireOrderForm(orderFormId);
-    const discount = this.couponRules.get(couponCode) ?? 0;
+    this.tripFailure('addCoupon')
+    const of = this.requireOrderForm(orderFormId)
+    const discount = this.couponRules.get(couponCode) ?? 0
+
     if (discount > 0 && of.items.length > 0) {
-      setDiscount(of, discount);
+      setDiscount(of, discount)
     }
-    of.marketingData = of.marketingData ?? {};
-    (of.marketingData as Record<string, unknown>).coupon = couponCode;
-    return this.maybeSubstituteId(clone(of));
+
+    of.marketingData = of.marketingData ?? {}
+    ;(of.marketingData as Record<string, unknown>).coupon = couponCode
+
+    return this.maybeSubstituteId(clone(of))
   }
 
   public async addClientProfileData(
     orderFormId: string,
     data: ClientProfileData
   ): Promise<VTEXOrderForm> {
-    this.tripFailure('addClientProfileData');
-    const of = this.requireOrderForm(orderFormId);
+    this.tripFailure('addClientProfileData')
+    const of = this.requireOrderForm(orderFormId)
+
     of.clientProfileData = {
       email: data.email ?? null,
       firstName: data.firstName ?? null,
@@ -366,29 +416,164 @@ export class FakeCheckoutClient {
       profileCompleteOnLoading: null,
       profileErrorOnLoading: null,
       customerClass: null,
-    };
-    return this.maybeSubstituteId(clone(of));
+    }
+
+    return this.maybeSubstituteId(clone(of))
   }
 
   public async addShippingData(
     orderFormId: string,
     data: ShippingData
   ): Promise<VTEXOrderForm> {
-    this.tripFailure('addShippingData');
-    const of = this.requireOrderForm(orderFormId);
+    this.tripFailure('addShippingData')
+    const of = this.requireOrderForm(orderFormId)
+
     of.shippingData = {
       address: data.selectedAddresses[0] ?? null,
       logisticsInfo: data.logisticsInfo,
       selectedAddresses: data.selectedAddresses,
       availableAddresses: [],
       pickupPoints: [],
-    };
-    return this.maybeSubstituteId(clone(of));
+    }
+
+    return this.maybeSubstituteId(clone(of))
+  }
+
+  public async addPaymentData(
+    orderFormId: string,
+    data: PaymentData
+  ): Promise<VTEXOrderForm> {
+    this.tripFailure('addPaymentData')
+    const of = this.requireOrderForm(orderFormId)
+
+    of.paymentData.payments = data.payments as unknown[]
+    of.paymentData.updateStatus = 'success'
+
+    return this.maybeSubstituteId(clone(of))
+  }
+
+  public async setCustomData(
+    orderFormId: string,
+    appId: string,
+    fields: Record<string, unknown>
+  ): Promise<VTEXOrderForm> {
+    this.tripFailure('setCustomData')
+    const of = this.requireOrderForm(orderFormId)
+    const existing = (of.customData as Record<string, unknown> | null) ?? {
+      customApps: [] as Array<{ id: string; fields: Record<string, unknown> }>,
+    }
+
+    const apps =
+      (existing.customApps as Array<{
+        id: string
+        fields: Record<string, unknown>
+      }>) ?? []
+
+    const idx = apps.findIndex((a) => a.id === appId)
+
+    if (idx === -1) {
+      apps.push({ id: appId, fields })
+    } else {
+      apps[idx] = { id: appId, fields }
+    }
+
+    of.customData = { ...existing, customApps: apps }
+
+    return this.maybeSubstituteId(clone(of))
+  }
+
+  public async placeOrder(
+    orderFormId: string,
+    input:
+      | string
+      | {
+          referenceId: string
+          value: number
+          referenceValue?: number
+          interestValue?: number
+          savePersonalData?: boolean
+          optinNewsLetter?: boolean
+        }
+  ): Promise<PlaceOrderResponse> {
+    // Accept either the legacy positional `referenceId` form or the new
+    // options-object form so older test cases keep working unchanged.
+    const referenceId = typeof input === 'string' ? input : input.referenceId
+
+    // Acknowledge the captured referenceId to keep ESLint quiet without
+    // changing the fake's recorded behaviour. Tests that need to inspect
+    // the body can override placeOrder directly.
+    // eslint-disable-next-line no-void
+    void referenceId
+
+    this.tripFailure('placeOrder')
+    const of = this.requireOrderForm(orderFormId)
+    const orderGroup = `og-${fakeIdCounter++}`
+    const transactionId = `tx-${fakeIdCounter++}`
+    const orderId = `${orderGroup}-01`
+
+    return {
+      orderGroup,
+      orders: [
+        {
+          orderId,
+          orderGroup,
+          state: 'pending',
+          value: of.value,
+          salesChannel: of.salesChannel,
+          totals: of.totalizers,
+          items: of.items,
+          paymentData: {
+            transactions: [
+              {
+                transactionId,
+                payments: (of.paymentData.payments as Array<
+                  Record<string, unknown>
+                >).map((p) => ({
+                  paymentSystem: Number(p.paymentSystem),
+                  paymentSystemName: String(p.paymentSystemName ?? ''),
+                  value: Number(p.value),
+                  installments: Number(p.installments ?? 1),
+                })),
+              },
+            ],
+          },
+        },
+      ],
+      transactionData: {
+        merchantTransactions: [
+          {
+            id: transactionId,
+            transactionId,
+            merchantName: 'fake-merchant',
+            payments: (of.paymentData.payments as Array<
+              Record<string, unknown>
+            >).map((p) => ({
+              paymentSystem: String(p.paymentSystem),
+              value: Number(p.value),
+              installments: Number(p.installments ?? 1),
+              referenceValue: Number(p.referenceValue ?? p.value),
+            })),
+          },
+        ],
+        receiverUri: `https://fake-merchant.vtexpayments.com.br/api/pub/transactions/${transactionId}/payments`,
+        gatewayCallbackTemplatePath: `/api/checkout/pub/gatewayCallback/${orderGroup}`,
+      },
+      // Echo `referenceId` so tests can assert it round-tripped.
+      referenceId,
+    } as PlaceOrderResponse & { referenceId: string }
+  }
+
+  public processOrderCalls: string[] = []
+
+  public async processOrder(orderGroup: string): Promise<void> {
+    this.tripFailure('processOrder')
+    this.processOrderCalls.push(orderGroup)
   }
 
   public async simulateOrderForm(orderFormId: string): Promise<VTEXOrderForm> {
-    this.tripFailure('simulateOrderForm');
-    const of = this.requireOrderForm(orderFormId);
+    this.tripFailure('simulateOrderForm')
+    const of = this.requireOrderForm(orderFormId)
+
     // Populate slas if a shipping address has been set, so getShippingOptions
     // can return something useful.
     if (of.shippingData.address) {
@@ -410,35 +595,42 @@ export class FakeCheckoutClient {
             shippingEstimate: '1bd',
           },
         ],
-      })) as unknown[];
+      })) as unknown[]
     }
-    return this.maybeSubstituteId(clone(of));
+
+    return this.maybeSubstituteId(clone(of))
   }
 
   // ─── Internals ────────────────────────────────────────────────────
 
   private requireOrderForm(id: string): VTEXOrderForm {
-    const of = this.store.get(id);
+    const of = this.store.get(id)
+
     if (!of) {
-      throw new Error(`FakeCheckoutClient: orderForm ${id} not found`);
+      throw new Error(`FakeCheckoutClient: orderForm ${id} not found`)
     }
-    return of;
+
+    return of
   }
 
   private tripFailure(method: FakeMethod): void {
-    const err = this.nextFailures.get(method);
+    const err = this.nextFailures.get(method)
+
     if (err) {
-      this.nextFailures.delete(method);
-      throw err;
+      this.nextFailures.delete(method)
+      throw err
     }
   }
 
   private maybeSubstituteId(orderForm: VTEXOrderForm): VTEXOrderForm {
     if (this.nextSubstitutedId !== null) {
-      const id = this.nextSubstitutedId;
-      this.nextSubstitutedId = null;
-      return { ...orderForm, orderFormId: id };
+      const id = this.nextSubstitutedId
+
+      this.nextSubstitutedId = null
+
+      return { ...orderForm, orderFormId: id }
     }
-    return orderForm;
+
+    return orderForm
   }
 }

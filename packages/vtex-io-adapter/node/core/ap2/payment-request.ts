@@ -18,16 +18,16 @@
  * these with an `Ap2` prefix to disambiguate.
  */
 
-import type { ContactAddress } from './contact-address';
+import type { ContactAddress } from './contact-address'
 
 /**
  * https://www.w3.org/TR/payment-request/#dom-paymentcurrencyamount
  */
 export interface PaymentCurrencyAmount {
   /** ISO 4217 three-letter currency code. */
-  currency: string;
+  currency: string
   /** Monetary value. */
-  value: number;
+  value: number
 }
 
 /**
@@ -35,52 +35,52 @@ export interface PaymentCurrencyAmount {
  */
 export interface PaymentItem {
   /** Human-readable description of the item. */
-  label: string;
-  amount: PaymentCurrencyAmount;
+  label: string
+  amount: PaymentCurrencyAmount
   /** If true, the amount is not final. */
-  pending?: boolean;
+  pending?: boolean
   /** Refund duration for this item, in days. AP2 default = 30. */
-  refund_period?: number;
+  refund_period?: number
 }
 
 /**
  * https://www.w3.org/TR/payment-request/#dom-paymentshippingoption
  */
 export interface PaymentShippingOption {
-  id: string;
-  label: string;
-  amount: PaymentCurrencyAmount;
-  selected?: boolean;
+  id: string
+  label: string
+  amount: PaymentCurrencyAmount
+  selected?: boolean
 }
 
 /**
  * https://www.w3.org/TR/payment-request/#dom-paymentoptions
  */
 export interface PaymentOptions {
-  request_payer_name?: boolean;
-  request_payer_email?: boolean;
-  request_payer_phone?: boolean;
-  request_shipping?: boolean;
+  request_payer_name?: boolean
+  request_payer_email?: boolean
+  request_payer_phone?: boolean
+  request_shipping?: boolean
   /** "shipping" | "delivery" | "pickup" */
-  shipping_type?: string;
+  shipping_type?: string
 }
 
 /**
  * https://www.w3.org/TR/payment-request/#dom-paymentmethoddata
  */
 export interface PaymentMethodData {
-  supported_methods: string;
-  data?: Record<string, unknown>;
+  supported_methods: string
+  data?: Record<string, unknown>
 }
 
 /**
  * https://www.w3.org/TR/payment-request/#dom-paymentdetailsmodifier
  */
 export interface PaymentDetailsModifier {
-  supported_methods: string;
-  total?: PaymentItem;
-  additional_display_items?: PaymentItem[];
-  data?: Record<string, unknown>;
+  supported_methods: string
+  total?: PaymentItem
+  additional_display_items?: PaymentItem[]
+  data?: Record<string, unknown>
 }
 
 /**
@@ -88,21 +88,21 @@ export interface PaymentDetailsModifier {
  */
 export interface PaymentDetailsInit {
   /** Unique identifier for the payment request. */
-  id: string;
-  display_items: PaymentItem[];
-  shipping_options?: PaymentShippingOption[];
-  modifiers?: PaymentDetailsModifier[];
-  total: PaymentItem;
+  id: string
+  display_items: PaymentItem[]
+  shipping_options?: PaymentShippingOption[]
+  modifiers?: PaymentDetailsModifier[]
+  total: PaymentItem
 }
 
 /**
  * https://www.w3.org/TR/payment-request/#paymentrequest-interface
  */
 export interface PaymentRequest {
-  method_data: PaymentMethodData[];
-  details: PaymentDetailsInit;
-  options?: PaymentOptions;
-  shipping_address?: ContactAddress;
+  method_data: PaymentMethodData[]
+  details: PaymentDetailsInit
+  options?: PaymentOptions
+  shipping_address?: ContactAddress
 }
 
 /**
@@ -113,16 +113,16 @@ export interface PaymentRequest {
  */
 export interface PaymentResponse {
   /** Unique ID from the original PaymentRequest (= payment_details_id). */
-  request_id: string;
+  request_id: string
   /** The payment method chosen by the user (e.g. "CARD", "MOCK_CARD"). */
-  method_name: string;
+  method_name: string
   /** Payment-method-specific details (typically an opaque token). */
-  details?: Record<string, unknown>;
-  shipping_address?: ContactAddress;
-  shipping_option?: PaymentShippingOption;
-  payer_name?: string;
-  payer_email?: string;
-  payer_phone?: string;
+  details?: Record<string, unknown>
+  shipping_address?: ContactAddress
+  shipping_option?: PaymentShippingOption
+  payer_name?: string
+  payer_email?: string
+  payer_phone?: string
 }
 
-export const PAYMENT_METHOD_DATA_DATA_KEY = 'payment_request.PaymentMethodData';
+export const PAYMENT_METHOD_DATA_DATA_KEY = 'payment_request.PaymentMethodData'

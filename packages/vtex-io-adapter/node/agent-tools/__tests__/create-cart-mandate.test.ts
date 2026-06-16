@@ -12,7 +12,10 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { createCartMandateTool } from '../create-cart-mandate'
-import { MandateOrchestration } from '../../mandates/mandate-orchestration'
+import {
+  MandateOrchestration,
+  readOrderFormState,
+} from '../../mandates/mandate-orchestration'
 import { MerchantIdentity } from '../../identity/merchant-identity'
 import { VBaseKeyStore } from '../../identity/vbase-keystore'
 import { makeFakeToolContext, seedCart } from './fakes'
@@ -88,6 +91,22 @@ describe('create_cart_mandate', () => {
 
     assert.equal(effect.mandate, undefined)
     assert.match(effect.result, /empty/i)
+  })
+
+  it('writes the mandate id into the per-orderForm VBase state record', async () => {
+    const deps = makeFakeToolContext()
+
+    seedCart(deps, [{ sku: 'apple', quantity: 1, unitPriceCents: 5000 }])
+
+    const effect = await createCartMandateTool.execute({}, deps.ctx)
+
+    assert.ok(effect.mandate)
+
+    const ap2 = await readOrderFormState(deps.vbase, deps.ctx.orderFormId!)
+
+    assert.equal(ap2.cartMandateId, effect.mandate!.mandateId)
+    assert.equal(ap2.didDocumentUrl, effect.mandate!.didDocumentUrl)
+    assert.equal(ap2.signedAt, effect.mandate!.signedAt)
   })
 
   it('persisted mandate is retrievable and verifies', async () => {

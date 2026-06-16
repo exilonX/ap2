@@ -38,7 +38,10 @@ async function getAppSettings(ctx: Context): Promise<RagSettings> {
     .catch(() => ({}))
 }
 
-function createEmbeddingsClient(ctx: Context, settings: RagSettings): EmbeddingsClient {
+function createEmbeddingsClient(
+  ctx: Context,
+  settings: RagSettings
+): EmbeddingsClient {
   if (!settings.openaiApiKey) {
     throw new Error('OpenAI API key not configured. Required for embeddings.')
   }
@@ -46,7 +49,10 @@ function createEmbeddingsClient(ctx: Context, settings: RagSettings): Embeddings
   return new EmbeddingsClient(ctx.vtex, { apiKey: settings.openaiApiKey })
 }
 
-function createPineconeClient(ctx: Context, settings: RagSettings): PineconeClient {
+function createPineconeClient(
+  ctx: Context,
+  settings: RagSettings
+): PineconeClient {
   if (!settings.pineconeApiKey || !settings.pineconeIndexHost) {
     throw new Error('Pinecone API key and index host not configured.')
   }
@@ -82,7 +88,7 @@ export async function getSyncStatus(ctx: Context) {
 export async function semanticSearch(
   ctx: Context,
   query: string,
-  topK: number = 5,
+  topK = 5,
   filter?: Record<string, unknown>
 ): Promise<{
   results: PineconeMatch[]

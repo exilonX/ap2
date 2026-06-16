@@ -5,7 +5,8 @@
  * Cost: ~$0.02 per 1M tokens (~$0.001 for a 500-product catalog)
  */
 
-import { ExternalClient, IOContext, InstanceOptions } from '@vtex/api'
+import type { IOContext, InstanceOptions } from '@vtex/api'
+import { ExternalClient } from '@vtex/api'
 
 const EMBEDDING_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIMENSIONS = 512 // Reduced from 1536 for cost/speed
@@ -22,7 +23,10 @@ interface EmbeddingResponse {
 }
 
 export class EmbeddingsClient extends ExternalClient {
-  constructor(context: IOContext, options: InstanceOptions & { apiKey: string }) {
+  constructor(
+    context: IOContext,
+    options: InstanceOptions & { apiKey: string }
+  ) {
     super('https://api.openai.com', context, {
       ...options,
       headers: {
@@ -60,7 +64,9 @@ export class EmbeddingsClient extends ExternalClient {
 
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batch = texts.slice(i, i + BATCH_SIZE)
-
+      // Sequential by design — OpenAI embeddings has per-second rate
+      // limits; parallel 100-batch fan-out trips them on large catalogs.
+      // eslint-disable-next-line no-await-in-loop
       const response = await this.http.post<EmbeddingResponse>(
         '/v1/embeddings',
         {
@@ -102,14 +108,14 @@ export class EmbeddingsClient extends ExternalClient {
  */
 export function buildProductEmbeddingText(product: {
   name: string
-  linkText?: string                      // URL slug, cleaner than name
-  variantNames?: string[]                // SKU variant names (e.g. "Rochita Roz")
-  categories?: string[]                  // All category paths
+  linkText?: string // URL slug, cleaner than name
+  variantNames?: string[] // SKU variant names (e.g. "Rochita Roz")
+  categories?: string[] // All category paths
   brand?: string
   description?: string
   metaTagDescription?: string
   specifications?: Record<string, string>
-  clusterTags?: string[]                 // Marketing/collection tags
+  clusterTags?: string[] // Marketing/collection tags
   price?: number
   currency?: string
 }): string {
@@ -117,13 +123,18 @@ export function buildProductEmbeddingText(product: {
 
   // 1. Name + slug (the slug often has useful normalized keywords)
   parts.push(`Product: ${product.name}`)
-  if (product.linkText && product.linkText.toLowerCase() !== product.name.toLowerCase()) {
+  if (
+    product.linkText &&
+    product.linkText.toLowerCase() !== product.name.toLowerCase()
+  ) {
     parts.push(`(${product.linkText})`)
   }
 
   // 2. Variant names — these often contain color, size, style info missing from product name
   if (product.variantNames && product.variantNames.length > 0) {
-    const unique = [...new Set(product.variantNames.filter((n) => n && n !== product.name))]
+    const unique = [
+      ...new Set(product.variantNames.filter((n) => n && n !== product.name)),
+    ]
 
     if (unique.length > 0) {
       parts.push(`Variants: ${unique.slice(0, 10).join(', ')}`)
@@ -133,7 +144,12 @@ export function buildProductEmbeddingText(product: {
   // 3. All category levels — even if primary is wrong, subcategory might be right
   if (product.categories && product.categories.length > 0) {
     const cleaned = product.categories
-      .map((c) => c.replace(/\//g, ' > ').replace(/^ > | > $/g, '').trim())
+      .map((c) =>
+        c
+          .replace(/\//g, ' > ')
+          .replace(/^ > | > $/g, '')
+          .trim()
+      )
       .filter(Boolean)
 
     if (cleaned.length > 0) {
@@ -148,11 +164,15 @@ export function buildProductEmbeddingText(product: {
 
   // 5. Description — prefer the longer of description vs metaTagDescription
   const descA = (product.description || '').replace(/<[^>]*>/g, '').trim()
-  const descB = (product.metaTagDescription || '').replace(/<[^>]*>/g, '').trim()
+  const descB = (product.metaTagDescription || '')
+    .replace(/<[^>]*>/g, '')
+    .trim()
+
   const bestDesc = descA.length >= descB.length ? descA : descB
 
   if (bestDesc) {
-    const truncated = bestDesc.length > 500 ? `${bestDesc.slice(0, 500)}...` : bestDesc
+    const truncated =
+      bestDesc.length > 500 ? `${bestDesc.slice(0, 500)}...` : bestDesc
 
     parts.push(truncated)
   }

@@ -10,8 +10,9 @@
  * is invalid.
  */
 
-import canonicalize from 'canonicalize';
-import { createHash } from 'crypto';
+import { createHash } from 'crypto'
+
+import canonicalize from 'canonicalize'
 
 /**
  * Canonicalize a JSON object per RFC 8785.
@@ -24,11 +25,13 @@ import { createHash } from 'crypto';
  * - Unicode escaping is normalized
  */
 export function canonicalizeJson(data: unknown): string {
-  const result = canonicalize(data);
+  const result = canonicalize(data)
+
   if (result === undefined) {
-    throw new Error('Cannot canonicalize undefined value');
+    throw new Error('Cannot canonicalize undefined value')
   }
-  return result;
+
+  return result
 }
 
 /**
@@ -36,22 +39,25 @@ export function canonicalizeJson(data: unknown): string {
  * Returns the hash as a hex string.
  */
 export function sha256(data: string): string {
-  return createHash('sha256').update(data, 'utf8').digest('hex');
+  return createHash('sha256').update(data, 'utf8').digest('hex')
 }
 
 /**
  * SHA-256 hash as a Buffer (for signing operations).
  */
 export function sha256Bytes(data: string): Buffer {
-  return createHash('sha256').update(data, 'utf8').digest();
+  return createHash('sha256').update(data, 'utf8').digest()
 }
 
 /**
  * Canonicalize and hash a JSON object.
  * This is the standard operation before signing: data → canonical JSON → SHA-256.
  */
-export function canonicalHash(data: unknown): { canonical: string; hash: string } {
-  const canonical = canonicalizeJson(data);
-  const hash = sha256(canonical);
-  return { canonical, hash };
+export function canonicalHash(
+  data: unknown
+): { canonical: string; hash: string } {
+  const canonical = canonicalizeJson(data)
+  const hash = sha256(canonical)
+
+  return { canonical, hash }
 }

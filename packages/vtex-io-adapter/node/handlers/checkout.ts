@@ -36,7 +36,7 @@ interface CheckoutExecuteRequest {
     country?: string
     street: string
     number: string
-    neighborhood: string
+    neighborhood?: string
     complement?: string
     selectedSla?: string
   }
@@ -396,7 +396,9 @@ export async function executeCheckout(ctx: Context) {
               country: body.shippingAddress.country || 'BRA',
               street: body.shippingAddress.street,
               number: body.shippingAddress.number,
-              neighborhood: body.shippingAddress.neighborhood,
+              ...(body.shippingAddress.neighborhood !== undefined
+                ? { neighborhood: body.shippingAddress.neighborhood }
+                : {}),
               complement: body.shippingAddress.complement,
             },
           ],
@@ -421,30 +423,39 @@ export async function executeCheckout(ctx: Context) {
 
       // Step 4: Place order (create transaction)
       const referenceId = `ACG-${sessionId.substring(0, 8)}`
-      const placeOrderResponse = await checkout.placeOrder(
-        orderFormId,
+      const placeOrderResponse = await checkout.placeOrder(orderFormId, {
         referenceId,
-        false
-      )
+        value: orderValue,
+        referenceValue: orderValue,
+        savePersonalData: false,
+      })
 
-      const order = placeOrderResponse.orders[0]
+      // Read transactionId + merchantName from the flat top-level shape
+      // VTEX returns on POST /transaction. The nested `orders[]` /
+      // `transactionData` legacy fields are NOT present on this response.
       const transactionId =
-        placeOrderResponse.transactionData?.merchantTransactions?.[0]
-          ?.transactionId
+        placeOrderResponse.id ??
+        placeOrderResponse.merchantTransactions?.[0]?.transactionId
 
-      if (!transactionId) {
+      const merchantTransaction =
+        placeOrderResponse.merchantTransactions?.[0] ??
+        placeOrderResponse.transactionData?.merchantTransactions?.[0]
+
+      if (!transactionId || !merchantTransaction) {
         throw new Error('No transaction ID received from place order')
       }
 
-      // Step 5: Send payment to gateway
-      const merchantTransaction =
-        placeOrderResponse.transactionData.merchantTransactions[0]
+      const { orderGroup } = placeOrderResponse
+      // Legacy demo orderId convention: "<orderGroup>-01" (single-seller).
+      const orderId =
+        placeOrderResponse.orders?.[0]?.orderId ?? `${orderGroup}-01`
 
-      await payments.sendPayments(transactionId, [
+      // Step 5: Send payment to gateway
+      // Bare array; string paymentSystem; empty fields for non-card; orderId
+      // in URL (handled by the client).
+      await payments.sendPayments(transactionId, orderGroup, [
         {
-          paymentSystem: body.paymentData.paymentSystem || 2,
-          paymentSystemName: 'Visa', // This should come from the payment system config
-          group: 'creditCard',
+          paymentSystem: String(body.paymentData.paymentSystem || 2),
           installments: body.paymentData.installments || 1,
           installmentsInterestRate: 0,
           installmentsValue: orderValue,
@@ -454,30 +465,31 @@ export async function executeCheckout(ctx: Context) {
             holderName: body.paymentData.cardHolder,
             cardNumber: body.paymentData.cardNumber,
             validationCode: body.paymentData.cardCvv,
-            dueDate: body.paymentData.cardExpiration, // MM/YY format
+            dueDate: body.paymentData.cardExpiration,
           },
           transaction: {
             id: transactionId,
             merchantName: merchantTransaction.merchantName,
           },
+          currencyCode: 'RON',
         },
       ])
 
       // Step 6: Authorize payment
       const authResponse = await payments.authorizeTransaction(
         transactionId,
-        order.orderId
+        orderId
       )
 
       // Update session with success
       session.status = 'completed'
-      session.orderId = order.orderId
+      session.orderId = orderId
       await ctx.clients.vbase.saveJSON(VBASE_BUCKET, sessionId, session)
 
       ctx.body = {
         success: true,
-        orderId: order.orderId,
-        orderGroup: placeOrderResponse.orderGroup,
+        orderId,
+        orderGroup,
         transactionId,
         status: authResponse.status,
         message: 'Order placed successfully!',

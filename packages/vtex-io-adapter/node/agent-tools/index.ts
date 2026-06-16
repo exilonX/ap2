@@ -6,14 +6,22 @@
  * `getDefinitions()` / `dispatch(...)` from `./registry`.
  */
 
-import { register } from './registry';
-import { createCartMandateTool } from './create-cart-mandate';
-import { executePaymentTool } from './execute-payment';
-import { redirectToNativeCheckoutTool } from './redirect-to-native-checkout';
+import { register } from './registry'
+import { authorizeTransactionTool } from './authorize-transaction'
+import { createCartMandateTool } from './create-cart-mandate'
+import { listPaymentMethodsTool } from './list-payment-methods'
+import { placeOrderTool } from './place-order'
+import { redirectToNativeCheckoutTool } from './redirect-to-native-checkout'
+import { sendPaymentInfoTool } from './send-payment-info'
+import { setPaymentMethodTool } from './set-payment-method'
 
-register(createCartMandateTool);
-register(executePaymentTool);
-register(redirectToNativeCheckoutTool);
+register(createCartMandateTool)
+register(redirectToNativeCheckoutTool)
+register(listPaymentMethodsTool)
+register(setPaymentMethodTool)
+register(placeOrderTool)
+register(sendPaymentInfoTool)
+register(authorizeTransactionTool)
 
-export * from './types';
-export * from './registry';
+export * from './types'
+export * from './registry'
