@@ -87,6 +87,19 @@ export interface MandateInfo {
   total: number
   /** ISO-4217 currency for `total`. */
   currency: string
+  /**
+   * Present after place_order succeeds. When set, the widget renders the
+   * MandateBadge in "already-placed" mode — skips the "Pay Now" CTA and
+   * jumps straight to the confirmation panel with orderGroup + admin link.
+   */
+  orderGroup?: string
+  transactionId?: string
+  /**
+   * Final gateway result for the order. Populated by authorize_transaction
+   * once it categorises the gateway response (approved | pending | denied).
+   * Drives which terminal panel the widget renders.
+   */
+  gatewayStatus?: 'approved' | 'pending' | 'denied'
 }
 
 // ─── ToolContext — what tools see ──────────────────────────────────
@@ -117,7 +130,20 @@ export interface ToolEffect {
   cartUpdated?: boolean
   suggestions?: string[]
   cartPreview?: CartPreviewData
+  /**
+   * Full mandate envelope. Set by tools that have the EvidenceBundle in
+   * scope: create_cart_mandate and place_order (after auto-sign or
+   * EvidenceBundle retrieve).
+   */
   mandate?: MandateInfo
+  /**
+   * Partial mandate update layered on top of `mandate` (latest wins per
+   * field). Set by tools that refine specific fields without having the
+   * full bundle in scope — e.g. authorize_transaction adding
+   * gatewayStatus. The chat handler merges patches into the accumulated
+   * mandate so the final ChatResponse.mandate is whole.
+   */
+  mandatePatch?: Partial<MandateInfo> & { mandateId: string }
   /**
    * Structured payment methods for the widget to render as pill buttons.
    * Populated by list_payment_methods; consumed by ChatResponse so the

@@ -26,6 +26,19 @@ export interface Mandate {
   checkoutUrl: string      // VTEX native checkout — same-tab navigation from primary CTA
   total: number            // cart total at sign time, displayed in the action button
   currency: string         // ISO-4217 (e.g. RON)
+  /**
+   * Present when the headless flow already placed a real VTEX order
+   * (place_order + authorize_transaction chain). The widget renders the
+   * MandateBadge in "already-placed" mode: skips the Pay Now CTA and
+   * jumps straight to the confirmation panel with admin link.
+   */
+  orderGroup?: string
+  transactionId?: string
+  /**
+   * Final gateway result. Drives which terminal panel the widget
+   * renders. Absent for create_cart_mandate-only flows (mock ceremony).
+   */
+  gatewayStatus?: 'approved' | 'pending' | 'denied'
 }
 
 /**

@@ -112,6 +112,24 @@ describe('place_order', () => {
     )
   })
 
+  it('returns a complete MandateInfo with orderGroup + transactionId so the widget renders PlacedOrderConfirmation', async () => {
+    const deps = makeFakeToolContext()
+
+    await prepareReadyCart(deps)
+
+    const effect = await placeOrderTool.execute({}, deps.ctx)
+
+    assert.ok(effect.mandate, 'mandate envelope present')
+    assert.equal(effect.mandate!.mandateId, 'mandate-test-1')
+    assert.match(effect.mandate!.orderGroup ?? '', /^og-\d+$/)
+    assert.match(effect.mandate!.transactionId ?? '', /^tx-\d+$/)
+    // checkoutUrl points at the OMS admin URL so the widget badge
+    // click-through lands on the real order.
+    assert.match(effect.mandate!.checkoutUrl, /\/admin\/orders\/og-\d+-01$/)
+    assert.equal(typeof effect.mandate!.total, 'number')
+    assert.ok(effect.mandate!.total > 0)
+  })
+
   it('writes the orderGroup → mandate index so the PPP connector can look it up', async () => {
     const deps = makeFakeToolContext()
 

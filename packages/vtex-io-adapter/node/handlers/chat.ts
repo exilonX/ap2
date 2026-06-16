@@ -2061,7 +2061,16 @@ export async function chatHandler(ctx: Context) {
           }
 
           if (toolResult.mandate) {
+            // Full envelope from create_cart_mandate / place_order.
             mandate = toolResult.mandate
+          }
+
+          if (toolResult.mandatePatch && mandate) {
+            // Partial overlay (e.g. authorize_transaction adding
+            // gatewayStatus). Only merge when we already have a full
+            // mandate — patches without a base are dropped since the
+            // widget can't render half a badge.
+            mandate = { ...mandate, ...toolResult.mandatePatch }
           }
 
           if (toolResult.paymentMethods) {

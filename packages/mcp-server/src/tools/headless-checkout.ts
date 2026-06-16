@@ -32,11 +32,21 @@ interface PaymentMethodItem {
   group?: string
 }
 
+interface MandateItem {
+  mandateId: string
+  retrievalUrl?: string
+  signedBy?: string
+  orderGroup?: string
+  transactionId?: string
+  gatewayStatus?: 'approved' | 'pending' | 'denied'
+}
+
 interface ToolEffectResponse {
   result?: string
   suggestions?: string[]
   cartUpdated?: boolean
   paymentMethods?: PaymentMethodItem[]
+  mandate?: MandateItem
   [k: string]: unknown
 }
 
@@ -46,6 +56,50 @@ interface ToolEffectResponse {
  * structured `paymentMethods` field for pill buttons; Claude Desktop
  * gets this human-readable text since there's no UI extension.
  */
+/**
+ * Format an authorize_transaction response as a markdown proof block
+ * Claude Desktop can render inline:
+ *
+ *   ✓ Order 1639710533638 placed (approved)
+ *
+ *   CartMandate: `mandate-ed6a8cdf...`
+ *   Verify:     https://.../mandates/mandate-ed6a8cdf...
+ *   Admin:      https://vtexeurope.myvtex.com/admin/orders/1639710533638-01
+ *
+ * Mirrors the storefront widget's PlacedOrderConfirmation panel so the
+ * same demo beat works in both surfaces.
+ */
+function formatAuthorizeResponse(response: ToolEffectResponse): string {
+  const m = response.mandate
+
+  if (!m || !m.orderGroup) {
+    return response.result ?? 'authorize_transaction returned no payload.'
+  }
+
+  const statusLabel =
+    m.gatewayStatus === 'approved'
+      ? '✓ Order placed (approved)'
+      : m.gatewayStatus === 'pending'
+      ? '⏳ Order awaiting payment confirmation'
+      : m.gatewayStatus === 'denied'
+      ? '✗ Order denied by gateway'
+      : 'Order created'
+
+  const lines = [`${statusLabel} — \`${m.orderGroup}\``]
+
+  if (m.mandateId) lines.push(`CartMandate: \`${m.mandateId}\``)
+  if (m.retrievalUrl) lines.push(`Verify: ${m.retrievalUrl}`)
+  if (m.signedBy) lines.push(`Signed by: \`${m.signedBy}\``)
+
+  // The chat handler builds checkoutUrl as the OMS admin URL; surface it
+  // as "Admin" so Claude users know it's gated by the merchant login.
+  if (typeof response.result === 'string') {
+    lines.push('', response.result)
+  }
+
+  return lines.join('\n')
+}
+
 function formatPaymentMethods(response: ToolEffectResponse): string {
   if (!response.paymentMethods || response.paymentMethods.length === 0) {
     return response.result ?? 'No payment methods returned.'
@@ -215,7 +269,12 @@ export function registerHeadlessCheckoutTools(
         // session so the next conversation starts fresh.
         client.clearOrderFormId()
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+          content: [
+            {
+              type: 'text' as const,
+              text: formatAuthorizeResponse(result),
+            },
+          ],
         }
       } catch (error) {
         return {

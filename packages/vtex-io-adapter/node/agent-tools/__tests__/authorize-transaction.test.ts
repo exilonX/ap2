@@ -44,6 +44,14 @@ describe('authorize_transaction', () => {
     assert.equal(deps.payments.authorizationCalls[0].transactionId, 'tx-1')
     // gatewayCallback only fires when /pvt/ throws — not here.
     assert.equal(deps.checkout.processOrderCalls.length, 0)
+    // mandatePatch carries gatewayStatus for the widget to render the
+    // "approved" panel — the chat handler merges this into the mandate
+    // place_order populated earlier in the same turn.
+    assert.ok(effect.mandatePatch)
+    assert.equal(effect.mandatePatch!.mandateId, 'mandate-x')
+    assert.equal(effect.mandatePatch!.orderGroup, 'og-1')
+    assert.equal(effect.mandatePatch!.transactionId, 'tx-1')
+    assert.equal(effect.mandatePatch!.gatewayStatus, 'approved')
   })
 
   it('maps numeric status 8 (cash awaiting settlement) to approved', async () => {

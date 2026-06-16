@@ -26,7 +26,8 @@
 
 /* eslint-disable no-console -- demo-quality stdout instrumentation; tracked by issue 0005 */
 import { readOrderFormState } from '../mandates/mandate-orchestration'
-import type { AgentTool, ToolContext, ToolEffect } from './types'
+import type { Ap2CustomData } from '../mandates/mandate-orchestration'
+import type { AgentTool, MandateInfo, ToolContext, ToolEffect } from './types'
 
 const TAG = '[ACG authorize_transaction]'
 
@@ -104,6 +105,26 @@ function categorizeAuthStatus(
   }
 
   return 'unknown'
+}
+
+/**
+ * Build the partial mandate update authorize_transaction returns. The
+ * chat handler merges it into the mandate already populated by
+ * place_order, so we only carry the fields this tool knows about
+ * (cartMandateId from VBase state + gatewayStatus + orderGroup/tid).
+ */
+function buildMandatePatch(
+  ap2: Ap2CustomData,
+  gatewayStatus: 'approved' | 'pending' | 'denied' | undefined
+): (Partial<MandateInfo> & { mandateId: string }) | undefined {
+  if (!ap2.cartMandateId) return undefined
+
+  return {
+    mandateId: ap2.cartMandateId,
+    orderGroup: ap2.orderGroup,
+    transactionId: ap2.transactionId,
+    ...(gatewayStatus ? { gatewayStatus } : {}),
+  }
 }
 
 async function tryPaymentsAuthorize(
@@ -237,6 +258,7 @@ async function execute(
           `For Cash/promissory the order moves to "payment-pending" and is settled when the merchant marks it as paid.`,
           `The AP2 mandate chain is the cryptographic proof of this purchase.`,
         ].join(' '),
+        mandatePatch: buildMandatePatch(ap2, 'approved'),
       }
     }
 
@@ -246,17 +268,20 @@ async function execute(
           `Order ${primary.orderId} awaiting payment confirmation (gateway status ${primary.status}).`,
           `For card or redirect methods the customer completes payment with the provider — VTEX will finalize asynchronously.`,
         ].join(' '),
+        mandatePatch: buildMandatePatch(ap2, 'pending'),
       }
     }
 
     if (category === 'denied') {
       return {
         result: `Order ${primary.orderId} was denied by the payment gateway (status ${primary.status}).`,
+        mandatePatch: buildMandatePatch(ap2, 'denied'),
       }
     }
 
     return {
       result: `Authorization returned status ${primary.status} for order ${primary.orderId}.`,
+      mandatePatch: buildMandatePatch(ap2, undefined),
     }
   }
 
@@ -289,6 +314,7 @@ async function execute(
         `Order ${ap2.orderGroup} accepted by the gateway (already authorizing).`,
         `Cash/promissory payments finalize when the merchant marks them as paid.`,
       ].join(' '),
+      mandatePatch: buildMandatePatch(ap2, 'approved'),
     }
   }
 
@@ -304,6 +330,7 @@ async function execute(
         `Order ${ap2.orderGroup} finalized via gatewayCallback.`,
         `The AP2 mandate chain is the cryptographic proof of this purchase.`,
       ].join(' '),
+      mandatePatch: buildMandatePatch(ap2, 'approved'),
     }
   }
 
@@ -317,6 +344,7 @@ async function execute(
         `Order ${ap2.orderGroup} created in OMS — VTEX rejected the explicit authorization request (no Payments Gateway credentials configured).`,
         `Cash/promissory orders typically auto-approve; verify status in admin.`,
       ].join(' '),
+      mandatePatch: buildMandatePatch(ap2, 'pending'),
     }
   }
 
@@ -325,6 +353,7 @@ async function execute(
       `Order ${ap2.orderGroup} created in OMS but final authorization status is unclear.`,
       `Verify the order state in admin → orders.`,
     ].join(' '),
+    mandate: buildMandatePatch(ap2, undefined),
   }
 }
 

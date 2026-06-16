@@ -80,6 +80,18 @@ function PaymentCeremony({ mandate }: PaymentCeremonyProps) {
     }
   }, [])
 
+  // Headless-mode short-circuit: when place_order + authorize_transaction
+  // already ran (mandate.orderGroup is set), skip the entire mock
+  // executePayment ceremony. Render the real-order confirmation panel
+  // with a click-through to VTEX admin instead.
+  //
+  // Hooks above must run on every render to satisfy the Rules of Hooks
+  // — `mandate.orderGroup` is stable per message instance (the chat
+  // widget keys messages by id), so this conditional path is safe.
+  if (mandate.orderGroup) {
+    return <PlacedOrderConfirmation mandate={mandate} />
+  }
+
   function scheduleReveal(result: PaymentResult): void {
     // Sequenced reveal of the 4 ceremony steps. Timing mirrors the
     // Claude Desktop iframe (250 / 700 / 1100 / 1700 ms) but tuned for
@@ -401,6 +413,95 @@ function ArtifactRow({
           {l.label}
         </a>
       ))}
+    </div>
+  )
+}
+
+// ─── Headless-mode confirmation panel ─────────────────────────────
+//
+// Rendered when `mandate.orderGroup` is set, i.e. when the agent already
+// drove the full headless flow (place_order + send_payment_info +
+// authorize_transaction) through chat tools. No mock executePayment
+// roundtrip, no PaymentMandate/PaymentReceipt — just the real VTEX
+// order plus the signed CartMandate as cryptographic evidence.
+function PlacedOrderConfirmation({ mandate }: { mandate: Mandate }) {
+  const isApproved =
+    !mandate.gatewayStatus || mandate.gatewayStatus === 'approved'
+  const isPending = mandate.gatewayStatus === 'pending'
+  const isDenied = mandate.gatewayStatus === 'denied'
+
+  const headerStatusLabel = isApproved
+    ? `✓ Order ${mandate.orderGroup} placed`
+    : isPending
+    ? `⏳ Order ${mandate.orderGroup} awaiting confirmation`
+    : isDenied
+    ? `✗ Order ${mandate.orderGroup} denied by gateway`
+    : `Order ${mandate.orderGroup}`
+
+  const panelStyle = isDenied ? RESULT_REJECTED : RESULT_SUCCESS
+
+  return (
+    <div style={CARD_STYLE}>
+      <div style={HEADER_ROW}>
+        <span style={CHECK_DOT} aria-hidden="true">
+          ✓
+        </span>
+        <span>Cryptographically signed by {shortDid(mandate.signedBy)}</span>
+      </div>
+      <div style={META_ROW}>{mandate.mandateId}</div>
+
+      <div style={panelStyle}>
+        <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+          {headerStatusLabel}
+        </div>
+        <div>
+          {isApproved ? (
+            <>
+              The merchant cryptographically committed to this cart (CartMandate
+              signed with Ed25519 against the canonicalised JCS hash). The
+              order is now live in VTEX OMS and can be tracked from the admin.
+            </>
+          ) : isPending ? (
+            <>
+              The order is in VTEX OMS. For Cash / promissory the order
+              settles when the merchant marks it as paid; for card / redirect
+              methods the customer continues with the provider.
+            </>
+          ) : (
+            <>
+              The payment gateway rejected the transaction. The signed
+              CartMandate remains valid evidence of the merchant's
+              cryptographic commitment to the cart at sign time.
+            </>
+          )}
+        </div>
+        <div style={ARTIFACT_ROW}>
+          <a
+            href={mandate.checkoutUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={ARTIFACT_LINK}
+          >
+            View order in admin →
+          </a>
+          <a
+            href={mandate.retrievalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={ARTIFACT_LINK}
+          >
+            CartMandate proof →
+          </a>
+          <a
+            href={mandate.didDocumentUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={ARTIFACT_LINK}
+          >
+            Verify merchant identity →
+          </a>
+        </div>
+      </div>
     </div>
   )
 }

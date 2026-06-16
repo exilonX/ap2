@@ -239,10 +239,11 @@ async function execute(
   // single entry point and cannot skip signing.
   let ap2: Ap2CustomData = existing
   // Captured during the inline-sign branch and forwarded into the
-  // orderGroup index. When ap2 was already populated by an earlier
-  // create_cart_mandate call, the index entry omits signedBy — callers
-  // can re-derive it from the EvidenceBundle if needed.
+  // orderGroup index AND the MandateInfo surfaced to the widget. When
+  // ap2 was already populated by an earlier create_cart_mandate call,
+  // we recover signedBy + cartHash by retrieving the EvidenceBundle.
   let signedByFromInlineSign: string | undefined
+  let cartHashFromInlineSign: string | undefined
 
   if (!ap2.cartMandateId) {
     console.log(
@@ -288,6 +289,7 @@ async function execute(
       signedAt: bundle.signedAt,
     }
     signedByFromInlineSign = bundle.signedBy
+    cartHashFromInlineSign = bundle.cartHash
 
     console.log(
       `${TAG} → vbase.save acg-orderform-state/${ctx.orderFormId} { cartMandateId=${bundle.mandateId} }`
@@ -476,6 +478,47 @@ async function execute(
   const currency =
     snapshot?.currency ?? orderForm.storePreferencesData.currencyCode
 
+  // ── 5. Build MandateInfo for the widget badge ──
+  //
+  // The inline-sign branch already has signedBy + cartHash. The re-use
+  // branch (mandate created earlier by create_cart_mandate) needs to
+  // retrieve the EvidenceBundle to recover them. Soft failure: a missing
+  // signedBy degrades the badge UX but does not block the order.
+  const host = resolveMerchantDomain((ctx as unknown) as Context)
+  let signedBy = signedByFromInlineSign
+  let cartHash = cartHashFromInlineSign
+
+  if (!signedBy || !cartHash) {
+    try {
+      const identity = buildMerchantIdentity((ctx as unknown) as Context)
+      const orchestration = new MandateOrchestration({
+        identity,
+        vbase: ctx.clients.vbase,
+      })
+
+      const retrieved = await orchestration.retrieve(cartMandateId)
+
+      if (retrieved) {
+        signedBy = signedBy ?? retrieved.signedBy
+        cartHash = cartHash ?? retrieved.cartHash
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+
+      console.warn(
+        `${TAG} ⚠ mandate retrieve failed for badge metadata: ${msg}`
+      )
+    }
+  }
+
+  // checkoutUrl points at VTEX admin order URL — the user (in agent
+  // demos) typically goes from the badge straight to the OMS view to
+  // verify the order is real. Storefront-only flows can ignore it.
+  const checkoutUrl = `https://${ctx.vtex.account}.myvtex.com/admin/orders/${orderGroup}-01`
+  const retrievalUrl = `https://${host}/_v/acg/mandates/${cartMandateId}`
+  const didDocumentUrl =
+    ap2.didDocumentUrl ?? `https://${host}/_v/acg/.well-known/did.json`
+
   console.log(
     `${TAG} ✓ done: orderGroup=${orderGroup} total=${total.toFixed(
       2
@@ -487,6 +530,19 @@ async function execute(
       `Order ${orderGroup} created for ${total.toFixed(2)} ${currency}.`,
       `Call send_payment_info next to forward payment details to the gateway.`,
     ].join(' '),
+    mandate: {
+      mandateId: cartMandateId,
+      retrievalUrl,
+      cartHash: cartHash ?? '',
+      signedBy: signedBy ?? `did:web:${host}`,
+      signedAt: ap2.signedAt ?? new Date().toISOString(),
+      didDocumentUrl,
+      checkoutUrl,
+      total,
+      currency,
+      orderGroup,
+      transactionId,
+    },
   }
 }
 
