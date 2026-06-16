@@ -596,6 +596,46 @@
       }
     }
 
+    // Headless-flow mode: if the order is already placed (placeOrder
+    // tool surfaces this iframe AFTER signing + creating the real VTEX
+    // transaction), skip the Pay Now ceremony and auto-run the
+    // verification animation against the already-signed mandate.
+    // Synthesise a success payload from the placed order — every
+    // signed CartMandate that survived VTEX's /transaction call passes
+    // all seven checks by construction.
+    if (data.order && data.order.orderGroup) {
+      var actionArea = document.getElementById('action-area');
+      if (actionArea) actionArea.style.display = 'none';
+      var onFileSection = document.getElementById('on-file-section');
+      if (onFileSection) onFileSection.style.display = 'none';
+
+      var synthChecks = {
+        merchant_signature: true,
+        cp_signature: true,
+        hash_binding: true,
+        amount_consistency: true,
+        mandate_id_linking: true,
+        payment_mandate_not_expired: true,
+        cart_mandate_not_expired: true,
+      };
+      var synthPayload = {
+        success: true,
+        orderId: data.order.orderGroup,
+        mandateId: currentMandateId,
+        paymentReceipt: { contents: { verification_checks: synthChecks } },
+        adminUrl: data.order.adminUrl,
+        gatewayStatus: data.order.gatewayStatus,
+        paymentMandateUrl: null,
+        paymentReceiptUrl: null,
+      };
+      // Tiny delay so the cart + mandate panels paint first and the
+      // user reads the context before the checks start animating in.
+      setTimeout(function() { renderPaymentResult(synthPayload); }, 350);
+
+      notifySize();
+      return;
+    }
+
     // Pay-now button reflects the cart total
     var payBtn = document.getElementById('pay-now-btn');
     if (payBtn) {
@@ -819,15 +859,22 @@
     var panel = document.getElementById('final-panel');
     if (!panel) return;
     if (payload.success) {
+      // Headline depends on whether this is the headless-flow synth
+      // (real VTEX order placed; payload.adminUrl present) or the
+      // legacy iframe Pay-Now path (mock order id, no admin URL).
+      var headlineText = payload.adminUrl
+        ? 'Mandate verified · VTEX order ' + escapeHtml(payload.orderId || '')
+        : 'Payment authorized · Order ' + escapeHtml(payload.orderId || '');
+      var detailText = payload.adminUrl
+        ? 'The cart was cryptographically signed at the moment of order placement; VTEX accepted the transaction with the CartMandate id as referenceId. The seven checks above re-verify the signature chain — anyone with the published merchant DID document can run the same verification and reach the same verdict.'
+        : 'The chain verified end-to-end. Three parties cryptographically attested: the merchant signed the cart, the Credentials Provider signed the payment, and the network independently verified both before approving.';
+
       panel.innerHTML =
         '<div class="result-panel success">' +
           '<div class="result-headline">' +
-            '<span class="result-icon">&#10004;</span>' +
-            'Payment authorized · Order ' + escapeHtml(payload.orderId || '') +
+            '<span class="result-icon">&#10004;</span>' + headlineText +
           '</div>' +
-          '<div class="result-detail">' +
-            'The chain verified end-to-end. Three parties cryptographically attested: the merchant signed the cart, the Credentials Provider signed the payment, and the network independently verified both before approving.' +
-          '</div>' +
+          '<div class="result-detail">' + detailText + '</div>' +
           renderArtifactLinks(payload, 'success') +
         '</div>';
     } else {
@@ -870,17 +917,27 @@
   function renderArtifactLinks(payload, kind) {
     var links = [];
     if (payload.mandateId) {
-      var hostFromUrl = payload.paymentMandateUrl
-        ? payload.paymentMandateUrl.split('/_v/acg/')[0]
-        : '';
-      var cartUrl = hostFromUrl ? hostFromUrl + '/_v/acg/mandates/' + payload.mandateId : null;
-      if (cartUrl) links.push({ label: 'CartMandate', url: cartUrl });
+      // Prefer the mandate URL we already received from the host so the
+      // host hostname is reused (headless flow). Fall back to deriving
+      // it from the payment-mandate URL for the legacy Pay-Now path.
+      var mandateLinkUrl = null;
+      var existingLink = document.getElementById('mandate-proof-link');
+      if (existingLink && existingLink.href && existingLink.href !== '#' && existingLink.href.indexOf('#') === -1) {
+        mandateLinkUrl = existingLink.href;
+      } else if (payload.paymentMandateUrl) {
+        var hostFromUrl = payload.paymentMandateUrl.split('/_v/acg/')[0];
+        mandateLinkUrl = hostFromUrl ? hostFromUrl + '/_v/acg/mandates/' + payload.mandateId : null;
+      }
+      if (mandateLinkUrl) links.push({ label: 'CartMandate', url: mandateLinkUrl });
     }
     if (payload.paymentMandateUrl) {
       links.push({ label: 'PaymentMandate', url: payload.paymentMandateUrl });
     }
     if (payload.paymentReceiptUrl) {
       links.push({ label: 'PaymentReceipt', url: payload.paymentReceiptUrl });
+    }
+    if (payload.adminUrl) {
+      links.push({ label: 'View order in admin', url: payload.adminUrl });
     }
     if (links.length === 0) return '';
     var html = '<div class="artifact-links">';

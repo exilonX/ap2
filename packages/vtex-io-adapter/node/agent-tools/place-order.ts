@@ -525,11 +525,34 @@ async function execute(
     )} ${currency}`
   )
 
+  // cartPreview is what the Claude Desktop iframe ceremony renders
+  // (items + totals). The widget already reads the same field.
+  // Synthesise from the snapshot we already fetched above for signing —
+  // no extra VTEX call.
+  const cartPreview = snapshot
+    ? {
+        items: snapshot.items.map((it) => ({
+          sku: it.sku,
+          name: it.name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          totalPrice: it.totalPrice,
+          image: it.image ?? '',
+        })),
+        subtotal: snapshot.subtotal,
+        total: snapshot.total,
+        itemCount: snapshot.itemCount,
+        currency: snapshot.currency,
+        checkoutUrl,
+      }
+    : undefined
+
   return {
     result: [
       `Order ${orderGroup} created for ${total.toFixed(2)} ${currency}.`,
       `Call send_payment_info next to forward payment details to the gateway.`,
     ].join(' '),
+    cartPreview,
     mandate: {
       mandateId: cartMandateId,
       retrievalUrl,
