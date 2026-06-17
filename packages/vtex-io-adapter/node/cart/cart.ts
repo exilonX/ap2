@@ -453,6 +453,14 @@ export class Cart {
         {
           addressType: data.addressType ?? 'residential',
           receiverName,
+          // Mark the address disposable so VTEX uses it for THIS order only
+          // and doesn't try to attach it to the customer profile. Attaching
+          // a new address to a (possibly registered) profile requires an
+          // authenticated shopper session — without it, order placement
+          // fails with CHK0087 "authentication required to use a new
+          // address". Disposable addresses are the headless-checkout norm
+          // for anonymous agent-driven carts.
+          isDisposable: true,
           postalCode: data.postalCode,
           city: data.city,
           state: data.state,

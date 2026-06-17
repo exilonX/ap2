@@ -19,6 +19,7 @@
 
 import type { LLMTool } from '../clients/llm'
 import type { ClientConfig } from '../config/types'
+import type { VerificationChecks } from '../core'
 
 // ─── Structured fields the Surface renders ─────────────────────────
 //
@@ -72,6 +73,13 @@ export interface PaymentMethodOption {
   id: string
   name: string
   group?: string
+  /**
+   * True when the method needs customer authentication input — card
+   * (number/CVV/3DS) or a redirect to the provider. The checkout iframe
+   * uses this to decide whether to render a card form / step-up beat
+   * vs. the connector-less Cash/promissory path that pays straight away.
+   */
+  requiresAuthentication?: boolean
 }
 
 export interface MandateInfo {
@@ -100,6 +108,24 @@ export interface MandateInfo {
    * Drives which terminal panel the widget renders.
    */
   gatewayStatus?: 'approved' | 'pending' | 'denied'
+  /**
+   * AP2 PaymentMandate retrieval URL (CP-signed). Present once place_order
+   * runs the three-party ceremony.
+   */
+  paymentMandateUrl?: string
+  /**
+   * AP2 PaymentReceipt retrieval URL (Network-signed). Present once
+   * place_order runs the three-party ceremony.
+   */
+  paymentReceiptUrl?: string
+  /**
+   * The seven Network verification checks — real signed-chain results,
+   * not the iframe's synthesised all-true placeholder. Present once the
+   * ceremony runs.
+   */
+  verificationChecks?: VerificationChecks
+  /** Network approval status for the payment chain (approve or reject). */
+  paymentApprovalStatus?: 'approved' | 'rejected'
 }
 
 // ─── ToolContext — what tools see ──────────────────────────────────
@@ -156,6 +182,26 @@ export interface ToolEffect {
    * "Pay {total} · {method}" on the confirm button.
    */
   selectedPayment?: PaymentMethodOption
+  /**
+   * Human-readable shipping address summary (receiver + street + city).
+   * Populated by set_payment_method / place_order so the checkout iframe's
+   * "SHIP TO" row shows the real configured address instead of a mock.
+   */
+  shippingAddress?: string
+  /**
+   * Buyer summary (name / email / phone / document) from the cart's
+   * clientProfileData. Populated by set_payment_method / place_order so the
+   * checkout iframe can confirm who is paying. Individual fields omitted
+   * when blank.
+   */
+  customerProfile?: CustomerProfileSummary
+}
+
+export interface CustomerProfileSummary {
+  name?: string
+  email?: string
+  phone?: string
+  document?: string
 }
 
 // ─── AgentTool — the contract ──────────────────────────────────────

@@ -38,6 +38,7 @@
  */
 
 import { Cart } from '../cart/cart'
+import { formatCustomerProfile, formatShippingAddress } from '../mappers/cart'
 import { buildMerchantIdentity, resolveMerchantDomain } from '../handlers/did'
 import {
   MandateOrchestration,
@@ -46,9 +47,24 @@ import {
   saveOrderGroupMandateIndex,
 } from '../mandates/mandate-orchestration'
 import type { Ap2CustomData } from '../mandates/mandate-orchestration'
+import { PaymentOrchestration } from '../payments/payment-orchestration'
+import { VBaseKeyStore } from '../identity/vbase-keystore'
+import {
+  MockCredentialsProvider,
+  MockPaymentNetwork,
+} from '../mock-payment-network'
+import type { CartMandate, VerificationChecks } from '../core'
 import type { AgentTool, ToolContext, ToolEffect } from './types'
 
 const TAG = '[ACG place_order]'
+
+// Mock CP + Network live under the same Adapter host as the merchant
+// (so their DID documents resolve via /_v/acg/mock-{cp,network}/...),
+// each with its own VBase keypair bucket. Mirrors handlers/payment.ts.
+const MOCK_CP_BUCKET = 'acg-mock-cp'
+const MOCK_CP_KEY = 'cp-did'
+const MOCK_NETWORK_BUCKET = 'acg-mock-network'
+const MOCK_NETWORK_KEY = 'network-did'
 
 const definition = {
   name: 'place_order',
@@ -198,21 +214,19 @@ async function execute(
     )
 
     try {
-      await ctx.clients.checkout.addPaymentData(ctx.orderFormId, {
-        payments: [
-          {
-            paymentSystem: String(stale.paymentSystem),
-            paymentSystemName: String(stale.paymentSystemName ?? ''),
-            group: String(stale.group ?? ''),
-            value: orderForm.value,
-            referenceValue: orderForm.value,
-            installments: Number(stale.installments ?? 1),
-            installmentsInterestRate: Number(
-              stale.installmentsInterestRate ?? 0
-            ),
-            hasDefaultBillingAddress: false,
-          },
-        ],
+      // Re-set through Cart.setPaymentData (NOT a hand-rolled addPaymentData)
+      // so the buyer-identity block (firstName/lastName/document/
+      // documentType) is re-injected from clientProfileData. The previous
+      // hand-rolled re-set copied only paymentSystem/name/group from the
+      // stale echo and silently stripped buyer identity — which made VTEX
+      // render the gateway payment as "Fără denumire" (no name) whenever
+      // value-drift fired between set_payment_method and place_order.
+      const reSyncCart = new Cart({ checkout: ctx.clients.checkout })
+
+      await reSyncCart.setPaymentData(ctx.orderFormId, {
+        paymentSystemId: String(stale.paymentSystem),
+        installments: Number(stale.installments ?? 1),
+        value: orderForm.value,
       })
       console.log(`${TAG} ← payment re-synced to ${orderForm.value}`)
     } catch (err) {
@@ -244,6 +258,9 @@ async function execute(
   // we recover signedBy + cartHash by retrieving the EvidenceBundle.
   let signedByFromInlineSign: string | undefined
   let cartHashFromInlineSign: string | undefined
+  // The signed CartMandate object — needed by the AP2 ceremony below.
+  // Captured from the inline-sign bundle, or retrieved for the re-use path.
+  let cartMandateObj: CartMandate | undefined
 
   if (!ap2.cartMandateId) {
     console.log(
@@ -290,6 +307,7 @@ async function execute(
     }
     signedByFromInlineSign = bundle.signedBy
     cartHashFromInlineSign = bundle.cartHash
+    cartMandateObj = bundle.cartMandate
 
     console.log(
       `${TAG} → vbase.save acg-orderform-state/${ctx.orderFormId} { cartMandateId=${bundle.mandateId} }`
@@ -348,6 +366,30 @@ async function execute(
     console.log(
       `${TAG} ✗ placeOrder threw after ${Date.now() - placedAt}ms: ${msg}`
     )
+
+    // CHK0087 — "authentication required to use a new address". VTEX
+    // rejects the anonymous /transaction when the orderForm's profile or
+    // address requires an authenticated shopper session. The usual trigger
+    // is a customer email that is a REGISTERED account on this store, or a
+    // non-disposable new address. Surface a clear, actionable message
+    // instead of letting a 500 + stack trace reach the iframe.
+    const errResponse = (err as {
+      response?: { status?: number; headers?: Record<string, string> }
+    }).response
+
+    const vtexCode = errResponse?.headers?.['x-vtex-error-code']
+
+    if (vtexCode === 'CHK0087' || errResponse?.status === 401) {
+      console.log(
+        `${TAG} EXIT: CHK0087 / 401 — order needs an authenticated session`
+      )
+
+      return {
+        result:
+          'ERROR: VTEX requires an authenticated session to place this order (CHK0087 — "authentication required to use a new address"). This usually means the customer email is a registered account on this store. Use a guest email that is not registered, or place the order from an authenticated storefront session.',
+      }
+    }
+
     throw err
   }
 
@@ -501,6 +543,7 @@ async function execute(
       if (retrieved) {
         signedBy = signedBy ?? retrieved.signedBy
         cartHash = cartHash ?? retrieved.cartHash
+        cartMandateObj = cartMandateObj ?? retrieved.cartMandate
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -518,6 +561,85 @@ async function execute(
   const retrievalUrl = `https://${host}/_v/acg/mandates/${cartMandateId}`
   const didDocumentUrl =
     ap2.didDocumentUrl ?? `https://${host}/_v/acg/.well-known/did.json`
+
+  // ── AP2 three-party ceremony ───────────────────────────────────────
+  //
+  // The CartMandate is signed and the VTEX order is real. Now run the
+  // CP + Network legs so the proof is the full three-party chain rather
+  // than a CartMandate alone: the CP signs a PaymentMandate (binding the
+  // cart hash + payment hash), the Network independently verifies the
+  // seven checks and emits a signed PaymentReceipt. Both artifacts are
+  // persisted and independently retrievable — this is what de-mocks the
+  // iframe's seven checks and makes its PaymentMandate / PaymentReceipt
+  // links real.
+  //
+  // Soft-failed: the VTEX order is already placed, so a ceremony hiccup
+  // must never abort the tool. On failure the iframe falls back to a
+  // basic confirmation (no seven-check panel).
+  let paymentMandateUrl: string | undefined
+  let paymentReceiptUrl: string | undefined
+  let verificationChecks: VerificationChecks | undefined
+  let paymentApprovalStatus: 'approved' | 'rejected' | undefined
+
+  if (cartMandateObj) {
+    try {
+      const ceremonyIdentity = buildMerchantIdentity(
+        (ctx as unknown) as Context
+      )
+
+      const cp = new MockCredentialsProvider({
+        keyStore: new VBaseKeyStore(
+          ctx.clients.vbase,
+          MOCK_CP_BUCKET,
+          MOCK_CP_KEY
+        ),
+        domain: `${host}:mock-cp`,
+      })
+
+      const network = new MockPaymentNetwork({
+        keyStore: new VBaseKeyStore(
+          ctx.clients.vbase,
+          MOCK_NETWORK_BUCKET,
+          MOCK_NETWORK_KEY
+        ),
+        domain: `${host}:mock-network`,
+      })
+
+      const paymentOrch = new PaymentOrchestration({
+        identity: ceremonyIdentity,
+        cp,
+        network,
+        vbase: ctx.clients.vbase,
+      })
+
+      console.log(
+        `${TAG} running AP2 ceremony (CP signs PaymentMandate → Network verifies + signs PaymentReceipt)…`
+      )
+      const {
+        paymentMandate,
+        paymentReceipt,
+      } = await paymentOrch.signAndSubmit({
+        cartMandate: cartMandateObj,
+        agentPresence: { agent_involved: true, human_present: true },
+      })
+
+      const pmId = paymentMandate.payment_mandate_contents.payment_mandate_id
+      const rcptId = paymentReceipt.contents.receipt_id
+
+      paymentMandateUrl = `https://${host}/_v/acg/payment-mandates/${pmId}`
+      paymentReceiptUrl = `https://${host}/_v/acg/receipts/${rcptId}`
+      verificationChecks = paymentReceipt.contents.verification_checks
+      paymentApprovalStatus = paymentReceipt.contents.approval_status
+
+      console.log(
+        `${TAG} ← ceremony done: paymentMandateId=${pmId} receiptId=${rcptId} approval=${paymentApprovalStatus}`
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+
+      console.warn(`${TAG} ⚠ AP2 ceremony failed (order still placed): ${msg}`)
+    }
+  }
 
   console.log(
     `${TAG} ✓ done: orderGroup=${orderGroup} total=${total.toFixed(
@@ -553,6 +675,8 @@ async function execute(
       `Call send_payment_info next to forward payment details to the gateway.`,
     ].join(' '),
     cartPreview,
+    shippingAddress: formatShippingAddress(orderForm),
+    customerProfile: formatCustomerProfile(orderForm),
     mandate: {
       mandateId: cartMandateId,
       retrievalUrl,
@@ -565,6 +689,10 @@ async function execute(
       currency,
       orderGroup,
       transactionId,
+      paymentMandateUrl,
+      paymentReceiptUrl,
+      verificationChecks,
+      paymentApprovalStatus,
     },
   }
 }

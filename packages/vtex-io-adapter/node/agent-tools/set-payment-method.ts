@@ -13,7 +13,13 @@
 
 import { Cart } from '../cart/cart'
 import { OrderFormSubstitutedError } from '../cart/errors'
-import type { AgentTool, ToolContext, ToolEffect } from './types'
+import { formatCustomerProfile, formatShippingAddress } from '../mappers/cart'
+import type {
+  AgentTool,
+  PaymentMethodOption,
+  ToolContext,
+  ToolEffect,
+} from './types'
 
 interface SetPaymentMethodArgs {
   paymentSystemId?: string
@@ -68,13 +74,24 @@ async function execute(
       installments: args.installments,
     })
 
-    // Resolve the human-readable name so the iframe consent UI can
-    // show "Pay 10.08 RON · Cash on delivery" instead of an opaque id.
+    // Resolve the human-readable name AND the full configured-methods
+    // list so the iframe consent UI can render a payment-method selector
+    // (Cash default) and show "Pay 10.08 RON · Cash on delivery" instead
+    // of an opaque id.
     let paymentMethodName = `Method ${args.paymentSystemId}`
     let paymentGroup: string | undefined
+    let paymentMethodsList: PaymentMethodOption[] = []
 
     try {
       const methods = await cart.getAvailablePaymentSystems(ctx.orderFormId)
+
+      paymentMethodsList = methods.map((m) => ({
+        id: m.id,
+        name: m.name,
+        group: m.group,
+        requiresAuthentication: m.requiresAuthentication,
+      }))
+
       const found = methods.find((m) => m.id === args.paymentSystemId)
 
       if (found) {
@@ -82,7 +99,22 @@ async function execute(
         paymentGroup = found.group
       }
     } catch {
-      // Soft failure: a missing label is cosmetic, not blocking.
+      // Soft failure: a missing label/list is cosmetic, not blocking.
+    }
+
+    // Real shipping address + buyer summary for the iframe (replaces the
+    // hardcoded "Address on file MOCK" and confirms who is paying).
+    // Cosmetic — missing lines are not blocking.
+    let shippingAddress: string | undefined
+    let customerProfile: ToolEffect['customerProfile']
+
+    try {
+      const of = await ctx.clients.checkout.getOrderForm(ctx.orderFormId)
+
+      shippingAddress = formatShippingAddress(of)
+      customerProfile = formatCustomerProfile(of)
+    } catch {
+      // Cosmetic — ignore.
     }
 
     const checkoutUrl = `https://${ctx.vtex.account}.myvtex.com/checkout/?orderFormId=${ctx.orderFormId}`
@@ -111,6 +143,9 @@ async function execute(
       ].join(' '),
       cartUpdated: true,
       cartPreview,
+      paymentMethods: paymentMethodsList,
+      shippingAddress,
+      customerProfile,
       selectedPayment: {
         id: args.paymentSystemId,
         name: paymentMethodName,

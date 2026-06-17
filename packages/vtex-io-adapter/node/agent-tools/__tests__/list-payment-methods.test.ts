@@ -35,11 +35,22 @@ describe('list_payment_methods', () => {
     assert.match(effect.result, /Cash/)
     assert.match(effect.result, /Visa/)
     assert.deepEqual(effect.suggestions, ['Cash', 'Visa'])
-    // Structured pills for the widget — same order as suggestions, with
-    // id + group so the widget can render icons + canned turns.
+    // Structured pills for the widget / iframe selector — same order as
+    // suggestions, with id + group + requiresAuthentication so the surface
+    // can render icons, canned turns, and a card-form vs cash branch.
     assert.deepEqual(effect.paymentMethods, [
-      { id: '47', name: 'Cash', group: 'cashPaymentGroup' },
-      { id: '2', name: 'Visa', group: 'creditCardPaymentGroup' },
+      {
+        id: '47',
+        name: 'Cash',
+        group: 'cashPaymentGroup',
+        requiresAuthentication: false,
+      },
+      {
+        id: '2',
+        name: 'Visa',
+        group: 'creditCardPaymentGroup',
+        requiresAuthentication: true,
+      },
     ])
   })
 

@@ -86,6 +86,77 @@ function mapOrderFormItem(item: VTEXOrderFormItem): SimpleCartItem {
 }
 
 /**
+ * Format the orderForm's selected shipping address into a one-line
+ * human-readable summary for the checkout iframe's SHIP TO row.
+ * Returns undefined when no address is set.
+ */
+export function formatShippingAddress(
+  orderForm: VTEXOrderForm
+): string | undefined {
+  const shipping = orderForm.shippingData as
+    | {
+        selectedAddresses?: Array<Record<string, unknown>>
+        address?: Record<string, unknown> | null
+      }
+    | null
+    | undefined
+
+  const addr =
+    shipping?.selectedAddresses?.[0] ?? shipping?.address ?? undefined
+
+  if (!addr) return undefined
+
+  const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+  const streetLine = [str(addr.street), str(addr.number)]
+    .filter(Boolean)
+    .join(' ')
+
+  const parts = [
+    streetLine,
+    str(addr.neighborhood),
+    str(addr.city),
+    str(addr.postalCode),
+  ].filter(Boolean)
+
+  const line = parts.join(', ')
+  const receiver = str(addr.receiverName)
+
+  if (!line) return receiver || undefined
+
+  return receiver ? `${receiver} — ${line}` : line
+}
+
+/**
+ * Pull the customer/buyer summary off the orderForm's clientProfileData
+ * for the checkout iframe's "who's paying" block. Returns undefined when
+ * no profile is set; omits individual fields that are blank.
+ */
+export function formatCustomerProfile(
+  orderForm: VTEXOrderForm
+):
+  | { name?: string; email?: string; phone?: string; document?: string }
+  | undefined {
+  const p = orderForm.clientProfileData
+
+  if (!p) return undefined
+
+  const name = [p.firstName, p.lastName].filter(Boolean).join(' ').trim()
+
+  const profile = {
+    name: name || undefined,
+    email: p.email || undefined,
+    phone: p.phone || undefined,
+    document: p.document || undefined,
+  }
+
+  if (!profile.name && !profile.email && !profile.phone && !profile.document) {
+    return undefined
+  }
+
+  return profile
+}
+
+/**
  * Calculate potential savings for cart
  * Useful for intelligence layer
  */

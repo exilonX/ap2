@@ -104,6 +104,7 @@ async function execute(
       id: m.id,
       name: m.name,
       group: m.group,
+      requiresAuthentication: m.requiresAuthentication,
     })),
   }
 }
