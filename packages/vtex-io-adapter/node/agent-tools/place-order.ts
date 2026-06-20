@@ -247,6 +247,35 @@ async function execute(
 
   console.log(`${TAG} ← orderForm state (pre) = ${JSON.stringify(existing)}`)
 
+  // ── 1a. Idempotency backstop (cross-replica safe). ──
+  //
+  // The widget Pay-Now orchestrator guards double-placement with an
+  // in-process Set, but VTEX IO runs this service across many replicas
+  // (service.json: minReplicas 2 × workers 4 = 8 processes at the floor)
+  // with no sticky routing, so two near-simultaneous Pay-Now turns for the
+  // same orderFormId can land on DIFFERENT replicas and both reach here. If
+  // a prior placement already wrote transactionId + orderGroup to this
+  // orderForm's state, the order EXISTS — return it idempotently instead of
+  // re-signing a mandate and POSTing a second /transaction (which would
+  // create a duplicate real order). This is the durable backstop the
+  // in-memory lock cannot provide; it covers every caller (widget
+  // orchestrator AND the LLM tool loop), not just the locked path.
+  if (existing.transactionId && existing.orderGroup) {
+    console.log(
+      `${TAG} EXIT(idempotent): order already placed — orderGroup=${existing.orderGroup} transactionId=${existing.transactionId}; not re-placing`
+    )
+
+    return {
+      result: `Order ${existing.orderGroup} was already placed for this cart — returning the existing transaction, no duplicate created. Proceed with send_payment_info / authorize_transaction.`,
+      checkoutState: {
+        transactionId: existing.transactionId,
+        orderGroup: existing.orderGroup,
+        merchantName: existing.merchantName ?? ctx.vtex.account.toUpperCase(),
+        cartMandateId: existing.cartMandateId,
+      },
+    }
+  }
+
   // ── 1b. Sign the AP2 CartMandate inline if one is not already
   // recorded on this orderForm's state. This collapses the old
   // `create_cart_mandate` step into place_order so the LLM has a
@@ -677,6 +706,23 @@ async function execute(
     cartPreview,
     shippingAddress: formatShippingAddress(orderForm),
     customerProfile: formatCustomerProfile(orderForm),
+    // ── In-memory CheckoutState for the widget Pay-Now orchestrator ──
+    //
+    // Everything send_payment_info + authorize_transaction need to run
+    // WITHOUT re-reading the (memoization-poisoned) VBase state record in
+    // the same HTTP request: transactionId + orderGroup (the open
+    // transaction), cartMandateId (for authorize's mandatePatch), and —
+    // critically — merchantName. We surface merchantName here because it is
+    // otherwise only a local var + a VBase field; without it the injected
+    // send path falls back to ctx.vtex.account.toUpperCase() and can
+    // reintroduce the wrong-merchant symptom. The iframe/MCP path ignores
+    // this field and keeps reading VBase across its separate requests.
+    checkoutState: {
+      transactionId,
+      orderGroup,
+      merchantName,
+      cartMandateId,
+    },
     mandate: {
       mandateId: cartMandateId,
       retrievalUrl,

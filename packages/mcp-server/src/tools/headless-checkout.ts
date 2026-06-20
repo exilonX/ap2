@@ -27,12 +27,31 @@ import { join } from 'path'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import axios from 'axios'
 import { VtexClient } from '../client'
 
 interface PaymentMethodItem {
   id: string
   name: string
   group?: string
+  requiresAuthentication?: boolean
+}
+
+interface CustomerProfileSummary {
+  name?: string
+  email?: string
+  phone?: string
+  document?: string
+}
+
+interface VerificationChecks {
+  merchant_signature: boolean
+  cp_signature: boolean
+  hash_binding: boolean
+  amount_consistency: boolean
+  mandate_id_linking: boolean
+  payment_mandate_not_expired: boolean
+  cart_mandate_not_expired: boolean
 }
 
 interface MandateItem {
@@ -48,6 +67,11 @@ interface MandateItem {
   orderGroup?: string
   transactionId?: string
   gatewayStatus?: 'approved' | 'pending' | 'denied'
+  // AP2 three-party ceremony result — present once place_order runs it.
+  paymentMandateUrl?: string
+  paymentReceiptUrl?: string
+  verificationChecks?: VerificationChecks
+  paymentApprovalStatus?: 'approved' | 'rejected'
 }
 
 interface CartPreviewItem {
@@ -76,7 +100,61 @@ interface ToolEffectResponse {
   cartPreview?: CartPreviewData
   mandate?: MandateItem
   selectedPayment?: PaymentMethodItem
+  shippingAddress?: string
+  customerProfile?: CustomerProfileSummary
   [k: string]: unknown
+}
+
+// ─── cart image embedding ──────────────────────────────────────────
+//
+// The MCP App iframe CSP blocks external `<img src=https://…>` at runtime
+// (ISSUE 0011 — the `_meta.ui.csp.resourceDomains` list is advisory, not
+// enforcing). The adapter returns raw VTEX CDN URLs in `cartPreview`; this
+// surface embeds them as base64 because of its iframe's CSP. Same pattern
+// as tools/cart.ts `embedCartImages`. -100-100 keeps payloads tiny so the
+// MCP stdio pipe stays drained.
+const CART_IMAGE_TIMEOUT_MS = 1500
+
+async function imageToDataUri(url: string): Promise<string | null> {
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: CART_IMAGE_TIMEOUT_MS,
+    })
+    const contentType = (
+      response.headers['content-type'] || 'image/jpeg'
+    ).split(';')[0]
+
+    return `data:${contentType};base64,${Buffer.from(response.data).toString(
+      'base64'
+    )}`
+  } catch {
+    return null
+  }
+}
+
+async function embedCartPreviewImages(
+  cart: CartPreviewData
+): Promise<CartPreviewData> {
+  const settled = await Promise.allSettled(
+    cart.items.map(async (item) => {
+      const imgUrl =
+        item.image?.replace(
+          /\/ids\/(\d+)(?:-\d+-\d+)?\//,
+          '/ids/$1-100-100/'
+        ) || item.image
+      const dataUri = imgUrl ? await imageToDataUri(imgUrl) : null
+
+      return { ...item, image: dataUri || undefined }
+    })
+  )
+  const items = settled.map((outcome, i) =>
+    outcome.status === 'fulfilled'
+      ? outcome.value
+      : { ...cart.items[i], image: undefined }
+  )
+
+  return { ...cart, items }
 }
 
 const CHECKOUT_APP_URI = 'ui://acg-checkout/index.html'
@@ -104,6 +182,11 @@ function buildSetPaymentMethodIframePayload(
       currency: cart.currency,
     },
     selectedPayment: response.selectedPayment ?? null,
+    shippingAddress: response.shippingAddress,
+    customerProfile: response.customerProfile,
+    // Full configured-methods list so the iframe renders a selector the
+    // customer can switch between before paying (Cash default).
+    paymentMethods: response.paymentMethods ?? [],
     // No mandate / order yet — iframe runs in "consent" mode and the
     // Pay Now button drives placeOrder + sendPaymentInfo + authorize
     // via tools/call JSON-RPC against this same MCP server.
@@ -150,6 +233,18 @@ function buildIframePayload(response: ToolEffectResponse): unknown {
       gatewayStatus: m.gatewayStatus,
       adminUrl: m.checkoutUrl,
     },
+    // Real three-party ceremony result (de-mocks the iframe's seven
+    // checks + artifact links). Absent if the ceremony was skipped.
+    receipt: m.verificationChecks
+      ? {
+          verification_checks: m.verificationChecks,
+          approval_status: m.paymentApprovalStatus,
+          paymentMandateUrl: m.paymentMandateUrl,
+          paymentReceiptUrl: m.paymentReceiptUrl,
+        }
+      : undefined,
+    shippingAddress: response.shippingAddress,
+    customerProfile: response.customerProfile,
     checkoutUrl: m.checkoutUrl,
     summary: response.result,
   }
@@ -309,7 +404,7 @@ export function registerHeadlessCheckoutTools(
   // for the user instead of auto-chaining placeOrder.
   const setPaymentMethodTool = server.tool(
     'setPaymentMethod',
-    'Record the customer\'s chosen payment method. After this returns the user MUST confirm by clicking Pay Now in the checkout iframe that opens alongside the chat — DO NOT call placeOrder, sendPaymentInfo, or authorizeTransaction in the same turn, even if the user already said "checkout"/"hai la checkout"/"plasează comanda". Wait for the next user turn. Step 2 of the headless checkout flow.',
+    'Record the customer\'s chosen payment method and open the checkout iframe. If the customer has not named a method, default to the cash-on-delivery option — the iframe shows a selector so they can switch to card or another method before paying. After this returns the user MUST confirm by clicking Pay Now in the checkout iframe that opens alongside the chat — DO NOT call placeOrder, sendPaymentInfo, or authorizeTransaction in the same turn, even if the user already said "checkout"/"hai la checkout"/"plasează comanda". Wait for the next user turn. Step 2 of the headless checkout flow.',
     {
       paymentSystemId: z
         .string()
@@ -327,6 +422,9 @@ export function registerHeadlessCheckoutTools(
           '/checkout/set-payment-method',
           params
         )
+        if (result.cartPreview) {
+          result.cartPreview = await embedCartPreviewImages(result.cartPreview)
+        }
         const iframePayload = buildSetPaymentMethodIframePayload(result)
 
         return {
@@ -363,6 +461,58 @@ export function registerHeadlessCheckoutTools(
     },
   } as any
 
+  // ─── updatePaymentMethod ─────────────────────────────────────────
+  //
+  // Driven BY THE CHECKOUT IFRAME when the customer switches method in
+  // the selector, and as the first step of the Pay Now chain (so the
+  // cart always carries the final choice and the payment value is
+  // re-synced to the current total). Hits the SAME adapter route as
+  // setPaymentMethod but carries NO _meta.ui, so the iframe can call it
+  // without the host opening a nested checkout panel.
+  server.tool(
+    'updatePaymentMethod',
+    'Change the selected payment method on the open cart and return the re-costed cart. Called BY THE CHECKOUT IFRAME when the customer picks a different method in the selector — do NOT call this from chat (use setPaymentMethod, which also opens the iframe).',
+    {
+      paymentSystemId: z
+        .string()
+        .describe('Payment system id to switch to (from the iframe selector).'),
+      installments: z
+        .number()
+        .optional()
+        .describe('Number of installments. Defaults to 1.'),
+    },
+    async (params) => {
+      try {
+        const result = await client.post<ToolEffectResponse>(
+          '/checkout/set-payment-method',
+          params
+        )
+        if (result.cartPreview) {
+          result.cartPreview = await embedCartPreviewImages(result.cartPreview)
+        }
+        const iframePayload = buildSetPaymentMethodIframePayload(result)
+
+        return {
+          content: [
+            { type: 'text' as const, text: JSON.stringify(iframePayload) },
+          ],
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: error instanceof Error ? error.message : 'Unknown error',
+              }),
+            },
+          ],
+          isError: true,
+        }
+      }
+    }
+  )
+
   // ─── placeOrder ──────────────────────────────────────────────────
   //
   // Designed to be called BY THE CHECKOUT IFRAME when the user clicks
@@ -382,6 +532,9 @@ export function registerHeadlessCheckoutTools(
         const result = await client.post<ToolEffectResponse>(
           '/checkout/place-order'
         )
+        if (result.cartPreview) {
+          result.cartPreview = await embedCartPreviewImages(result.cartPreview)
+        }
         const iframePayload = buildIframePayload(result)
 
         return {
@@ -474,5 +627,5 @@ export function registerHeadlessCheckoutTools(
     }
   )
 
-  console.error('[ACG] Headless checkout tools registered (5 tools: list/setPaymentMethod, placeOrder [auto-mandate], sendPaymentInfo, authorizeTransaction)')
+  console.error('[ACG] Headless checkout tools registered (6 tools: list/set/updatePaymentMethod, placeOrder [auto-mandate], sendPaymentInfo, authorizeTransaction)')
 }

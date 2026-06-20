@@ -10,6 +10,7 @@ import {
 } from '../utils/theme'
 import CartPreviewCard from './CartPreviewCard'
 import MandateBadge from './MandateBadge'
+import OrderReviewCard from './OrderReviewCard'
 import PaymentMethodPills from './PaymentMethodPills'
 import ProductGroup from './ProductGroup'
 import QuickReplies from './QuickReplies'
@@ -141,6 +142,13 @@ function MessageList({ messages, isTyping, onAddToCart, onQuickReply }: MessageL
             <PaymentMethodPills
               methods={msg.paymentMethods}
               onSelect={onQuickReply}
+            />
+          )}
+          {msg.orderReview && (
+            <OrderReviewCard
+              review={msg.orderReview}
+              onPayNow={onQuickReply}
+              isLatest={msg.id === lastMessage?.id}
             />
           )}
           {msg.mandate && <MandateBadge mandate={msg.mandate} />}

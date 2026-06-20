@@ -230,6 +230,13 @@ export class FakeCheckoutClient {
   private nextFailures: Map<FakeMethod, Error> = new Map()
   private nextSubstitutedId: string | null = null
   private couponRules: Map<string, number> = new Map() // code -> discount cents
+  // Opt-in model of @vtex/api's per-request GET /orderForm memoization. null
+  // = OFF (default — getOrderForm reads live store, as all existing tests
+  // expect). When enabled, getOrderForm serves the FIRST snapshot it saw per
+  // id and ignores later writes — the staleness the Pay-Now setSolePayment
+  // fix defends against. POST methods keep reading/writing the live store, so
+  // their echoes stay fresh.
+  private getMemo: Map<string, VTEXOrderForm> | null = null
 
   // ─── Test injection points ────────────────────────────────────────
 
@@ -264,6 +271,16 @@ export class FakeCheckoutClient {
    */
   public addCouponRule(code: string, discountCents: number): void {
     this.couponRules.set(code, discountCents)
+  }
+
+  /**
+   * Turn on per-request GET /orderForm memoization (see {@link getMemo}).
+   * Call before the reads/writes you want frozen; from then on getOrderForm
+   * returns the first snapshot it saw per id, no matter what POSTs mutate —
+   * modelling the @vtex/api in-request cache the widget Pay-Now path hits.
+   */
+  public enableGetMemoization(): void {
+    this.getMemo = new Map()
   }
 
   // ─── Test helpers ─────────────────────────────────────────────────
@@ -304,10 +321,26 @@ export class FakeCheckoutClient {
 
   public async getOrderForm(orderFormId: string): Promise<VTEXOrderForm> {
     this.tripFailure('getOrderForm')
+
+    // Per-request GET memoization (opt-in): once primed, serve the frozen
+    // first-seen snapshot and ignore subsequent writes — the staleness real
+    // @vtex/api exhibits within one request.
+    if (this.getMemo) {
+      const cached = this.getMemo.get(orderFormId)
+
+      if (cached) {
+        return this.maybeSubstituteId(clone(cached))
+      }
+    }
+
     const of = this.store.get(orderFormId)
 
     if (!of) {
       throw new Error(`FakeCheckoutClient: orderForm ${orderFormId} not found`)
+    }
+
+    if (this.getMemo) {
+      this.getMemo.set(orderFormId, clone(of))
     }
 
     return this.maybeSubstituteId(clone(of))
@@ -446,7 +479,21 @@ export class FakeCheckoutClient {
     this.tripFailure('addPaymentData')
     const of = this.requireOrderForm(orderFormId)
 
-    of.paymentData.payments = data.payments as unknown[]
+    // Mirror production VTEX: a NON-EMPTY payments array is APPENDED to the
+    // existing paymentData.payments (it does NOT replace), while an EMPTY
+    // array CLEARS the list. The old fake replaced unconditionally, which
+    // hid the stale-payment bug the Pay-Now clearPayments → setPaymentData
+    // override exists to fix. Modelling the append faithfully is what lets
+    // the override path be exercised by tests.
+    if (data.payments.length === 0) {
+      of.paymentData.payments = []
+    } else {
+      of.paymentData.payments = [
+        ...(of.paymentData.payments as unknown[]),
+        ...(data.payments as unknown[]),
+      ]
+    }
+
     of.paymentData.updateStatus = 'success'
 
     return this.maybeSubstituteId(clone(of))

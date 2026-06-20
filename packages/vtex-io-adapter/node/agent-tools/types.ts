@@ -139,6 +139,15 @@ export interface ToolContext {
   clients: Context['clients']
   config: ClientConfig
   orderFormId: string | null
+  /**
+   * Private channel the widget Pay-Now orchestrator sets so send_payment_info
+   * + authorize_transaction can skip the memoization-poisoned VBase read (see
+   * {@link CheckoutState}). Deliberately on ToolContext, NOT the tool `args`
+   * object — `args` is populated by the LLM, so a model on the chat/MCP
+   * surface must never be able to supply this and steer which transaction is
+   * driven. Only the orchestrator sets it; the LLM tool loop never does.
+   */
+  injectedCheckoutState?: CheckoutState
 }
 
 // ─── ToolEffect — what tools return ────────────────────────────────
@@ -195,6 +204,15 @@ export interface ToolEffect {
    * when blank.
    */
   customerProfile?: CustomerProfileSummary
+  /**
+   * In-memory checkout state surfaced by place_order so the widget Pay-Now
+   * orchestrator can thread transactionId / orderGroup / merchantName /
+   * cartMandateId straight into send_payment_info + authorize_transaction
+   * WITHOUT re-reading the (memoization-poisoned) VBase state record in the
+   * same HTTP request. Only place_order populates it; only the chatHandler
+   * orchestrator reads it. The iframe/MCP path ignores it.
+   */
+  checkoutState?: CheckoutState
 }
 
 export interface CustomerProfileSummary {
@@ -202,6 +220,29 @@ export interface CustomerProfileSummary {
   email?: string
   phone?: string
   document?: string
+}
+
+// ─── CheckoutState — in-memory state threaded place → send → authorize ──
+//
+// The widget Pay-Now orchestrator runs place_order → send_payment_info →
+// authorize_transaction as ONE server-side sequence inside a SINGLE HTTP
+// request. That request shares one @vtex/api HttpClient memoization cache
+// (keyed by URL, no write-invalidation), so a `vbase.getJSON` read of the
+// orderForm state record made AFTER place_order's write is served STALE —
+// send/authorize then re-read empty state and bail "no open transaction".
+//
+// CheckoutState is the fix: place_order surfaces it in its ToolEffect, and
+// the orchestrator threads it into send/authorize via the private
+// `ToolContext.injectedCheckoutState` field (NOT the LLM-populated `args`
+// bag). When present, those tools USE IT and skip the poisoned VBase read
+// entirely. The iframe/MCP path (which drives the chain across SEPARATE HTTP
+// requests, letting VBase settle) never sets this field, so its VBase-read
+// behaviour is byte-unchanged.
+export interface CheckoutState {
+  transactionId: string
+  orderGroup: string
+  merchantName: string
+  cartMandateId?: string
 }
 
 // ─── AgentTool — the contract ──────────────────────────────────────

@@ -112,6 +112,49 @@ describe('place_order', () => {
     )
   })
 
+  it('is idempotent: short-circuits with NO second /transaction when the orderForm state already carries a transactionId + orderGroup', async () => {
+    const deps = makeFakeToolContext()
+
+    await prepareReadyCart(deps)
+    const orderFormId = deps.ctx.orderFormId!
+
+    // Simulate a FIRST placement that already persisted its result — e.g. a
+    // concurrent Pay-Now turn that landed on a different replica (the
+    // in-process lock there does not protect this one).
+    await saveOrderFormState(deps.vbase, orderFormId, {
+      cartMandateId: 'mandate-test-1',
+      transactionId: 'tx-existing',
+      orderGroup: 'og-existing',
+      merchantName: 'PRIOR-MERCHANT',
+    })
+
+    // Spy: placeOrder (POST /transaction) must NOT be called a second time.
+    let placeOrderCalls = 0
+    const originalPlaceOrder = deps.checkout.placeOrder.bind(deps.checkout)
+
+    type PlaceOrderArg = string | { referenceId: string; value: number }
+    ;((deps.checkout as unknown) as {
+      placeOrder: (
+        orderFormId: string,
+        input: PlaceOrderArg
+      ) => Promise<unknown>
+    }).placeOrder = async (id: string, input: PlaceOrderArg) => {
+      placeOrderCalls++
+
+      return originalPlaceOrder(id, input)
+    }
+
+    const effect = await placeOrderTool.execute({}, deps.ctx)
+
+    assert.equal(placeOrderCalls, 0, 'no duplicate POST /transaction')
+    assert.match(effect.result, /already placed/i)
+    // It surfaces the EXISTING transaction so the orchestrator can proceed.
+    assert.equal(effect.checkoutState?.transactionId, 'tx-existing')
+    assert.equal(effect.checkoutState?.orderGroup, 'og-existing')
+    assert.equal(effect.checkoutState?.merchantName, 'PRIOR-MERCHANT')
+    assert.equal(effect.checkoutState?.cartMandateId, 'mandate-test-1')
+  })
+
   it('returns a complete MandateInfo with orderGroup + transactionId so the widget renders PlacedOrderConfirmation', async () => {
     const deps = makeFakeToolContext()
 

@@ -103,6 +103,23 @@ export interface ClientConfig {
   preferredPaymentMethods?: string[]
 
   /**
+   * Payment-method ALLOWLIST for the checkout UI. When set, ONLY these
+   * methods are shown to the customer, in exactly this order — every other
+   * VTEX-configured method is hidden. Use it to trim VTEX's full
+   * (often 15-20) payment-systems list down to a clean handful.
+   *
+   * Each entry matches a configured method by NAME or by id,
+   * case-insensitively — so a profile can list human-readable names
+   * (`['Cash', 'Visa', 'Mastercard', 'PayPal', 'IngRo']`) without knowing
+   * the store's numeric paymentSystem ids. Entries that don't match any
+   * configured method are silently skipped.
+   *
+   * Leave unset (or empty) to show every configured method, ordered by
+   * `preferredPaymentMethods`.
+   */
+  allowedPaymentMethods?: string[]
+
+  /**
    * Quick-reply chips shown on the empty state, per locale.
    */
   starters: Record<Locale, string[]>

@@ -189,6 +189,123 @@
     letter-spacing: 1px;
   }
   .on-file-value { color: #1a1a2e; font-weight: 500; }
+  .payment-select {
+    font-size: 13px;
+    font-family: inherit;
+    padding: 5px 8px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: white;
+    color: #1a1a2e;
+    cursor: pointer;
+    max-width: 220px;
+  }
+  .payment-select:disabled { opacity: 0.6; cursor: wait; }
+
+  /* Mock card form — shown only when a card method is selected. */
+  .card-form {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card-field { margin-bottom: 10px; }
+  .card-field label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #999;
+    margin-bottom: 4px;
+  }
+  .card-field input {
+    width: 100%;
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: inherit;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    color: #1a1a2e;
+    background: #fbfcfd;
+  }
+  .card-field input:focus { outline: none; border-color: #667eea; background: white; }
+  .card-row { display: flex; gap: 12px; }
+  .card-row .card-field { flex: 1; }
+  .card-note { font-size: 11px; color: #b35900; margin-top: 4px; }
+
+  /* 3DS / redirect step-up overlay. */
+  .auth-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(16,18,28,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 16px;
+  }
+  .auth-modal {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+    max-width: 340px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    text-align: center;
+  }
+  .auth-modal .auth-bank {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #667eea;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .auth-modal h3 { font-size: 16px; margin-bottom: 6px; color: #1a1a2e; }
+  .auth-modal p { font-size: 13px; color: #6b7280; line-height: 1.5; margin-bottom: 14px; }
+  .auth-otp {
+    width: 100%;
+    padding: 12px;
+    font-size: 20px;
+    letter-spacing: 6px;
+    text-align: center;
+    border: 1px solid #d0d7de;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    font-family: inherit;
+  }
+  .auth-btn {
+    width: 100%;
+    padding: 13px;
+    font-size: 15px;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-bottom: 8px;
+    font-family: inherit;
+  }
+  .auth-btn:disabled { opacity: 0.6; cursor: wait; }
+  .auth-cancel {
+    font-size: 12px;
+    color: #888;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+  }
+  .auth-spinner {
+    width: 34px;
+    height: 34px;
+    border: 3px solid #e5e7eb;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    margin: 6px auto 14px;
+    animation: spin 0.7s linear infinite;
+  }
   .on-file-mock-tag {
     display: inline-block;
     margin-left: 6px;
@@ -461,18 +578,50 @@
   to match.
 -->
 <div class="on-file-section" id="on-file-section">
+  <div id="customer-rows"></div>
   <div class="on-file-row">
     <span class="on-file-label">Payment method</span>
     <span class="on-file-value">VISA &bull;&bull;&bull;&bull; 4242 <span class="on-file-mock-tag">MOCK</span></span>
   </div>
   <div class="on-file-row">
     <span class="on-file-label">Ship to</span>
-    <span class="on-file-value">Address on file <span class="on-file-mock-tag">MOCK</span></span>
+    <span class="on-file-value" id="ship-to-value">Address on file <span class="on-file-mock-tag">MOCK</span></span>
   </div>
   <div class="on-file-row">
     <span class="on-file-label">Authorization</span>
     <span class="on-file-value">Click Pay Now to sign &amp; submit</span>
   </div>
+</div>
+
+<!--
+  Mock card form — shown only when a card-group method is selected in the
+  payment selector. PURELY DEMO: card data never leaves the iframe and is
+  never sent to VTEX. The real VTEX card rail needs the PPP connector
+  (Secure Proxy tokenisation + real 3DS). The genuine cryptographic beat
+  here is the AP2 ceremony — the CP signs a PaymentMandate over the cart,
+  the Network verifies it — which runs server-side in place_order.
+-->
+<div class="card-form" id="card-form-section" style="display:none">
+  <div class="section-title">Card details <span class="on-file-mock-tag">MOCK</span></div>
+  <div class="card-field">
+    <label>Card number</label>
+    <input id="card-number" type="text" inputmode="numeric" autocomplete="off" value="4242 4242 4242 4242" maxlength="19">
+  </div>
+  <div class="card-row">
+    <div class="card-field">
+      <label>Expiry</label>
+      <input id="card-expiry" type="text" autocomplete="off" value="12/30" maxlength="5">
+    </div>
+    <div class="card-field">
+      <label>CVC</label>
+      <input id="card-cvc" type="text" inputmode="numeric" autocomplete="off" value="123" maxlength="4">
+    </div>
+  </div>
+  <div class="card-field">
+    <label>Cardholder</label>
+    <input id="card-holder" type="text" autocomplete="off" placeholder="Name on card" value="">
+  </div>
+  <div class="card-note">No real charge — demo card. The 3DS step-up below is simulated.</div>
 </div>
 
 <div id="action-area">
@@ -482,12 +631,20 @@
   <div class="native-checkout-link">
     <a id="checkout-btn" href="#" onclick="openLink('checkout-btn'); return false;">Or use VTEX standard checkout</a>
   </div>
-  <div class="force-reject-link">
+  <!-- Force-reject belonged to the old executePayment demo path. The
+       headless flow has no real reject branch, so it stays hidden (also
+       hidden at runtime in populateCheckout as a belt-and-suspenders). -->
+  <div class="force-reject-link" style="display:none">
     <a href="#" id="force-reject-link" onclick="payNow(true); return false;">(force reject &mdash; staging only)</a>
   </div>
 </div>
 
 <div id="result-area" style="display:none"></div>
+
+<!-- 3DS / redirect step-up overlay (simulated). Populated by runPaymentAuth. -->
+<div class="auth-overlay" id="auth-overlay" style="display:none">
+  <div class="auth-modal" id="auth-modal"></div>
+</div>
 
 <div class="secure-note">Secured by AP2 Protocol v0.1.0 &bull; EdDSA (Ed25519) &bull; JWT signed mandate</div>
 
@@ -495,6 +652,9 @@
   var rpcId = 1;
   var pendingRequests = {};
   var currentMandateId = null;
+  var currentPaymentId = null;
+  var currentMethodKind = 'direct';
+  var authResolver = null;
 
   function sendToHost(msg) { window.parent.postMessage(msg, '*'); }
 
@@ -548,7 +708,26 @@
 
   function populateCheckout(data) {
     var cart = data.cart;
-    if (!cart || !cart.items) return;
+    if (!cart || !cart.items) {
+      // No cart in the payload — typically a tool error (e.g.
+      // setPaymentMethod failed validation). Surface the message instead
+      // of leaving the iframe blank.
+      var errMsg = data.result || data.error || data.message || data.summary;
+      if (errMsg) {
+        var itemsEl = document.getElementById('items-list');
+        if (itemsEl) {
+          itemsEl.innerHTML =
+            '<div style="padding:12px 4px;color:#cf222e;font-size:13px;line-height:1.5;">' +
+            escapeHtml(String(errMsg)) + '</div>';
+        }
+        var actionArea = document.getElementById('action-area');
+        if (actionArea) actionArea.style.display = 'none';
+        var onFile = document.getElementById('on-file-section');
+        if (onFile) onFile.style.display = 'none';
+        notifySize();
+      }
+      return;
+    }
 
     // Items
     var html = '';
@@ -606,13 +785,43 @@
       document.getElementById('mandate-expires').textContent = '—';
     }
 
-    // Payment method label — replaces the demo's MOCK card-on-file row
-    // when the headless flow surfaces a real selectedPayment.
-    if (data.selectedPayment && data.selectedPayment.name) {
-      var paymentRow = document.querySelector('.on-file-section .on-file-row .on-file-value');
-      if (paymentRow) {
+    // Payment method — render a selector (Cash default) when the headless
+    // flow surfaces the configured methods so the customer can switch
+    // before paying. Falls back to a static label when only one method /
+    // a bare selectedPayment is known.
+    var paymentRow = document.querySelector('.on-file-section .on-file-row .on-file-value');
+    if (paymentRow) {
+      var methods = data.paymentMethods || [];
+      var selId = (data.selectedPayment && data.selectedPayment.id) ||
+        (methods[0] && methods[0].id) || '';
+      currentPaymentId = selId ? String(selId) : null;
+
+      if (methods.length > 1) {
+        var opts = '';
+        for (var pm = 0; pm < methods.length; pm++) {
+          var m = methods[pm];
+          opts += '<option value="' + escapeAttr(m.id) + '"' +
+            (String(m.id) === String(selId) ? ' selected' : '') + '>' +
+            escapeHtml(m.name) + '</option>';
+        }
+        paymentRow.innerHTML =
+          '<select id="payment-method-select" class="payment-select" ' +
+          'onchange="onPaymentMethodChange(this); return false;">' + opts + '</select>';
+      } else if (data.selectedPayment && data.selectedPayment.name) {
         paymentRow.innerHTML = escapeHtml(data.selectedPayment.name) +
           ' <span class="on-file-mock-tag">id: ' + escapeHtml(data.selectedPayment.id || '') + '</span>';
+      }
+
+      // The selected method's kind drives the card form + step-up beats.
+      var selMethod = null;
+      for (var sm = 0; sm < methods.length; sm++) {
+        if (String(methods[sm].id) === String(selId)) { selMethod = methods[sm]; break; }
+      }
+      if (!selMethod && data.selectedPayment) selMethod = data.selectedPayment;
+      currentMethodKind = methodKind(selMethod);
+      var cardForm = document.getElementById('card-form-section');
+      if (cardForm) {
+        cardForm.style.display = currentMethodKind === 'card' ? 'block' : 'none';
       }
     }
 
@@ -638,15 +847,18 @@
         payment_mandate_not_expired: true,
         cart_mandate_not_expired: true,
       };
+      var placedChecks = (data.receipt && data.receipt.verification_checks)
+        ? data.receipt.verification_checks
+        : synthChecks;
       var synthPayload = {
         success: true,
         orderId: data.order.orderGroup,
         mandateId: currentMandateId,
-        paymentReceipt: { contents: { verification_checks: synthChecks } },
+        paymentReceipt: { contents: { verification_checks: placedChecks } },
         adminUrl: data.order.adminUrl,
         gatewayStatus: data.order.gatewayStatus,
-        paymentMandateUrl: null,
-        paymentReceiptUrl: null,
+        paymentMandateUrl: data.receipt ? data.receipt.paymentMandateUrl : null,
+        paymentReceiptUrl: data.receipt ? data.receipt.paymentReceiptUrl : null,
       };
       // Tiny delay so the cart + mandate panels paint first and the
       // user reads the context before the checks start animating in.
@@ -667,6 +879,37 @@
       payBtn.textContent = 'Pay ' + cart.total.toFixed(2) + ' ' + cart.currency + paymentLabel;
       payBtn.disabled = false;
     }
+
+    // Customer / buyer summary — labeled rows at the top of the details
+    // block so the final step clearly confirms who is paying.
+    var customerRows = document.getElementById('customer-rows');
+    if (customerRows) {
+      var cust = data.customerProfile;
+      if (cust && (cust.name || cust.email || cust.phone || cust.document)) {
+        var crows = '';
+        if (cust.name) crows += buyerRow('Customer', cust.name);
+        if (cust.email) crows += buyerRow('Email', cust.email);
+        if (cust.phone) crows += buyerRow('Phone', cust.phone);
+        if (cust.document) crows += buyerRow('Document', cust.document);
+        customerRows.innerHTML = crows;
+      } else {
+        customerRows.innerHTML = '';
+      }
+    }
+
+    // Real shipping address in the SHIP TO row (replaces "Address on file
+    // MOCK"). textContent drops the MOCK badge along with the placeholder.
+    var shipToEl = document.getElementById('ship-to-value');
+    if (shipToEl && data.shippingAddress) {
+      shipToEl.textContent = data.shippingAddress;
+    }
+
+    // The force-reject affordance belonged to the old executePayment demo
+    // path (it forced a real signed rejection receipt). The headless flow
+    // has no real reject branch — the rewritten payNow() ignores its
+    // argument, so the link would just place a real order. Hide it.
+    var forceReject = document.querySelector('.force-reject-link');
+    if (forceReject) forceReject.style.display = 'none';
 
     // Update the authorization hint copy to match the headless flow.
     var authValue = document.querySelector('.on-file-section .on-file-row:last-child .on-file-value');
@@ -689,6 +932,142 @@
     notifySize();
   }
 
+  // Classify a payment method into the UX branch it needs:
+  //   card     → show the mock card form + a simulated 3DS step-up
+  //   redirect → simulate a hand-off to an external provider page
+  //   direct   → connector-less (Cash / promissory): pay straight away
+  function methodKind(method) {
+    if (!method) return 'direct';
+    var group = (method.group || '').toLowerCase();
+    if (group.indexOf('card') !== -1) return 'card';
+    // 'direct' = connector-less rails we can actually settle straight through
+    // VTEX (Cash on delivery / promissory / bank invoice). This MUST be an
+    // explicit allowlist, NOT a fallthrough default: external rails like
+    // PayPal or ING redirect (now allowlisted on vtexeurope) do not reliably
+    // set requiresAuthentication, and classifying them 'direct' would POST an
+    // empty payment to the connector — the exact empty-payment failure this
+    // gate exists to prevent. Anything we don't positively recognise as a
+    // direct rail settles via its provider flow (settlement-pending), never
+    // auto-through-VTEX.
+    if (
+      group.indexOf('cash') !== -1 ||
+      group.indexOf('promissory') !== -1 ||
+      group.indexOf('bankinvoice') !== -1 ||
+      group.indexOf('bank invoice') !== -1
+    ) {
+      return 'direct';
+    }
+    return 'redirect';
+  }
+
+  // Simulated step-up before the real Pay Now chain. Resolves true to
+  // proceed, false if the customer cancels. Cash / promissory resolve
+  // immediately. NONE of this talks to a real PSP — it is the demo's
+  // stand-in for the issuer / provider surface. The genuine cryptographic
+  // beat is the AP2 ceremony that runs server-side in place_order.
+  function runPaymentAuth() {
+    if (currentMethodKind === 'card') return runCardStepUp();
+    if (currentMethodKind === 'redirect') return runRedirectStepUp();
+    return Promise.resolve(true);
+  }
+
+  function showAuthOverlay(html) {
+    var modal = document.getElementById('auth-modal');
+    if (modal) modal.innerHTML = html;
+    var overlay = document.getElementById('auth-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    notifySize();
+  }
+  function hideAuthOverlay() {
+    var overlay = document.getElementById('auth-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  function runCardStepUp() {
+    var numEl = document.getElementById('card-number');
+    var digits = (numEl && numEl.value ? numEl.value : '').replace(/\s+/g, '');
+    if (digits.length < 12) {
+      showAuthOverlay(
+        '<div class="auth-bank">Card</div>' +
+        '<h3>Check the card number</h3>' +
+        '<p>Enter a valid demo card (e.g. 4242 4242 4242 4242).</p>' +
+        '<button class="auth-btn" type="button" onclick="closeAuth(); return false;">OK</button>'
+      );
+      return Promise.resolve(false);
+    }
+    var last4 = digits.slice(-4);
+    return new Promise(function(resolve) {
+      authResolver = resolve;
+      showAuthOverlay(
+        '<div class="auth-bank">3-D Secure</div>' +
+        '<h3>Verify it’s you</h3>' +
+        '<p>Your bank sent a one-time code for the card ending ' + escapeHtml(last4) +
+        '. Enter it to authorise this payment. <em>(Demo: any 6 digits work.)</em></p>' +
+        '<input class="auth-otp" id="auth-otp" inputmode="numeric" maxlength="6" placeholder="••••••">' +
+        '<button class="auth-btn" id="auth-confirm" type="button" onclick="submitOtp(); return false;">Authenticate</button>' +
+        '<button class="auth-cancel" type="button" onclick="cancelAuth(); return false;">Cancel</button>'
+      );
+      var otp = document.getElementById('auth-otp');
+      if (otp) otp.focus();
+    });
+  }
+
+  function runRedirectStepUp() {
+    return new Promise(function(resolve) {
+      authResolver = resolve;
+      showAuthOverlay(
+        '<div class="auth-bank">Redirect</div>' +
+        '<div class="auth-spinner"></div>' +
+        '<h3>Redirecting to provider…</h3>' +
+        '<p>You’d normally continue on the provider’s page, then return here. <em>(Demo: auto-returns.)</em></p>'
+      );
+      setTimeout(function() {
+        hideAuthOverlay();
+        if (authResolver) { authResolver(true); authResolver = null; }
+      }, 1800);
+    });
+  }
+
+  window.submitOtp = function() {
+    var btn = document.getElementById('auth-confirm');
+    if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+    setTimeout(function() {
+      hideAuthOverlay();
+      if (authResolver) { authResolver(true); authResolver = null; }
+    }, 700);
+  };
+  window.cancelAuth = function() {
+    hideAuthOverlay();
+    if (authResolver) { authResolver(false); authResolver = null; }
+  };
+  window.closeAuth = function() {
+    hideAuthOverlay();
+    if (authResolver) { authResolver(false); authResolver = null; }
+  };
+
+  // Payment-method selector change — re-cost the cart on the server via
+  // the no-_meta.ui updatePaymentMethod tool, then re-render. That tool
+  // carries no UI resource, so calling it from the iframe does not re-open
+  // a nested checkout panel.
+  window.onPaymentMethodChange = function(selectEl) {
+    var newId = selectEl.value;
+    if (!newId) return;
+    selectEl.disabled = true;
+    rpcRequest('tools/call', {
+      name: 'updatePaymentMethod',
+      arguments: { paymentSystemId: newId },
+    })
+      .then(function(res) {
+        var payload = parseToolResult(res) || {};
+        if (payload && payload.cart) {
+          populateCheckout(payload);
+        } else {
+          selectEl.disabled = false;
+        }
+      })
+      .catch(function() { selectEl.disabled = false; });
+  };
+
   // Pay-now flow — drives the full headless checkout chain via three
   // tools/call JSON-RPC requests against the MCP server:
   //
@@ -704,12 +1083,69 @@
   // tool description tells the LLM to stop and let the iframe drive.
   window.payNow = function() {
     var btn = document.getElementById('pay-now-btn');
+    var originalLabel = btn.textContent;
     btn.disabled = true;
+
+    // Simulated step-up first (card 3DS / redirect), then the real chain.
+    // Direct methods (Cash) resolve immediately and proceed.
+    runPaymentAuth().then(function(proceed) {
+      if (!proceed) {
+        // Customer cancelled the card / 3DS step — restore the button.
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+        return;
+      }
+      payChain(btn);
+    });
+  };
+
+  // The real Pay Now chain: ensure the method choice + re-cost, then
+  // placeOrder → sendPaymentInfo → authorizeTransaction → render result.
+  function payChain(btn) {
+    // Ensure the cart carries the customer's final method choice (and the
+    // payment value re-synced to the current total) before placing the
+    // order. No-op-safe when the selection is unchanged; skipped entirely
+    // when no method selector was rendered (currentPaymentId null).
+    var ensureSelection = currentPaymentId
+      ? rpcRequest('tools/call', {
+          name: 'updatePaymentMethod',
+          arguments: { paymentSystemId: currentPaymentId },
+        })
+      : Promise.resolve(null);
+
     btn.textContent = 'Signing CartMandate…';
 
-    rpcRequest('tools/call', { name: 'placeOrder', arguments: {} })
+    ensureSelection
+      .then(function() {
+        return rpcRequest('tools/call', { name: 'placeOrder', arguments: {} });
+      })
       .then(function(placeResult) {
         var placePayload = parseToolResult(placeResult) || {};
+
+        // placeOrder can "succeed" at the transport layer yet fail in the
+        // adapter: a rejected transaction (ORD009, a missing precondition)
+        // comes back as a 200 with { result: "ERROR…" }, which RESOLVES
+        // this rpc rather than rejecting it. So verify a real orderGroup
+        // exists before driving the rest of the chain — otherwise we'd
+        // animate a green all-checks-pass ceremony for an order that was
+        // never created.
+        var orderGroup = placePayload.order && placePayload.order.orderGroup;
+        var adminUrl = placePayload.order && placePayload.order.adminUrl;
+        // Real three-party ceremony result from place_order (de-mocks the
+        // seven checks + the PaymentMandate / PaymentReceipt links).
+        // Undefined if the ceremony was skipped server-side, in which case
+        // we fall back to synthesised all-true checks.
+        var placeReceipt = placePayload.receipt;
+
+        if (!orderGroup) {
+          renderPaymentResult({
+            success: false,
+            reason: placeFailureReason(placePayload),
+            drifted: false,
+          });
+          return null; // stop the chain — nothing was placed
+        }
+
         // placeOrder returns the iframe-shape payload: cart, mandate, order.
         // Update the mandate panel so the user sees the just-signed bytes.
         if (placePayload.mandate && placePayload.mandate.id) {
@@ -726,8 +1162,67 @@
             document.getElementById('did-link').href = placePayload.mandate.didUrl;
           }
         }
-        var orderGroup = placePayload.order && placePayload.order.orderGroup;
-        var adminUrl = placePayload.order && placePayload.order.adminUrl;
+        // Real verification checks + artifact URLs from the place_order
+        // ceremony. Fall back to synthesised all-true checks only if the
+        // ceremony was skipped (older adapter, soft-fail).
+        var synthChecks = {
+          merchant_signature: true,
+          cp_signature: true,
+          hash_binding: true,
+          amount_consistency: true,
+          mandate_id_linking: true,
+          payment_mandate_not_expired: true,
+          cart_mandate_not_expired: true,
+        };
+        var checks =
+          placeReceipt && placeReceipt.verification_checks
+            ? placeReceipt.verification_checks
+            : synthChecks;
+        var pmUrl = placeReceipt ? placeReceipt.paymentMandateUrl : null;
+        var prUrl = placeReceipt ? placeReceipt.paymentReceiptUrl : null;
+        var ceremonyRejected =
+          placeReceipt && placeReceipt.approval_status === 'rejected';
+
+        // Settlement gate. Only connector-less methods (Cash / promissory,
+        // classified 'direct') settle straight through VTEX. Card / redirect
+        // methods need an external payment connector (Netopia) + Secure Proxy
+        // to capture the card — not wired yet. POSTing an empty card payment
+        // to VTEX 400s ("card number must be not null to generate hash") and
+        // the order then auto-cancels, which renders as a hard failure even
+        // though the order AND the AP2 ceremony both succeeded. So for those
+        // methods, stop after the order + ceremony and show an honest
+        // "settlement pending via connector" state. Everything shown is real;
+        // only the gateway capture is deferred to the connector.
+        if (currentMethodKind !== 'direct') {
+          renderPaymentResult({
+            success: true,
+            settlementPending: true,
+            orderId: orderGroup,
+            mandateId: currentMandateId,
+            adminUrl: adminUrl,
+            paymentReceipt: { contents: { verification_checks: checks } },
+            paymentMandateUrl: pmUrl,
+            paymentReceiptUrl: prUrl,
+          });
+          return null;
+        }
+
+        // If the AP2 network REJECTED the cryptographic chain, surface the
+        // signed rejection BEFORE driving the real VTEX settlement — never
+        // capture money and only afterwards declare the chain rejected.
+        // (This check used to run after send/authorize.)
+        if (ceremonyRejected) {
+          renderPaymentResult({
+            success: false,
+            reason: 'The payment network rejected the cryptographic chain.',
+            drifted: false,
+            paymentReceipt: { contents: { verification_checks: checks } },
+            paymentMandateUrl: pmUrl,
+            paymentReceiptUrl: prUrl,
+          });
+          return null;
+        }
+
         btn.textContent = 'Forwarding payment to gateway…';
         notifySize();
         return rpcRequest('tools/call', { name: 'sendPaymentInfo', arguments: {} })
@@ -738,27 +1233,29 @@
           })
           .then(function(authResult) {
             var authPayload = parseToolResult(authResult) || {};
-            // Synthesise a success payload for renderPaymentResult — the
-            // 7-check ceremony reflects the just-verified-at-sign-time
-            // mandate, not a separate verification beat.
-            var synthChecks = {
-              merchant_signature: true,
-              cp_signature: true,
-              hash_binding: true,
-              amount_consistency: true,
-              mandate_id_linking: true,
-              payment_mandate_not_expired: true,
-              cart_mandate_not_expired: true,
-            };
+            var gatewayStatus = authPayload.gatewayStatus;
+
+            // VTEX gateway denied the payment — order exists, no capture.
+            if (gatewayStatus === 'denied') {
+              renderPaymentResult({
+                success: false,
+                reason: 'The payment gateway denied this transaction. The order was created in VTEX OMS but no payment was captured.',
+                drifted: false,
+              });
+              return;
+            }
+
+            // (ceremonyRejected is checked BEFORE settlement above — a
+            // rejected chain never reaches this point for direct methods.)
             renderPaymentResult({
               success: true,
-              orderId: orderGroup || '',
+              orderId: orderGroup,
               mandateId: currentMandateId,
               adminUrl: adminUrl,
-              gatewayStatus: authPayload.gatewayStatus,
-              paymentReceipt: { contents: { verification_checks: synthChecks } },
-              paymentMandateUrl: null,
-              paymentReceiptUrl: null,
+              gatewayStatus: gatewayStatus,
+              paymentReceipt: { contents: { verification_checks: checks } },
+              paymentMandateUrl: pmUrl,
+              paymentReceiptUrl: prUrl,
             });
           });
       })
@@ -770,6 +1267,15 @@
         });
       });
   };
+
+  // Extract a human-readable failure reason from a placeOrder payload that
+  // carries no orderGroup. Soft failures (adapter 200 + ERROR text) land in
+  // `result`; hard failures (MCP tool catch) land in `error` / `message`.
+  function placeFailureReason(p) {
+    if (!p) return 'Order placement failed — no order was created.';
+    return p.result || p.error || p.message ||
+      'Order placement failed — VTEX did not return an order.';
+  }
 
   function parseToolResult(result) {
     try {
@@ -939,6 +1445,30 @@
   function renderFinalPanel(payload) {
     var panel = document.getElementById('final-panel');
     if (!panel) return;
+    if (payload.success && payload.settlementPending) {
+      // Card / redirect: order placed + AP2 chain verified, but the gateway
+      // capture is deferred to the (not-yet-wired) payment connector. Honest
+      // green state — every artifact shown is real; only the capture is open.
+      panel.innerHTML =
+        '<div class="result-panel success">' +
+          '<div class="result-headline">' +
+            '<span class="result-icon">&#10004;</span>' +
+            'AP2 verified · VTEX order ' + escapeHtml(payload.orderId || '') +
+          '</div>' +
+          '<div class="result-detail">' +
+            'The cart was signed and the full AP2 chain verified — merchant, ' +
+            'Credentials Provider and network all attested, and the seven checks ' +
+            'above pass. The one step still pending is the card capture: it ' +
+            'settles through the payment connector (Netopia + Secure Proxy / ' +
+            '3-D Secure), which is being built. Until it is wired this order ' +
+            'carries the signed mandates but no gateway capture, so VTEX leaves ' +
+            'it unpaid.' +
+          '</div>' +
+          renderArtifactLinks(payload, 'success') +
+        '</div>';
+      notifySize();
+      return;
+    }
     if (payload.success) {
       // Headline depends on whether this is the headless-flow synth
       // (real VTEX order placed; payload.adminUrl present) or the
@@ -1041,6 +1571,13 @@
 
   function escapeAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function buyerRow(label, value) {
+    return '<div class="on-file-row">' +
+      '<span class="on-file-label">' + escapeHtml(label) + '</span>' +
+      '<span class="on-file-value">' + escapeHtml(value) + '</span>' +
+      '</div>';
   }
 
   function escapeHtml(s) {

@@ -3,6 +3,7 @@
 import { json } from 'co-body'
 
 import { Cart } from '../cart/cart'
+import type { VTEXOrderForm } from '../clients/checkout'
 import {
   InvalidSkuFormatError,
   ItemNotAddedError,
@@ -20,8 +21,13 @@ import type {
 } from '../clients/llm'
 import { loadConfigForAccount } from '../config/load'
 import type { ClientConfig } from '../config/types'
-import { mapOrderFormToCart } from '../mappers/cart'
+import {
+  formatCustomerProfile,
+  formatShippingAddress,
+  mapOrderFormToCart,
+} from '../mappers/cart'
 import { mapProduct } from '../mappers/product'
+import { curatePaymentMethods } from '../utils/payment-methods'
 import { getOrderFormIdFromRequest, resolveOrderFormId } from '../utils/session'
 import { semanticSearch } from './rag'
 // Importing this module registers all AgentTools (Issue 03 — AP2 ceremony).
@@ -30,11 +36,18 @@ import {
   dispatch as dispatchAgentTool,
   getDefinitions as getAgentToolDefinitions,
 } from '../agent-tools/registry'
+// The widget Pay-Now orchestrator (tryPayNow) drives these three tools as
+// one server-side sequence inside a single HTTP request — see CheckoutState.
+import { placeOrderTool } from '../agent-tools/place-order'
+import { sendPaymentInfoTool } from '../agent-tools/send-payment-info'
+import { authorizeTransactionTool } from '../agent-tools/authorize-transaction'
 import type {
   CartPreviewData,
+  CheckoutState,
   MandateInfo,
   PaymentMethodOption,
   ProductCardData,
+  ToolContext,
   ToolEffect,
 } from '../agent-tools/types'
 
@@ -64,6 +77,28 @@ interface ChatResponse {
    * methods relevant to the current cart state.
    */
   paymentMethods?: PaymentMethodOption[]
+  /**
+   * Order review shown by the widget after a payment method is chosen and
+   * BEFORE placement. The server returns this from tryPayNow Phase A (the
+   * payment-pill turn) once the chosen method is the sole payment and the
+   * profile + shipping preconditions place_order enforces are satisfied.
+   * The widget renders it as a confirmation panel and surfaces a single
+   * "Plătește acum" Pay-Now chip; clicking it sends the PAY_NOW sentinel
+   * which tryPayNow Phase B turns into the real place → send → authorize
+   * sequence. `total` is in CENTS (integer) to match cartPreview.
+   */
+  orderReview?: {
+    customerProfile?: {
+      name?: string
+      email?: string
+      phone?: string
+      document?: string
+    }
+    shippingAddress?: string
+    selectedPayment?: { id: string; name: string; group?: string }
+    total: number // CENTS (integer)
+    currency: string
+  }
 }
 
 interface AppSettings {
@@ -401,13 +436,7 @@ Concis (1-3 fraze). Câmpurile structurate din tool results (produse, coș, mand
 
 Când clientul indică intenția de checkout — "checkout", "finalizez comanda", "plătesc", "cumpăr", "hai la plată", "gata, atât", "finalizare", etc. — apelează IMEDIAT **list_payment_methods**. Asta întoarce metodele de plată configurate ale comerciantului ca butoane pe care clientul le apasă (NU le re-lista în text — widget-ul le afișează automat).
 
-Apoi AȘTEAPTĂ alegerea clientului. Când clientul indică o metodă (apasă un buton sau scrie "cash" / "card" / "vreau cu numerar" / numele unei metode), apelează ÎN ACEEAȘI TURĂ:
-1. **set_payment_method** cu id-ul ales (din lista returnată de list_payment_methods)
-2. **place_order** (semnează mandatul AP2 inline și creează comanda în VTEX)
-3. **send_payment_info** (trimite datele la gateway-ul de plăți)
-4. **authorize_transaction** (finalizează tranzacția)
-
-Aceste 4 tool-uri se înlănțuie automat — NU pune întrebări de confirmare între ele.
+Apoi AȘTEAPTĂ alegerea clientului. Când clientul indică o metodă (apasă un buton sau scrie "cash" / "card" / "vreau cu numerar" / numele unei metode), serverul preia controlul: fixează metoda pe coș, afișează un REZUMAT al comenzii (total + metodă) și așteaptă ca clientul să apese explicit "Plătește acum". TU NU apela **place_order**, **send_payment_info** sau **authorize_transaction** — serverul le rulează când clientul confirmă Pay-Now. Răspunde scurt, de tipul "Verifică rezumatul comenzii și apasă Plătește acum când ești gata." și așteaptă următoarea tură.
 
 INTERZIS la checkout (clientul are deja datele pre-configurate pe cont):
 - NU apela **set_customer_profile** (nume / email / telefon)
@@ -762,6 +791,7 @@ async function executeTool(
             `  1. Răspunde clientului: "Acest produs e disponibil doar în ${onlyLabel}. Adaug în coș?"`,
             '  2. Apelează suggest_replies cu options = ["Da, adaugă", "Nu, caut altceva"]',
             `  3. După confirmare ("Da, adaugă"), apelează add_to_cart cu sku = "${only.itemId}" — variant SKU EXACT, NU productId-ul "SKU referință" din mesajul clientului.`,
+            `  IMPORTANT: dacă mesajul clientului e DEJA o confirmare ("Da, adaugă" / "ok" / "adaugă"), SARI peste pașii 1-2 și apelează DIRECT add_to_cart cu sku = "${only.itemId}". NU apela suggest_replies a doua oară — nu repeta aceeași întrebare Da/Nu.`,
           ].join('\n')
         } else {
           action = `ACTION: O singură variantă disponibilă (SKU ${only.itemId}, ${onlyLabel}). Apelează add_to_cart cu sku = "${only.itemId}" direct (variant SKU EXACT, NU productId-ul "SKU referință"), apoi confirmă în text că ai adăugat varianta ${onlyLabel}.`
@@ -1469,7 +1499,38 @@ function extractVariantLabel(fullName: string): string {
 // to add_to_cart MUST be one that some get_product_details tool result
 // surfaced in this chat call.
 
-const CONFIRMATION_REGEX = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm|prima|a doua|a treia|primul|al doilea|al treilea)\b/i
+// Exported (alongside PILL/PAY_NOW below) for the mutual-exclusion unit
+// test in handlers/__tests__ — the test imports the REAL regexes so it
+// can't drift from what the handler uses.
+export const CONFIRMATION_REGEX = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm|prima|a doua|a treia|primul|al doilea|al treilea)\b/i
+
+// ─── Pay-Now gate regexes (widget checkout) ───────────────────────
+//
+// PILL_REGEX matches the canned turn the widget sends when the customer
+// taps a payment-method pill: "Plătesc cu Cash (id: 47)". tryPayNow
+// Phase A intercepts it, sets the chosen method as the SOLE payment, and
+// returns an order REVIEW (no placement).
+//
+// PAY_NOW_REGEX matches the explicit Pay-Now turn the widget sends when
+// the customer taps the "Plătește acum" chip on that review. tryPayNow
+// Phase B runs the real place → send → authorize sequence.
+//
+// These three regexes (PILL, PAY_NOW, CONFIRMATION) are MUTUALLY
+// EXCLUSIVE by construction — a unit test asserts no representative
+// string matches more than one. "Plătesc cu …" (pill) starts with the
+// 1st-person form; "Plătește acum" (Pay-Now) with the imperative; neither
+// is matched by CONFIRMATION_REGEX (which keys on da/yes/ok/adaugă/…).
+export const PILL_REGEX = /Pl[aă]te[sșz]c cu .* \(id:\s*(\d+)\)/i
+export const PAY_NOW_REGEX = /^\s*(pl[aă]te[sșz]te acum|pay now|__pay_now__)\b/i
+
+// In-process placement lock, keyed by orderFormId. Held for the WHOLE
+// place → send → authorize sequence and released in `finally`. This is the
+// idempotency guard for Phase B: it must NOT rely on readOrderFormState
+// (the memoization-poisoned VBase read this whole feature exists to route
+// around). A second Pay-Now for the same cart while one is in flight — or
+// after one already placed — short-circuits to an "already placed" reply.
+const placedOrderForms = new Set<string>()
+const inFlightPayNow = new Set<string>()
 
 function extractValidSkuSet(messages: LLMMessage[]): Set<string> {
   const skus = new Set<string>()
@@ -1526,6 +1587,547 @@ function validateAddToCart(
     `Do NOT compute SKUs by adding/subtracting from a productId — VTEX assigns SKU IDs`,
     `internally; offsets land on unrelated products.`,
   ].join('\n')
+}
+
+/**
+ * Deterministic confirmation loop-breaker — the load-bearing fix for the
+ * single-variant add-to-cart loop.
+ *
+ * Symptom: customer clicks a product card, the agent asks "Adaug în coș?",
+ * the customer says "Da, adaugă" — and the agent asks again, forever. Root
+ * cause: across HTTP requests prior tool results are stripped, the prompt
+ * re-forces get_product_details on every confirm turn, and its single-variant
+ * ACTION always says "ask first" with no "already confirmed" branch — so a
+ * weak model (Haiku) re-emits suggest_replies and the cart never mutates.
+ *
+ * This runs BEFORE the LLM. If the latest message is an affirmative and we can
+ * recover the just-clicked product (from the "SKU referință: Y" card line) and
+ * it has exactly ONE buyable variant NOT already in the cart, we add it
+ * server-side and return a confirmation directly — the model never runs on this
+ * turn, so it cannot skip the add or re-ask. Returns null (fall through to the
+ * normal loop) for every other case: free-form text, multi-variant size choice,
+ * out-of-stock, or an item already in the cart (where a "Da" confirms checkout,
+ * not a re-add — this also prevents double-adds on a double-click).
+ */
+async function tryConfirmationAutoAdd(
+  ctx: Context,
+  body: ChatRequest,
+  orderFormId: string | null | undefined
+): Promise<ChatResponse | null> {
+  if (!CONFIRMATION_REGEX.test(body.message.trim())) {
+    return null
+  }
+
+  // Recover the productId from the most recent "Vreau X (SKU referință: Y)"
+  // card-click line in history. No anchor → let the model handle it.
+  const history = body.history ?? []
+  let productId: string | undefined
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i]
+
+    if (m.role !== 'user') continue
+
+    const match = /SKU referin\S*:\s*(\d+)/i.exec(m.content)
+
+    if (match) {
+      productId = match[1]
+      break
+    }
+  }
+
+  if (!productId) {
+    return null
+  }
+
+  const product = await ctx.clients.search
+    .getProductBySku(productId)
+    .catch(() => null)
+
+  if (!product) {
+    return null
+  }
+
+  const variants = product.items ?? []
+  const availableItems = variants.filter((item) => {
+    const offer = item.sellers?.[0]?.commertialOffer
+
+    return (offer?.AvailableQuantity ?? 0) > 0
+  })
+
+  const cart = new Cart({ checkout: ctx.clients.checkout })
+  const ofId = orderFormId || (await resolveOrderFormId(ctx, cart))
+
+  // Already in the cart? Then this "Da" confirms something else (checkout /
+  // shipping), not a re-add. Fall through — never double-add, and never wrongly
+  // claim "unavailable" for an item the customer already owns.
+  const existing = await cart.getCart(ofId).catch(() => null)
+  const variantIds = variants.map((v) => v.itemId)
+
+  if (existing?.items.some((i) => variantIds.includes(i.sku))) {
+    return null
+  }
+
+  const productName = product.productName || 'produsul'
+
+  // Multi-variant in stock — needs a size/colour choice. Let the model ask.
+  if (availableItems.length > 1) {
+    return null
+  }
+
+  // No buyable variant — fail FAST and honestly instead of letting the model
+  // loop add_to_cart against an unsellable SKU. This is the ROCHITA sku-1 case:
+  // shown in search from a stale index, but VTEX refuses to add it. One clean
+  // reply beats a 4-round loop that ends in a "VTEX has a problem" message.
+  if (availableItems.length === 0) {
+    console.warn(
+      `[ACG Chat] confirmation: "${productName}" (productId ${productId}) has no buyable variant — replying unavailable`
+    )
+
+    return {
+      reply: `Din păcate ${productName} nu e disponibil în stoc momentan, așa că nu îl pot adăuga în coș. Vrei să caut o alternativă?`,
+      suggestions: ['Caută alt produs'],
+    }
+  }
+
+  // Exactly one buyable variant, not yet in the cart, customer confirmed → add.
+  const only = availableItems[0]
+  const updated = await cart.addItem(ofId, only.itemId, 1).catch((err) => {
+    console.warn(
+      `[ACG Chat] confirmation auto-add failed for SKU ${only.itemId}:`,
+      err instanceof Error ? err.message : err
+    )
+
+    return null
+  })
+
+  // VTEX refused the add (no-op / inactive SKU). Fail fast + honest, no loop.
+  if (!updated) {
+    return {
+      reply: `Nu am putut adăuga ${productName} în coș — VTEX nu acceptă acest produs momentan (poate fi epuizat sau dezactivat). Vrei să caut o alternativă?`,
+      suggestions: ['Caută alt produs'],
+    }
+  }
+
+  const added = updated.items.find((i) => i.sku === only.itemId)
+  const fullName = added?.name ?? productName
+  const variantLabel = extractVariantLabel(fullName)
+  const shortName = fullName.split(' - ')[0].slice(0, 80)
+
+  const workspace = ctx.vtex.workspace || 'master'
+  const host =
+    workspace === 'master'
+      ? `${ctx.vtex.account}.myvtex.com`
+      : `${workspace}--${ctx.vtex.account}.myvtex.com`
+
+  const checkoutUrl = `https://${host}/checkout/?orderFormId=${ofId}#/cart`
+
+  const cartPreview: CartPreviewData = {
+    items: updated.items.map((i) => ({
+      sku: i.sku,
+      name: i.name,
+      quantity: i.quantity,
+      unitPrice: Math.round(i.unitPrice * 100),
+      totalPrice: Math.round(i.totalPrice * 100),
+      image: i.image ?? '',
+    })),
+    subtotal: Math.round(updated.subtotal * 100),
+    total: Math.round(updated.total * 100),
+    itemCount: updated.itemCount,
+    currency: updated.currency,
+    checkoutUrl,
+  }
+
+  console.log(
+    `[ACG Chat] confirmation auto-add: SKU ${only.itemId} (productId ${productId}) — cart now ${updated.itemCount} items`
+  )
+
+  return {
+    reply: `Am adăugat ${shortName}${
+      variantLabel ? ` (${variantLabel})` : ''
+    } în coș — total ${updated.total} ${
+      updated.currency
+    }. Continuăm cumpărăturile sau mergem la plată?`,
+    cartPreview,
+    cartUpdated: true,
+    suggestions: ['Continuă cumpărăturile', 'Mergem la plată'],
+  }
+}
+
+// ─── Pay-Now gate orchestrator (widget checkout) ──────────────────
+//
+// This is the code-enforced fix for the widget checkout. Background: in
+// the widget path the chat handler runs every checkout tool in ONE HTTP
+// request sharing one @vtex/api HttpClient memoization cache (keyed by URL,
+// no write-invalidation). So place_order's early getOrderForm / vbase reads
+// get memoized; its later writes don't bust them; send_payment_info /
+// authorize_transaction then re-read STALE data and bail "no open
+// transaction". The fix is to (a) never re-read VBase between steps —
+// thread the just-placed transaction IN MEMORY via CheckoutState — and (b)
+// run place → send → authorize as one server-side sequence gated behind an
+// explicit Pay-Now click. The MCP/iframe path is untouched: it drives the
+// chain across SEPARATE requests, so its VBase reads settle naturally.
+//
+// Two phases, switched on body.message:
+//   Phase A (PILL_REGEX)    — a payment method was tapped. Override the
+//                             payment (clear → set → verify sole), check
+//                             place_order's preconditions, return an order
+//                             REVIEW + a single Pay-Now chip. NO placement.
+//   Phase B (PAY_NOW_REGEX) — the Pay-Now chip was tapped. Run the real
+//                             place → send → authorize sequence and return
+//                             the merged mandate so the widget renders its
+//                             PlacedOrderConfirmation.
+// Returns null (fall through to the LLM loop) for every other message.
+async function tryPayNow(
+  ctx: Context,
+  body: ChatRequest,
+  orderFormId: string | null | undefined,
+  config: ClientConfig
+): Promise<ChatResponse | null> {
+  const message = body.message.trim()
+  const isPill = PILL_REGEX.test(message)
+  const isPayNow = PAY_NOW_REGEX.test(message)
+
+  // Not our turn — let the LLM loop handle it.
+  if (!isPill && !isPayNow) {
+    return null
+  }
+
+  // Guards mirror tryConfirmationAutoAdd: no cart → fall through.
+  if (!orderFormId) {
+    return null
+  }
+
+  const cart = new Cart({ checkout: ctx.clients.checkout })
+  const currentCart = await cart.getCart(orderFormId).catch(() => null)
+
+  if (!currentCart || currentCart.items.length === 0) {
+    return null
+  }
+
+  if (isPayNow) {
+    return payNowPhaseB(ctx, orderFormId, config)
+  }
+
+  // Phase A — payment-pill canned turn: "Plătesc cu Cash (id: 47)".
+  const match = PILL_REGEX.exec(message)
+  const chosenId = match?.[1]
+
+  if (!chosenId) {
+    return null
+  }
+
+  return payNowPhaseA(ctx, orderFormId, chosenId, config)
+}
+
+/**
+ * Phase A — a payment method was chosen. Make it the SOLE payment
+ * (clear-then-set, then verify), check the profile + shipping preconditions
+ * place_order enforces, and return an order REVIEW (no placement) plus a
+ * single Pay-Now chip. Missing profile/shipping returns a question instead.
+ */
+async function payNowPhaseA(
+  ctx: Context,
+  orderFormId: string,
+  chosenId: string,
+  config: ClientConfig
+): Promise<ChatResponse | null> {
+  const cart = new Cart({ checkout: ctx.clients.checkout })
+
+  // Resolve the chosen method's label/group from the merchant's configured
+  // systems so the review (and Pay-Now path) shows a real name. Soft — a
+  // missing label is cosmetic. The chosen id is looked up against the FULL
+  // list (it came from a curated pill, but be defensive); the pills we
+  // surface on any retry are the CURATED set (profile allowlist + order).
+  const allMethods = await cart
+    .getAvailablePaymentSystems(orderFormId)
+    .catch(() => [] as Awaited<ReturnType<Cart['getAvailablePaymentSystems']>>)
+
+  const chosen = allMethods.find((m) => m.id === chosenId)
+  const paymentMethods: PaymentMethodOption[] = curatePaymentMethods(
+    allMethods,
+    config
+  ).map((m) => ({
+    id: m.id,
+    name: m.name,
+    group: m.group,
+    requiresAuthentication: m.requiresAuthentication,
+  }))
+
+  // ── Payment override = REPLACE, not append, verified off the POST echo. ──
+  //
+  // Real VTEX APPENDS to paymentData.payments, so simply "setting" the new
+  // method can leave a stale prior payment behind (→ split-pay / value
+  // mismatch / the wrong method authorizing). setSolePayment clears then
+  // sets and returns the AUTHORITATIVE post-write orderForm straight off the
+  // POST response. We verify against THAT — never a follow-up getOrderForm,
+  // which @vtex/api memoizes against this request's earlier reads and would
+  // return a stale, pre-write form (the bug that made the first pay-method
+  // tap spuriously fail "couldn't fix the method as the sole option" while
+  // an identical second tap passed).
+  let orderForm: VTEXOrderForm
+
+  try {
+    orderForm = await cart.setSolePayment(orderFormId, chosenId)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+
+    if (/not configured/.test(msg)) {
+      return {
+        reply:
+          'Metoda de plată aleasă nu este disponibilă pe acest magazin. Alege altă metodă.',
+        paymentMethods,
+      }
+    }
+
+    console.warn(
+      `[ACG Chat] tryPayNow Phase A: payment override failed: ${msg}`
+    )
+
+    return {
+      reply:
+        'Nu am putut seta metoda de plată. Mai încearcă o dată sau alege altă metodă.',
+      paymentMethods,
+    }
+  }
+
+  // Assert the chosen method is the SOLE payment, reading the authoritative
+  // POST echo (never a memoized GET). If it isn't, surface a clear error.
+  const verifyPayments = (orderForm.paymentData?.payments ?? []) as Array<
+    Record<string, unknown>
+  >
+
+  if (
+    verifyPayments.length !== 1 ||
+    String(verifyPayments[0].paymentSystem) !== chosenId
+  ) {
+    console.warn(
+      `[ACG Chat] tryPayNow Phase A: payment not sole after override — ` +
+        `count=${verifyPayments.length} systems=[${verifyPayments
+          .map((p) => String(p.paymentSystem))
+          .join(',')}] expected=${chosenId}`
+    )
+
+    return {
+      reply:
+        'Nu am putut fixa metoda de plată ca unică opțiune pe coș. Mai încearcă o dată.',
+      paymentMethods,
+    }
+  }
+
+  // ── Preconditions place_order enforces (profile email + shipping). ──
+  // If either is missing, ASK for it here — never place a half-ready order.
+
+  if (!orderForm.clientProfileData?.email) {
+    return {
+      reply:
+        'Înainte de plată am nevoie de datele tale de contact (nume și email). Le poți completa?',
+      paymentMethods,
+    }
+  }
+
+  const hasShipping =
+    !!orderForm.shippingData?.address ||
+    (orderForm.shippingData?.selectedAddresses?.length ?? 0) > 0
+
+  if (!hasShipping) {
+    return {
+      reply: 'Înainte de plată am nevoie de adresa de livrare. O poți adăuga?',
+      paymentMethods,
+    }
+  }
+
+  // ── Build the order review (no placement) off the SAME authoritative
+  // form — no fresh getCart (it would memoize-collide with the writes above).
+  const snapshot = mapOrderFormToCart(orderForm)
+  const totalCents = Math.round(snapshot.total * 100)
+  const currency =
+    snapshot.currency ?? orderForm.storePreferencesData.currencyCode
+
+  const cartPreview = buildCartPreview(ctx, orderFormId, snapshot)
+
+  const methodName = chosen?.name ?? `Method ${chosenId}`
+  const totalLabel = (totalCents / 100).toFixed(2)
+
+  // Success review: render the OrderReviewCard ONLY. We deliberately omit
+  // `paymentMethods` (the 17 pills — the customer already chose) and the
+  // `suggestions: ['Plătește acum']` chip (the card carries its own Pay-Now
+  // button); both were redundant clutter / a double Pay-Now control.
+  return {
+    reply: `Comanda ta: total ${totalLabel} ${currency}, plată cu ${methodName}. Apasă "Plătește acum" ca să confirmi.`,
+    cartPreview,
+    orderReview: {
+      customerProfile: formatCustomerProfile(orderForm),
+      shippingAddress: formatShippingAddress(orderForm),
+      selectedPayment: {
+        id: chosenId,
+        name: methodName,
+        group: chosen?.group,
+      },
+      total: totalCents,
+      currency,
+    },
+  }
+}
+
+/**
+ * Phase B — the Pay-Now chip was tapped. Run place → send → authorize as
+ * one server-side sequence, threading CheckoutState in memory (never
+ * re-reading VBase between steps). Idempotent via an in-process lock.
+ */
+async function payNowPhaseB(
+  ctx: Context,
+  orderFormId: string,
+  config: ClientConfig
+): Promise<ChatResponse> {
+  // ── Idempotency guard (NOT based on the poisoned VBase read). ──
+  if (placedOrderForms.has(orderFormId)) {
+    console.log(
+      `[ACG Chat] tryPayNow Phase B: order already placed for ${orderFormId} — replying idempotent`
+    )
+
+    return {
+      reply: 'Comanda a fost deja plasată. Mandatul AP2 confirmă cumpărătura.',
+    }
+  }
+
+  if (inFlightPayNow.has(orderFormId)) {
+    console.log(
+      `[ACG Chat] tryPayNow Phase B: a placement is already in flight for ${orderFormId} — replying busy`
+    )
+
+    return {
+      reply:
+        'Comanda ta este în curs de procesare. Te rog așteaptă câteva secunde.',
+    }
+  }
+
+  inFlightPayNow.add(orderFormId)
+
+  try {
+    // ToolContext exactly as executeTool builds it.
+    const toolCtx: ToolContext = {
+      vtex: ctx.vtex,
+      clients: ctx.clients,
+      config,
+      orderFormId,
+    }
+
+    console.log(`[ACG Chat] tryPayNow Phase B: place_order for ${orderFormId}`)
+    const placeEffect = await placeOrderTool.execute({}, toolCtx)
+
+    if (placeEffect.result.startsWith('ERROR')) {
+      console.warn(
+        `[ACG Chat] tryPayNow Phase B: place_order failed — ${placeEffect.result}`
+      )
+
+      return { reply: placeEffect.result }
+    }
+
+    // Mark placed only once the order really exists in VTEX. From here on a
+    // repeat Pay-Now is idempotent even if send/authorize hiccup.
+    placedOrderForms.add(orderFormId)
+
+    const checkoutState = placeEffect.checkoutState as CheckoutState | undefined
+
+    if (!checkoutState) {
+      // place_order succeeded but didn't surface CheckoutState — this should
+      // not happen. Don't fall back to the poisoned VBase read; report the
+      // placement and let the merchant verify rather than silently mis-send.
+      console.warn(
+        `[ACG Chat] tryPayNow Phase B: place_order returned no checkoutState — skipping send/authorize`
+      )
+
+      return {
+        reply: 'Comanda a fost plasată. Mandatul AP2 confirmă cumpărătura.',
+        mandate: placeEffect.mandate,
+        cartPreview: placeEffect.cartPreview,
+      }
+    }
+
+    // ── send_payment_info + authorize_transaction with injected state. ──
+    // Thread CheckoutState via a PRIVATE ToolContext field (NOT the shared
+    // args bag the LLM populates) so both tools route around the
+    // memoization-poisoned VBase read while staying unreachable from a
+    // model-supplied argument on the LLM tool surface.
+    const sequencedCtx: ToolContext = {
+      ...toolCtx,
+      injectedCheckoutState: checkoutState,
+    }
+
+    console.log(
+      `[ACG Chat] tryPayNow Phase B: send_payment_info (injected state) for ${orderFormId}`
+    )
+    const sendEffect = await sendPaymentInfoTool.execute({}, sequencedCtx)
+
+    if (sendEffect.result.startsWith('ERROR')) {
+      console.warn(
+        `[ACG Chat] tryPayNow Phase B: send_payment_info failed — ${sendEffect.result}`
+      )
+    }
+
+    console.log(
+      `[ACG Chat] tryPayNow Phase B: authorize_transaction (injected state) for ${orderFormId}`
+    )
+    const authEffect = await authorizeTransactionTool.execute({}, sequencedCtx)
+
+    // Merge place_order's full mandate with authorize's mandatePatch (mirrors
+    // the chat handler's accumulator merge).
+    let { mandate } = placeEffect
+
+    if (authEffect.mandatePatch && mandate) {
+      mandate = { ...mandate, ...authEffect.mandatePatch }
+    }
+
+    console.log(
+      `[ACG Chat] tryPayNow Phase B: done for ${orderFormId} — gatewayStatus=${
+        mandate?.gatewayStatus ?? '<none>'
+      }`
+    )
+
+    return {
+      reply: 'Gata, comanda este plasată. Mandatul AP2 confirmă cumpărătura.',
+      mandate,
+      cartPreview: placeEffect.cartPreview,
+    }
+  } finally {
+    inFlightPayNow.delete(orderFormId)
+  }
+}
+
+/**
+ * Build a cents-denominated CartPreview from a SimpleCart, matching the
+ * shape tryConfirmationAutoAdd emits (unit/total prices in cents, checkout
+ * URL keyed on the workspace host).
+ */
+function buildCartPreview(
+  ctx: Context,
+  orderFormId: string,
+  snapshot: ReturnType<typeof mapOrderFormToCart>
+): CartPreviewData {
+  const workspace = ctx.vtex.workspace || 'master'
+  const host =
+    workspace === 'master'
+      ? `${ctx.vtex.account}.myvtex.com`
+      : `${workspace}--${ctx.vtex.account}.myvtex.com`
+
+  const checkoutUrl = `https://${host}/checkout/?orderFormId=${orderFormId}#/cart`
+
+  return {
+    items: snapshot.items.map((i) => ({
+      sku: i.sku,
+      name: i.name,
+      quantity: i.quantity,
+      unitPrice: Math.round(i.unitPrice * 100),
+      totalPrice: Math.round(i.totalPrice * 100),
+      image: i.image ?? '',
+    })),
+    subtotal: Math.round(snapshot.subtotal * 100),
+    total: Math.round(snapshot.total * 100),
+    itemCount: snapshot.itemCount,
+    currency: snapshot.currency,
+    checkoutUrl,
+  }
 }
 
 // Detect when the LLM claims a cart action it didn't actually perform.
@@ -1810,6 +2412,34 @@ export async function chatHandler(ctx: Context) {
 
     // Add current message
     messages.push({ role: 'user', content: body.message })
+
+    // ── Deterministic confirmation loop-breaker (runs BEFORE the LLM). ──
+    // If the customer just confirmed ("Da, adaugă") a single-variant product
+    // they clicked, add it server-side and return now. The weak model can no
+    // longer skip the add or re-ask, because it never runs on this turn.
+    // Falls through (null) for every other case — see tryConfirmationAutoAdd.
+    const autoAdded = await tryConfirmationAutoAdd(ctx, body, orderFormId)
+
+    if (autoAdded) {
+      ctx.body = autoAdded
+
+      return
+    }
+
+    // ── Pay-Now gate (runs BEFORE the LLM). ──
+    // Phase A: a payment pill was tapped → set the method as sole payment
+    // and return an order review (no placement). Phase B: the Pay-Now chip
+    // was tapped → run place → send → authorize server-side with in-memory
+    // CheckoutState. The intercept is authoritative; the LLM never runs the
+    // checkout-placement tools on the widget path. Falls through (null) for
+    // every other message — see tryPayNow.
+    const payNow = await tryPayNow(ctx, body, orderFormId, config)
+
+    if (payNow) {
+      ctx.body = payNow
+
+      return
+    }
 
     // Call LLM (with tool loop — max 3 rounds)
     // Accumulate products across tool calls (dedup by productId, keep first occurrence)

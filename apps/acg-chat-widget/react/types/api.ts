@@ -8,6 +8,7 @@
 import type {
   CartPreview,
   Mandate,
+  OrderReview,
   PaymentMethod,
   ProductCard,
 } from './domain'
@@ -25,6 +26,7 @@ export interface ChatAPIResponse {
   cartUpdated?: boolean
   mandate?: Mandate
   paymentMethods?: PaymentMethod[]
+  orderReview?: OrderReview
   error?: string
 }
 
@@ -52,6 +54,7 @@ export interface SendChatResult {
   cartUpdated?: boolean
   mandate?: Mandate
   paymentMethods?: PaymentMethod[]
+  orderReview?: OrderReview
 }
 
 /**

@@ -278,6 +278,18 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
       firstName: z.string().describe('Customer first name'),
       lastName: z.string().describe('Customer last name'),
       phone: z.string().optional().describe('Customer phone number (optional)'),
+      document: z
+        .string()
+        .optional()
+        .describe(
+          'National ID / tax document number (CNP for individuals in Romania, CUI for companies). Strongly recommended: ask the customer for it. Without it VTEX shows the order payment as "Fără denumire" (no name) in admin, because the buyer identity never reaches the gateway.'
+        ),
+      documentType: z
+        .string()
+        .optional()
+        .describe(
+          'Document type. Defaults to "document" (generic EU national ID) when omitted.'
+        ),
     },
     async (params) => {
       try {

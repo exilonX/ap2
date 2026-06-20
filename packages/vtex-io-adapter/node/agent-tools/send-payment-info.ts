@@ -13,10 +13,31 @@
  */
 
 import { readOrderFormState } from '../mandates/mandate-orchestration'
+import type { Ap2CustomData } from '../mandates/mandate-orchestration'
 import type { PaymentRequest } from '../clients/checkout'
-import type { AgentTool, ToolContext, ToolEffect } from './types'
+import type { AgentTool, CheckoutState, ToolContext, ToolEffect } from './types'
 
 const TAG = '[ACG send_payment_info]'
+
+/**
+ * Pull the injected CheckoutState off the private `ctx.injectedCheckoutState`
+ * channel. The widget Pay-Now orchestrator (handlers/chat.ts) sets this so
+ * we can skip the VBase read that the shared in-request HttpClient
+ * memoization cache serves stale. Returns it only when COMPLETE
+ * (transactionId + orderGroup both present); a partial/absent value falls
+ * back to the unchanged VBase path used by the iframe/MCP surface.
+ */
+function readInjectedCheckoutState(
+  ctx: ToolContext
+): CheckoutState | undefined {
+  const injected = ctx.injectedCheckoutState
+
+  if (injected && injected.transactionId && injected.orderGroup) {
+    return injected
+  }
+
+  return undefined
+}
 
 const definition = {
   name: 'send_payment_info',
@@ -55,18 +76,54 @@ async function execute(
     }
   }
 
-  console.log(`${TAG} → vbase.read acg-orderform-state/${ctx.orderFormId}`)
-  const ap2 = await readOrderFormState(ctx.clients.vbase, ctx.orderFormId)
+  // ── Resolve transaction state — injected (widget Pay-Now) vs VBase. ──
+  //
+  // The widget orchestrator threads the just-placed transaction in memory
+  // via `ctx.injectedCheckoutState` so we never re-read the VBase state
+  // record (which the shared in-request HttpClient memoization cache serves
+  // stale). When that injected state is present and complete, it is
+  // AUTHORITATIVE — we skip readOrderFormState entirely. The iframe/MCP path
+  // sets no such field and keeps the unchanged VBase read below. It lives on
+  // ToolContext (not `args`) so the LLM can never supply it.
+  const injected = readInjectedCheckoutState(ctx)
+  let ap2: Ap2CustomData
 
-  console.log(`${TAG} ← orderForm state = ${JSON.stringify(ap2)}`)
-
-  if (!ap2.transactionId || !ap2.orderGroup) {
+  if (injected) {
     console.log(
-      `${TAG} EXIT: no open transaction (transactionId=${
-        ap2.transactionId ?? '<none>'
-      } orderGroup=${ap2.orderGroup ?? '<none>'})`
+      `${TAG} using injected CheckoutState (skip VBase read): transactionId=${injected.transactionId} orderGroup=${injected.orderGroup} merchantName=${injected.merchantName}`
     )
+    ap2 = {
+      transactionId: injected.transactionId,
+      orderGroup: injected.orderGroup,
+      merchantName: injected.merchantName,
+      cartMandateId: injected.cartMandateId,
+    }
+  } else {
+    console.log(`${TAG} → vbase.read acg-orderform-state/${ctx.orderFormId}`)
+    ap2 = await readOrderFormState(ctx.clients.vbase, ctx.orderFormId)
 
+    console.log(`${TAG} ← orderForm state = ${JSON.stringify(ap2)}`)
+
+    if (!ap2.transactionId || !ap2.orderGroup) {
+      console.log(
+        `${TAG} EXIT: no open transaction (transactionId=${
+          ap2.transactionId ?? '<none>'
+        } orderGroup=${ap2.orderGroup ?? '<none>'})`
+      )
+
+      return {
+        result:
+          'ERROR: no open transaction on this cart. Call place_order before send_payment_info.',
+      }
+    }
+  }
+
+  // Narrow to non-null strings. Both branches above guarantee these are set
+  // (injected state is validated complete; the VBase branch early-returns
+  // otherwise), but the type is still optional, so re-assert.
+  const { transactionId, orderGroup } = ap2
+
+  if (!transactionId || !orderGroup) {
     return {
       result:
         'ERROR: no open transaction on this cart. Call place_order before send_payment_info.',
@@ -87,8 +144,17 @@ async function execute(
   }
 
   // merchantName: prefer the value VTEX echoed back at placeOrder time
-  // (saved in VBase state). Fall back to ctx.vtex.account.toUpperCase()
-  // only if place_order didn't capture it (legacy carts).
+  // (surfaced in the injected CheckoutState, or saved in VBase state). Fall
+  // back to ctx.vtex.account.toUpperCase() only if place_order didn't
+  // capture it (legacy carts). On the injected path the merchantName is
+  // always carried, so a fallback there signals a bug worth logging — it is
+  // the exact symptom (wrong merchant) the injected channel exists to fix.
+  if (injected && !ap2.merchantName) {
+    console.warn(
+      `${TAG} ⚠ injected CheckoutState missing merchantName — falling back to ctx.vtex.account; this can reintroduce the wrong-merchant symptom`
+    )
+  }
+
   const merchantName = ap2.merchantName ?? ctx.vtex.account.toUpperCase()
   const { currencyCode } = orderForm.storePreferencesData
 
@@ -112,14 +178,12 @@ async function execute(
     value: Number(p.value),
     referenceValue: Number(p.referenceValue ?? p.value),
     fields: {},
-    transaction: { id: ap2.transactionId!, merchantName },
+    transaction: { id: transactionId, merchantName },
     currencyCode,
   }))
 
   console.log(
-    `${TAG} → POST {account}.vtexpayments.com.br/api/pub/transactions/${
-      ap2.transactionId
-    }/payments?orderId=${ap2.orderGroup} — ${
+    `${TAG} → POST {account}.vtexpayments.com.br/api/pub/transactions/${transactionId}/payments?orderId=${orderGroup} — ${
       requests.length
     } request(s) systems=[${requests
       .map((r) => r.paymentSystem)
@@ -131,8 +195,8 @@ async function execute(
 
   try {
     response = await ctx.clients.payments.sendPayments(
-      ap2.transactionId,
-      ap2.orderGroup,
+      transactionId,
+      orderGroup,
       requests
     )
   } catch (err) {
@@ -154,7 +218,7 @@ async function execute(
   console.log(`${TAG} ✓ done`)
 
   return {
-    result: `Payment information sent to gateway for transaction ${ap2.transactionId}. Call authorize_transaction next to finalize.`,
+    result: `Payment information sent to gateway for transaction ${transactionId}. Call authorize_transaction next to finalize.`,
   }
 }
 

@@ -12,14 +12,18 @@
 const LOCALE = 'ro-RO'
 
 /**
- * Format an integer-cents amount as a rounded currency string.
- * Used by ProductCard, CartPreviewCard.
+ * Format an integer-cents amount as a 2-decimal currency string.
+ * Used by ProductCard, CartPreviewCard. Keeping 2 decimals preserves
+ * sub-unit precision — a 0.80 RON item (80 cents) must render as "0,80 RON",
+ * not collapse to "1 RON" (or "0 RON" for anything under ~0.50) the way
+ * maximumFractionDigits:0 did.
  */
 export function formatCurrencyCents(cents: number, currency: string): string {
   return new Intl.NumberFormat(LOCALE, {
     style: 'currency',
     currency,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(cents / 100)
 }
 

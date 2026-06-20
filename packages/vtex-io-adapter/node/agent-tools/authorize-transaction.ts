@@ -27,9 +27,35 @@
 /* eslint-disable no-console -- demo-quality stdout instrumentation; tracked by issue 0005 */
 import { readOrderFormState } from '../mandates/mandate-orchestration'
 import type { Ap2CustomData } from '../mandates/mandate-orchestration'
-import type { AgentTool, MandateInfo, ToolContext, ToolEffect } from './types'
+import type {
+  AgentTool,
+  CheckoutState,
+  MandateInfo,
+  ToolContext,
+  ToolEffect,
+} from './types'
 
 const TAG = '[ACG authorize_transaction]'
+
+/**
+ * Pull the injected CheckoutState off the private `ctx.injectedCheckoutState`
+ * channel (set by the widget Pay-Now orchestrator, NOT the LLM-populated args
+ * bag). Returns it only when COMPLETE (transactionId + orderGroup present) so
+ * the orchestrator path can skip the memoization-poisoned VBase read;
+ * absent/partial falls back to the unchanged VBase path used by the iframe/MCP
+ * surface.
+ */
+function readInjectedCheckoutState(
+  ctx: ToolContext
+): CheckoutState | undefined {
+  const injected = ctx.injectedCheckoutState
+
+  if (injected && injected.transactionId && injected.orderGroup) {
+    return injected
+  }
+
+  return undefined
+}
 
 const definition = {
   name: 'authorize_transaction',
@@ -219,18 +245,56 @@ async function execute(
     return { result: 'ERROR: no active cart.' }
   }
 
-  console.log(`${TAG} → vbase.read acg-orderform-state/${ctx.orderFormId}`)
-  const ap2 = await readOrderFormState(ctx.clients.vbase, ctx.orderFormId)
+  // ── Resolve transaction state — injected (widget Pay-Now) vs VBase. ──
+  //
+  // Mirrors send_payment_info: when the widget orchestrator threads the
+  // CheckoutState in memory we treat it as authoritative and skip the VBase
+  // read (which the shared in-request HttpClient memoization cache serves
+  // stale). buildMandatePatch below reads cartMandateId from this same
+  // state. The iframe/MCP path sets no field and keeps the VBase read.
+  const injected = readInjectedCheckoutState(ctx)
+  let ap2: Ap2CustomData
 
-  console.log(`${TAG} ← orderForm state = ${JSON.stringify(ap2)}`)
-
-  if (!ap2.transactionId || !ap2.orderGroup) {
+  if (injected) {
     console.log(
-      `${TAG} EXIT: no open transaction (transactionId=${
-        ap2.transactionId ?? '<none>'
-      } orderGroup=${ap2.orderGroup ?? '<none>'})`
+      `${TAG} using injected CheckoutState (skip VBase read): transactionId=${
+        injected.transactionId
+      } orderGroup=${injected.orderGroup} cartMandateId=${
+        injected.cartMandateId ?? '<none>'
+      }`
     )
+    ap2 = {
+      transactionId: injected.transactionId,
+      orderGroup: injected.orderGroup,
+      merchantName: injected.merchantName,
+      cartMandateId: injected.cartMandateId,
+    }
+  } else {
+    console.log(`${TAG} → vbase.read acg-orderform-state/${ctx.orderFormId}`)
+    ap2 = await readOrderFormState(ctx.clients.vbase, ctx.orderFormId)
 
+    console.log(`${TAG} ← orderForm state = ${JSON.stringify(ap2)}`)
+
+    if (!ap2.transactionId || !ap2.orderGroup) {
+      console.log(
+        `${TAG} EXIT: no open transaction (transactionId=${
+          ap2.transactionId ?? '<none>'
+        } orderGroup=${ap2.orderGroup ?? '<none>'})`
+      )
+
+      return {
+        result:
+          'ERROR: no open transaction on this cart. Call place_order and send_payment_info before authorize_transaction.',
+      }
+    }
+  }
+
+  // Narrow to non-null strings. Both branches above guarantee these are
+  // set (injected state is validated complete; the VBase branch early-
+  // returns otherwise), but the type is still optional, so re-assert.
+  const { transactionId, orderGroup } = ap2
+
+  if (!transactionId || !orderGroup) {
     return {
       result:
         'ERROR: no open transaction on this cart. Call place_order and send_payment_info before authorize_transaction.',
@@ -238,11 +302,7 @@ async function execute(
   }
 
   // Primary: /pvt/ authorization-request (works in IO with AppKey/Token).
-  const primary = await tryPaymentsAuthorize(
-    ctx,
-    ap2.transactionId,
-    ap2.orderGroup
-  )
+  const primary = await tryPaymentsAuthorize(ctx, transactionId, orderGroup)
 
   if (primary.ok) {
     const category = categorizeAuthStatus(primary.status)
@@ -322,7 +382,7 @@ async function execute(
   // cookies) but for Cash the gateway often auto-finalizes anyway, so the
   // order in admin will be APROBATĂ regardless.
   console.log(`${TAG} ↳ falling back to gatewayCallback`)
-  const fallback = await tryGatewayCallback(ctx, ap2.orderGroup)
+  const fallback = await tryGatewayCallback(ctx, orderGroup)
 
   if (fallback.ok) {
     return {

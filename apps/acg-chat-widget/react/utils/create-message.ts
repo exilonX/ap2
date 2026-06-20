@@ -2,6 +2,7 @@ import type {
   CartPreview,
   Mandate,
   Message,
+  OrderReview,
   PaymentMethod,
   ProductCard,
 } from '../types/domain'
@@ -20,7 +21,8 @@ export function createMessage(
   suggestions?: string[],
   cartPreview?: CartPreview,
   mandate?: Mandate,
-  paymentMethods?: PaymentMethod[]
+  paymentMethods?: PaymentMethod[],
+  orderReview?: OrderReview
 ): Message {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -32,5 +34,6 @@ export function createMessage(
     cartPreview,
     mandate,
     paymentMethods,
+    orderReview,
   }
 }

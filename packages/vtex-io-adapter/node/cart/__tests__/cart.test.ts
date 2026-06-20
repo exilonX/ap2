@@ -167,6 +167,29 @@ describe('Cart.addItem', () => {
     )
   })
 
+  it('succeeds when the SKU is already in the cart (VTEX no-op on re-add)', async () => {
+    // Regression: VTEX's POST /items does not re-increment an item that is
+    // already in the cart, so the returned quantity is unchanged (e.g. 2 → 2).
+    // The SKU IS in the cart — that is success. We must NOT throw
+    // ItemNotAddedError just because the quantity didn't grow (the bug that
+    // looped the chat agent forever on a product already in the cart).
+    const { fake, cart, orderFormId } = setupCart()
+    const seeded = makeEmptyOrderForm(orderFormId)
+
+    seeded.items.push(makeItem('111', 2, 5000))
+    seeded.value = 10000
+    fake.seed(seeded)
+
+    // VTEX returns the orderForm unchanged on the re-add (qty stays 2).
+    fake.silentlyAccepts('111')
+
+    const result = await cart.addItem(orderFormId, '111', 1)
+    const item = result.items.find((i) => i.sku === '111')
+
+    assert.ok(item, 'SKU 111 should still be present in the cart')
+    assert.equal(item?.quantity, 2) // unchanged — and that is fine
+  })
+
   it('throws OrderFormSubstitutedError when VTEX swaps the id', async () => {
     const { fake, cart, orderFormId } = setupCart()
 
@@ -731,6 +754,257 @@ describe('Cart.setPaymentData', () => {
           paymentSystemId: 'not-configured',
         }),
       /not configured/
+    )
+  })
+})
+
+// ─── clearPayments — the Pay-Now override path ──────────────────────
+//
+// Production VTEX APPENDS to paymentData.payments (the fake mirrors that).
+// So a Pay-Now method override must clear-then-set, not just set, or a
+// stale prior payment lingers. These tests lock that contract.
+
+describe('Cart.clearPayments', () => {
+  it('clearPayments + setPaymentData yields exactly ONE payment with the chosen system, even when a stale payment pre-existed', async () => {
+    const { fake, cart, orderFormId } = setupCart()
+    const seeded = makeEmptyOrderForm(orderFormId)
+
+    seeded.items.push(makeItem('111', 1, 5000))
+    seeded.value = 5000
+    seeded.paymentData.paymentSystems = [
+      { id: 47, stringId: '47', name: 'Cash', groupName: 'cashPaymentGroup' },
+      {
+        id: 6,
+        stringId: '6',
+        name: 'Card',
+        groupName: 'creditCardPaymentGroup',
+      },
+    ]
+    fake.seed(seeded)
+
+    // A STALE payment is already on the cart (e.g. a prior pill tap for Card).
+    await fake.addPaymentData(orderFormId, {
+      payments: [
+        {
+          paymentSystem: '6',
+          paymentSystemName: 'Card',
+          group: 'creditCardPaymentGroup',
+          value: 5000,
+          installments: 1,
+          referenceValue: 5000,
+        },
+      ],
+    })
+
+    // Sanity: a NAIVE setPaymentData (append semantics) would leave TWO.
+    // We instead clear, then set the chosen method.
+    await cart.clearPayments(orderFormId)
+    await cart.setPaymentData(orderFormId, { paymentSystemId: '47' })
+
+    const stored = await fake.getOrderForm(orderFormId)
+    const payments = stored.paymentData.payments as Array<
+      Record<string, unknown>
+    >
+
+    assert.equal(payments.length, 1, 'exactly one payment after override')
+    assert.equal(payments[0].paymentSystem, '47', 'chosen system is sole')
+  })
+
+  it('a bare setPaymentData on a cart with a stale payment leaves TWO (proves clear is required)', async () => {
+    const { fake, cart, orderFormId } = setupCart()
+    const seeded = makeEmptyOrderForm(orderFormId)
+
+    seeded.items.push(makeItem('111', 1, 5000))
+    seeded.value = 5000
+    seeded.paymentData.paymentSystems = [
+      { id: 47, stringId: '47', name: 'Cash', groupName: 'cashPaymentGroup' },
+      {
+        id: 6,
+        stringId: '6',
+        name: 'Card',
+        groupName: 'creditCardPaymentGroup',
+      },
+    ]
+    fake.seed(seeded)
+
+    await fake.addPaymentData(orderFormId, {
+      payments: [
+        {
+          paymentSystem: '6',
+          paymentSystemName: 'Card',
+          group: 'creditCardPaymentGroup',
+          value: 5000,
+          installments: 1,
+          referenceValue: 5000,
+        },
+      ],
+    })
+
+    // No clear — setPaymentData appends, leaving the stale payment behind.
+    await cart.setPaymentData(orderFormId, { paymentSystemId: '47' })
+
+    const stored = await fake.getOrderForm(orderFormId)
+    const payments = stored.paymentData.payments as Array<
+      Record<string, unknown>
+    >
+
+    assert.equal(payments.length, 2, 'append leaves the stale payment in place')
+  })
+
+  it('clearPayments empties the payments list', async () => {
+    const { fake, cart, orderFormId } = setupCart()
+    const seeded = makeEmptyOrderForm(orderFormId)
+
+    seeded.items.push(makeItem('111', 1, 5000))
+    seeded.value = 5000
+    fake.seed(seeded)
+
+    await fake.addPaymentData(orderFormId, {
+      payments: [
+        {
+          paymentSystem: '47',
+          paymentSystemName: 'Cash',
+          group: 'cashPaymentGroup',
+          value: 5000,
+          installments: 1,
+          referenceValue: 5000,
+        },
+      ],
+    })
+
+    await cart.clearPayments(orderFormId)
+
+    const stored = await fake.getOrderForm(orderFormId)
+    const payments = stored.paymentData.payments as unknown[]
+
+    assert.equal(payments.length, 0, 'payments cleared')
+  })
+})
+
+// ─── setSolePayment — the memoization-proof Pay-Now override ─────────
+//
+// The widget Pay-Now path clears → sets → verifies inside ONE VTEX IO
+// request, and @vtex/api memoizes GET /orderForm per request. Verifying
+// via a follow-up getOrderForm therefore returned a stale, pre-write form
+// — the bug that made the first pay-method tap spuriously fail while an
+// identical second tap passed. setSolePayment returns the AUTHORITATIVE
+// POST echo so callers verify off the return value, never a re-GET.
+//
+// Two tests below: the first locks clear-then-set (append/sole) correctness;
+// the second (with the fake's GET memoization enabled) is the actual
+// regression guard — it FAILS if setSolePayment is ever changed back to
+// verifying via a follow-up getOrderForm.
+
+describe('Cart.setSolePayment', () => {
+  it('returns the POST-echo orderForm carrying the chosen method as the SOLE payment, clearing any stale prior payment', async () => {
+    const { fake, cart, orderFormId } = setupCart()
+    const seeded = makeEmptyOrderForm(orderFormId)
+
+    seeded.items.push(makeItem('111', 1, 5000))
+    seeded.value = 5000
+    seeded.paymentData.paymentSystems = [
+      { id: 47, stringId: '47', name: 'Cash', groupName: 'cashPaymentGroup' },
+      {
+        id: 6,
+        stringId: '6',
+        name: 'Card',
+        groupName: 'creditCardPaymentGroup',
+      },
+    ]
+    fake.seed(seeded)
+
+    // A STALE payment is already on the cart (prior pill tap for Card).
+    await fake.addPaymentData(orderFormId, {
+      payments: [
+        {
+          paymentSystem: '6',
+          paymentSystemName: 'Card',
+          group: 'creditCardPaymentGroup',
+          value: 5000,
+          installments: 1,
+          referenceValue: 5000,
+        },
+      ],
+    })
+
+    const echo = await cart.setSolePayment(orderFormId, '47')
+
+    // The RETURNED form (not a re-GET) is authoritative: callers verify
+    // sole-payment off this directly.
+    const echoPayments = (echo.paymentData?.payments ?? []) as Array<
+      Record<string, unknown>
+    >
+
+    assert.equal(echoPayments.length, 1, 'POST echo holds exactly one payment')
+    assert.equal(
+      String(echoPayments[0].paymentSystem),
+      '47',
+      'POST echo shows the chosen system as sole'
+    )
+
+    // And the persisted form agrees (no stale Card left behind).
+    const stored = await fake.getOrderForm(orderFormId)
+    const storedPayments = stored.paymentData.payments as Array<
+      Record<string, unknown>
+    >
+
+    assert.equal(storedPayments.length, 1, 'persisted: exactly one payment')
+    assert.equal(
+      storedPayments[0].paymentSystem,
+      '47',
+      'persisted: chosen sole'
+    )
+  })
+
+  it('returns the authoritative POST echo even when getOrderForm is memoized STALE within the request (the real memoization guard)', async () => {
+    const { fake, cart, orderFormId } = setupCart()
+    const seeded = makeEmptyOrderForm(orderFormId)
+
+    seeded.items.push(makeItem('111', 1, 5000))
+    seeded.value = 5000
+    seeded.paymentData.paymentSystems = [
+      { id: 47, stringId: '47', name: 'Cash', groupName: 'cashPaymentGroup' },
+    ]
+    fake.seed(seeded)
+
+    // Model @vtex/api's per-request GET memoization, then PRIME it with a read
+    // of the pre-write orderForm (no payment yet) — exactly what tryPayNow's
+    // earlier getCart / getAvailablePaymentSystems do before the override
+    // writes. From here every getOrderForm in this "request" is served that
+    // stale snapshot.
+    fake.enableGetMemoization()
+    const primed = await fake.getOrderForm(orderFormId)
+
+    assert.equal(
+      (primed.paymentData.payments as unknown[]).length,
+      0,
+      'precondition: the memoized GET snapshot has no payment'
+    )
+
+    // setSolePayment MUST verify off the clear→set POST echo, never a
+    // follow-up getOrderForm (which now returns the stale snapshot above). An
+    // implementation that re-GETs would see zero payments here and fail.
+    const echo = await cart.setSolePayment(orderFormId, '47')
+    const echoPayments = (echo.paymentData?.payments ?? []) as Array<
+      Record<string, unknown>
+    >
+
+    assert.equal(
+      echoPayments.length,
+      1,
+      'POST echo shows the chosen payment despite the stale memoized GET'
+    )
+    assert.equal(String(echoPayments[0].paymentSystem), '47')
+
+    // Arm-check: prove the trap is real — a follow-up getOrderForm STILL
+    // returns the stale (paymentless) snapshot. This is precisely the read a
+    // re-GET implementation would have verified against and wrongly failed.
+    const reGet = await fake.getOrderForm(orderFormId)
+
+    assert.equal(
+      (reGet.paymentData.payments as unknown[]).length,
+      0,
+      'follow-up GET is stale — this is what the POST-echo fix sidesteps'
     )
   })
 })

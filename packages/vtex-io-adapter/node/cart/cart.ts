@@ -189,8 +189,9 @@ export class Cart {
    * Cross-cutting protections:
    *  - Throws InvalidSkuFormatError if `sku` doesn't match `^\d+$`
    *    (catches LLM-fabricated SKUs like `588600_M`).
-   *  - Snapshots qty-before; if qty-after didn't grow, throws
-   *    ItemNotAddedError (catches VTEX's silent-success on unknown SKUs).
+   *  - Throws ItemNotAddedError if the SKU is absent from the returned cart
+   *    (catches VTEX's silent-success on unknown / unsellable SKUs). An item
+   *    already in the cart that VTEX won't re-increment still counts as added.
    *  - Single retry on ORD003 with 350 ms back-off; if it persists,
    *    throws TransientCartError('ORD003').
    *  - Verifies returned orderForm id matches.
@@ -261,11 +262,23 @@ export class Cart {
 
     const cart = mapOrderFormToCart(orderForm)
     const added = cart.items.find((i) => i.sku === sku)
-    const qtyAfter = added?.quantity ?? 0
 
-    if (!added || qtyAfter <= qtyBefore) {
+    // Success = the SKU is present in the cart after the call. We deliberately
+    // do NOT also require the quantity to have GROWN. VTEX's POST /items is a
+    // no-op when the item is already in the cart (it does not re-increment), so
+    // a confirm-add of a product that's already there returns the SAME quantity
+    // (e.g. 2 → 2) — still a success: the customer's product is in the cart.
+    // The old `qtyAfter <= qtyBefore` check misread that as a failure and looped
+    // the agent forever. The genuine failure — VTEX's silent success on an
+    // unknown / unsellable SKU — is still caught, because such a SKU never
+    // appears in the returned cart, so `added` is undefined.
+    if (!added) {
       this.deps.log?.warn?.(
-        `[Cart] add no-op for SKU ${sku} (qty before/after: ${qtyBefore}/${qtyAfter})`
+        `[Cart] add no-op for SKU ${sku} (qtyBefore: ${qtyBefore}) — SKU absent from returned cart. returnedItemIds=${JSON.stringify(
+          (orderForm.items ?? []).map((i) => i.id)
+        )} messages=${JSON.stringify(
+          (orderForm as { messages?: unknown }).messages ?? []
+        )}`
       )
       throw new ItemNotAddedError(sku)
     }
@@ -573,6 +586,21 @@ export class Cart {
     orderFormId: string,
     input: SetPaymentDataInput
   ): Promise<SimpleCart> {
+    return mapOrderFormToCart(await this.setPaymentDataRaw(orderFormId, input))
+  }
+
+  /**
+   * Like {@link setPaymentData} but returns the raw post-write orderForm
+   * straight off the VTEX POST response — the authoritative reflection of
+   * the write, and (unlike a follow-up `getOrderForm`) NOT subject to
+   * @vtex/api's per-request GET memoization. {@link setSolePayment} and the
+   * widget Pay-Now path read `paymentData.payments` off this instead of
+   * re-GETting, which would return a stale, pre-write orderForm.
+   */
+  private async setPaymentDataRaw(
+    orderFormId: string,
+    input: SetPaymentDataInput
+  ): Promise<VTEXOrderForm> {
     const current = await this.deps.checkout.getOrderForm(orderFormId)
 
     this.assertSameCart(orderFormId, current)
@@ -643,7 +671,55 @@ export class Cart {
 
     this.assertSameCart(orderFormId, updated)
 
+    return updated
+  }
+
+  /**
+   * Clear all payments on the cart.
+   *
+   * POSTs an EMPTY payments array to `/attachments/paymentData`. Real VTEX
+   * APPENDS to `paymentData.payments` on every addPaymentData call, so a
+   * naive "set the new method" leaves a stale prior payment behind. The
+   * widget Pay-Now override therefore runs clearPayments → setPaymentData
+   * to guarantee the chosen method is the SOLE payment, instead of retrying
+   * setPaymentData (which never converges against an append). Returns the
+   * updated cart so callers can assert the payment list emptied.
+   */
+  public async clearPayments(orderFormId: string): Promise<SimpleCart> {
+    const updated = await this.deps.checkout.addPaymentData(orderFormId, {
+      payments: [],
+    })
+
+    this.assertSameCart(orderFormId, updated)
+
     return mapOrderFormToCart(updated)
+  }
+
+  /**
+   * Make `paymentSystemId` the SOLE payment on the cart and return the
+   * AUTHORITATIVE post-write orderForm — the POST echo, never a follow-up
+   * GET.
+   *
+   * The widget's Pay-Now override runs clear → set → verify inside ONE
+   * VTEX IO request, and @vtex/api memoizes GET /orderForm by URL within a
+   * request (no write-invalidation). A separate verify GET therefore returns
+   * the orderForm as it was BEFORE these writes — stale — which made the
+   * first payment-method tap spuriously fail ("couldn't fix the method as
+   * the sole option") while an identical second tap passed (the first tap's
+   * writes had since persisted). Reading the payments off this clear→set
+   * POST response sidesteps that cache entirely. Callers should assert
+   * `paymentData.payments` on the returned form and reuse it for the order
+   * review — do NOT re-GET.
+   */
+  public async setSolePayment(
+    orderFormId: string,
+    paymentSystemId: string
+  ): Promise<VTEXOrderForm> {
+    await this.clearPayments(orderFormId)
+
+    // setPaymentData appends onto the now-empty list → the echo holds
+    // exactly one payment, the one we just chose.
+    return this.setPaymentDataRaw(orderFormId, { paymentSystemId })
   }
 
   /**

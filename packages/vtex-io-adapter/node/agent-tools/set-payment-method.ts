@@ -14,6 +14,7 @@
 import { Cart } from '../cart/cart'
 import { OrderFormSubstitutedError } from '../cart/errors'
 import { formatCustomerProfile, formatShippingAddress } from '../mappers/cart'
+import { curatePaymentMethods } from '../utils/payment-methods'
 import type {
   AgentTool,
   PaymentMethodOption,
@@ -83,16 +84,21 @@ async function execute(
     let paymentMethodsList: PaymentMethodOption[] = []
 
     try {
-      const methods = await cart.getAvailablePaymentSystems(ctx.orderFormId)
+      // Resolve the chosen method's label against the FULL configured list
+      // (the payment was set against the full list too), but surface only the
+      // CURATED set as pills — mirrors chat.ts payNowPhaseA. Looking `found`
+      // up in the curated list would lose the label for a valid id the
+      // profile allowlist happens to hide.
+      const all = await cart.getAvailablePaymentSystems(ctx.orderFormId)
 
-      paymentMethodsList = methods.map((m) => ({
+      paymentMethodsList = curatePaymentMethods(all, ctx.config).map((m) => ({
         id: m.id,
         name: m.name,
         group: m.group,
         requiresAuthentication: m.requiresAuthentication,
       }))
 
-      const found = methods.find((m) => m.id === args.paymentSystemId)
+      const found = all.find((m) => m.id === args.paymentSystemId)
 
       if (found) {
         paymentMethodName = found.name

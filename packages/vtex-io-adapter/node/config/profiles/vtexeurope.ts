@@ -47,12 +47,16 @@ Prețurile sunt în RON.`,
 
   // Preferred payment systems for the headless order flow.
   //
-  // Empty for now — populate after a one-off `getAvailablePaymentSystems`
-  // call against the live miniprix store reveals which paymentSystem ids
-  // (Cash / promissory / Netopia card / etc.) the merchant has actually
-  // configured. Until then, `list_payment_methods` surfaces VTEX's
-  // natural ordering.
+  // Empty: with an `allowedPaymentMethods` allowlist set below, the
+  // allowlist already fixes both WHICH methods show and their order, so a
+  // separate preference reorder is redundant here.
   preferredPaymentMethods: [],
+
+  // Payment-method allowlist — the store has ~17 systems enabled, which is
+  // noisy as pills. Show only these five, in this order. Matched by name
+  // (case-insensitive) against the store's configured systems, so we don't
+  // need their numeric ids. See utils/payment-methods + config/types.
+  allowedPaymentMethods: ['Cash', 'Visa', 'Mastercard', 'PayPal', 'IngRo'],
 
   /**
    * Merchant-specific extra rules appended to the system prompt.

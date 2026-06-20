@@ -7,9 +7,9 @@
  * paymentSystems`) — no merchant-side configuration, no merchant-side
  * invention.
  *
- * If the merchant profile sets `preferredPaymentMethods`, those ids are
- * bubbled to the top so the LLM picks them first when the user doesn't
- * express a preference.
+ * The merchant profile curates the list: `allowedPaymentMethods` trims it
+ * to a clean handful (filter + order), otherwise `preferredPaymentMethods`
+ * just bubbles favourites to the top. See utils/payment-methods.
  *
  * The method names are also returned as `suggestions[]` so the widget
  * can render them as quick-reply options.
@@ -18,6 +18,7 @@
 import { Cart } from '../cart/cart'
 import type { PaymentMethodOption } from '../cart/cart'
 import { OrderFormSubstitutedError } from '../cart/errors'
+import { curatePaymentMethods } from '../utils/payment-methods'
 import type { AgentTool, ToolContext, ToolEffect } from './types'
 
 const definition = {
@@ -25,26 +26,6 @@ const definition = {
   description:
     'List the payment methods the merchant has configured for this cart. Call this before set_payment_method so the user can pick from real options (Cash, Card, etc.) rather than guessing. Does not modify the cart.',
   parameters: { type: 'object' as const, properties: {} },
-}
-
-function reorderByPreference(
-  methods: PaymentMethodOption[],
-  preferred?: string[]
-): PaymentMethodOption[] {
-  if (!preferred || preferred.length === 0) return methods
-  const preferredSet = new Set(preferred)
-  const head: PaymentMethodOption[] = []
-
-  // Walk `preferred` in order so the first preferred id wins the top slot.
-  for (const id of preferred) {
-    const m = methods.find((x) => x.id === id)
-
-    if (m) head.push(m)
-  }
-
-  const tail = methods.filter((m) => !preferredSet.has(m.id))
-
-  return [...head, ...tail]
 }
 
 async function execute(
@@ -81,10 +62,14 @@ async function execute(
     }
   }
 
-  const preferred = (ctx.config as { preferredPaymentMethods?: string[] })
-    .preferredPaymentMethods
+  const ordered = curatePaymentMethods(methods, ctx.config)
 
-  const ordered = reorderByPreference(methods, preferred)
+  if (ordered.length === 0) {
+    return {
+      result:
+        'No payment methods match the merchant profile allowlist. Check `allowedPaymentMethods` in the profile against the store-configured systems.',
+    }
+  }
 
   const lines = ordered.map((m) => `- ${m.name} (id: ${m.id})`).join('\n')
 

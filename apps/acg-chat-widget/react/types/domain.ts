@@ -53,6 +53,27 @@ export interface PaymentMethod {
   group?: string
 }
 
+/**
+ * Pre-placement order review surfaced by the Pay-Now gate. The backend
+ * (tryPayNow Phase A) returns this after a payment method is chosen; the
+ * widget renders an OrderReviewCard whose primary button enqueues the
+ * Pay-Now sentinel ("Plătește acum"), which the backend (Phase B)
+ * intercepts to run place → send → authorize server-side. Lets the
+ * customer confirm who / where / how before the order is actually placed.
+ */
+export interface OrderReview {
+  customerProfile?: {
+    name?: string
+    email?: string
+    phone?: string
+    document?: string
+  }
+  shippingAddress?: string
+  selectedPayment?: { id: string; name: string; group?: string }
+  total: number // in cents
+  currency: string
+}
+
 export interface ProductCard {
   productId: string
   name: string
@@ -77,6 +98,7 @@ export interface Message {
   cartUpdated?: boolean
   mandate?: Mandate         // present when the merchant signed a CartMandate
   paymentMethods?: PaymentMethod[] // pill buttons under the message
+  orderReview?: OrderReview // pre-placement review + Pay-Now gate
 }
 
 export interface ChatWidgetProps {
