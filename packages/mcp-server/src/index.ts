@@ -1,8 +1,9 @@
 /**
- * ACG MCP Server
+ * ACG MCP Server — stdio entry point (local dev / Claude Desktop).
  *
- * Thin proxy that connects Claude Desktop to VTEX IO service.
- * All business logic lives in VTEX IO - this just translates MCP calls to HTTP.
+ * Thin proxy that connects Claude Desktop to the VTEX IO adapter. All business
+ * logic lives in VTEX IO; this just translates MCP calls to HTTP. For the
+ * REMOTE Custom Connector (Streamable HTTP), see src/http.ts.
  *
  * To use with Claude Desktop, add to claude_desktop_config.json:
  * {
@@ -20,63 +21,29 @@
  * }
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { VtexClient } from './client'
-import { registerSearchTools } from './tools/search'
-import { registerCartTools } from './tools/cart'
-import { registerCheckoutTools } from './tools/checkout'
-import { registerHeadlessCheckoutTools } from './tools/headless-checkout'
-import { registerMandateTools } from './tools/mandate'
 
-// Configuration from environment
-const config = {
-  vtexAccount: process.env.VTEX_ACCOUNT || 'your-account',
-  vtexWorkspace: process.env.VTEX_WORKSPACE || 'master',
-  vtexAppKey: process.env.VTEX_APP_KEY,
-  vtexAppToken: process.env.VTEX_APP_TOKEN,
-  acgAuthToken: process.env.ACG_AUTH_TOKEN,
-}
-
-if (!config.acgAuthToken) {
-  console.error(
-    '[ACG] WARNING: ACG_AUTH_TOKEN env var not set. ' +
-      'The adapter will reject all calls with 403 unless its ' +
-      'requireOriginOrSecret middleware is bypassed (it should not be in prod).'
-  )
-}
+import { createMcpServer, createVtexClient, loadConfigFromEnv } from './server'
 
 async function main() {
-  // Create VTEX client
-  const vtexClient = new VtexClient(config)
+  const config = loadConfigFromEnv()
 
-  // Create MCP server with MCP Apps extension support
-  const server = new McpServer(
-    {
-      name: 'vtex-commerce-agent',
-      version: '0.0.1',
-    },
-    {
-      capabilities: {
-        extensions: {
-          'io.modelcontextprotocol/ui': {},
-        },
-      } as any,
-    }
-  )
+  if (!config.acgAuthToken) {
+    console.error(
+      '[ACG] WARNING: ACG_AUTH_TOKEN env var not set. ' +
+        'The adapter will reject all calls with 403 unless its ' +
+        'requireOriginOrSecret middleware is bypassed (it should not be in prod).'
+    )
+  }
 
-  // Register all tools
-  registerSearchTools(server, vtexClient)
-  registerCartTools(server, vtexClient)
-  registerCheckoutTools(server, vtexClient)
-  registerHeadlessCheckoutTools(server, vtexClient)
-  registerMandateTools(server, vtexClient)
+  const vtexClient = createVtexClient(config)
+  const server = createMcpServer(vtexClient)
 
   // Connect via stdio (for Claude Desktop) — must be AFTER all tools registered
   const transport = new StdioServerTransport()
   await server.connect(transport)
 
-  console.error('ACG MCP Server started')
+  console.error('ACG MCP Server started (stdio)')
 }
 
 main().catch(console.error)

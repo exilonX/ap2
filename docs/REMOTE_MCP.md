@@ -68,10 +68,24 @@ by `Mcp-Session-Id`, so each user's cart is isolated.
 
 ## 4. Implementation plan (phased)
 
-### Phase 0 — Streamable HTTP transport, per-session state (no auth yet)
+### Phase 0 — Streamable HTTP transport, per-session state (no auth yet) — ✅ IMPLEMENTED
 
-Stand up an HTTP entry point next to the stdio one. Keep `src/index.ts` (stdio)
-for local dev; add `src/http.ts`.
+Built. Run it:
+
+```
+cd packages/mcp-server && npm run build && npm run start:http   # or: npm run dev:http
+# env: PORT (3000), HOST (0.0.0.0), MCP_ALLOWED_HOSTS (csv, for 0.0.0.0 binds),
+#      VTEX_ACCOUNT, VTEX_WORKSPACE, ACG_AUTH_TOKEN  (same as stdio)
+```
+
+Endpoints: `POST/GET/DELETE /mcp` (Streamable HTTP) + `GET /healthz`. Smoke-
+tested: `initialize` mints a per-session id, `tools/list` returns the tools,
+two inits → two isolated sessions, `DELETE` evicts. Shared wiring lives in
+`src/server.ts` (`createMcpServer` + `createVtexClient`); stdio (`src/index.ts`)
+and HTTP (`src/http.ts`) both use it, so they can't drift.
+
+Original sketch (for reference) — stand up an HTTP entry point next to the
+stdio one. Keep `src/index.ts` (stdio) for local dev; add `src/http.ts`.
 
 The SDK gives us a hardened Express app + the transport. Per-session isolation is
 the whole point — instantiate the server **and** the VtexClient per session:
