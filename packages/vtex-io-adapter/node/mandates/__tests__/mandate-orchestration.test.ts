@@ -27,6 +27,7 @@ import {
   MANDATE_BUCKET,
   ORDER_MANDATE_INDEX_BUCKET,
   ORDERFORM_STATE_BUCKET,
+  clearOrderFormState,
   readOrderFormState,
   readOrderGroupMandateIndex,
   saveOrderFormState,
@@ -432,6 +433,36 @@ describe('readOrderFormState', () => {
     const out = await readOrderFormState(vbase, 'of-junk')
 
     assert.deepEqual(out, {})
+  })
+})
+
+describe('clearOrderFormState', () => {
+  it('wipes placement state so a reused orderForm does not fake-confirm "already placed"', async () => {
+    const vbase = new FakeVBase()
+
+    await saveOrderFormState(vbase, 'of-clear-1', {
+      cartMandateId: 'mandate-old',
+      transactionId: 'tx-old',
+      orderGroup: 'og-old',
+      merchantName: 'PRIOR',
+    })
+
+    await clearOrderFormState(vbase, 'of-clear-1')
+
+    const after = await readOrderFormState(vbase, 'of-clear-1')
+
+    assert.deepEqual(after, {}, 'placement state fully cleared')
+  })
+
+  it('is a no-op when there is no placement state recorded', async () => {
+    const vbase = new FakeVBase()
+
+    // Must not throw, and leaves the (empty) record empty.
+    await clearOrderFormState(vbase, 'of-clear-none')
+
+    const after = await readOrderFormState(vbase, 'of-clear-none')
+
+    assert.deepEqual(after, {})
   })
 })
 

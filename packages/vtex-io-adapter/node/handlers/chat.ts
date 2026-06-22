@@ -21,6 +21,7 @@ import type {
 } from '../clients/llm'
 import { loadConfigForAccount } from '../config/load'
 import type { ClientConfig } from '../config/types'
+import { clearOrderFormState } from '../mandates/mandate-orchestration'
 import {
   formatCustomerProfile,
   formatShippingAddress,
@@ -1523,6 +1524,32 @@ export const CONFIRMATION_REGEX = /^\s*(da|yes|ok(ay)?|adaug[ăa]?|sigur|confirm
 export const PILL_REGEX = /Pl[aă]te[sșz]c cu .* \(id:\s*(\d+)\)/i
 export const PAY_NOW_REGEX = /^\s*(pl[aă]te[sșz]te acum|pay now|__pay_now__)\b/i
 
+// CHECKOUT_INTENT_REGEX matches a customer asking to go to payment ("Mergem
+// la plată" — the cart card's button — plus free-typed variants). It runs
+// AFTER tryPayNow, so it never sees the pill ("Plătesc cu …") or Pay-Now
+// ("Plătește acum") turns (those are handled first). tryShowPaymentMethods
+// answers it deterministically with the CURATED payment pills — no LLM, so
+// no uncurated 17-method list and no redundant "Card/PayPal/…" chips.
+// No outer \b: JS \b is ASCII-only, so a trailing \b after "plat[ăa]" fails to
+// match "…plată" (ă is non-word to \b). The alternatives are distinctive
+// enough to match as substrings safely.
+export const CHECKOUT_INTENT_REGEX = /(mergem la plat[ăa]|hai la (plat[ăa]|checkout)|la plat[ăa]|la checkout|checkout|finaliz(ez|are|ăm|a)|gata,?\s*(hai\s*)?(la\s*)?plat[ăa])/i
+
+// Checkout tools the widget LLM must NOT see — the whole checkout on this
+// surface is deterministic (tryShowPaymentMethods → tryPayNow Phase A/B). If
+// the model can call these it places orders without a Pay-Now click and
+// surfaces the uncurated payment list. The MCP/iframe path uses the separate
+// /_v/acg/checkout/* routes, so stripping them here does not affect it.
+const WIDGET_LLM_EXCLUDED_TOOLS = new Set<string>([
+  'list_payment_methods',
+  'set_payment_method',
+  'create_cart_mandate',
+  'place_order',
+  'send_payment_info',
+  'authorize_transaction',
+  'redirect_to_native_checkout',
+])
+
 // In-process placement lock, keyed by orderFormId. Held for the WHOLE
 // place → send → authorize sequence and released in `finally`. This is the
 // idempotency guard for Phase B: it must NOT rely on readOrderFormState
@@ -1755,6 +1782,17 @@ async function tryConfirmationAutoAdd(
     }
   }
 
+  // The cart just changed. If this orderForm carries placement state from a
+  // PREVIOUS order (VTEX reuses orderFormIds), invalidate it now — otherwise
+  // the next checkout's place_order idempotency backstop would see the stale
+  // transactionId and fake-confirm "already placed" without a real order.
+  await clearOrderFormState(ctx.clients.vbase, ofId).catch((err) => {
+    console.warn(
+      `[ACG Chat] confirmation: clearOrderFormState failed for ${ofId}:`,
+      err instanceof Error ? err.message : err
+    )
+  })
+
   const added = updated.items.find((i) => i.sku === target.itemId)
   const fullName = added?.name ?? productName
   const variantLabel = extractVariantLabel(fullName)
@@ -1797,6 +1835,63 @@ async function tryConfirmationAutoAdd(
     cartPreview,
     cartUpdated: true,
     suggestions: ['Continuă cumpărăturile', 'Mergem la plată'],
+  }
+}
+
+// ─── Deterministic "show payment methods" intercept (widget checkout) ──
+//
+// Runs AFTER tryPayNow (so it never sees a pill / Pay-Now turn) and BEFORE
+// the LLM. When the customer asks to go to payment, we surface the CURATED
+// payment pills directly — no LLM round, so no uncurated 17-method list and
+// no redundant plain "Card/PayPal/…" chips (which, being plain words, would
+// not match PILL_REGEX and so could never start the order review). The
+// customer then taps a pill → Phase A → review → Pay-Now button.
+async function tryShowPaymentMethods(
+  ctx: Context,
+  body: ChatRequest,
+  orderFormId: string | null | undefined,
+  config: ClientConfig
+): Promise<ChatResponse | null> {
+  if (!CHECKOUT_INTENT_REGEX.test(body.message.trim())) {
+    return null
+  }
+
+  if (!orderFormId) {
+    return null
+  }
+
+  const cart = new Cart({ checkout: ctx.clients.checkout })
+  const currentCart = await cart.getCart(orderFormId).catch(() => null)
+
+  if (!currentCart || currentCart.items.length === 0) {
+    return {
+      reply: 'Coșul tău e gol momentan. Adaugă un produs înainte de plată.',
+    }
+  }
+
+  const methods = await cart
+    .getAvailablePaymentSystems(orderFormId)
+    .catch(() => [] as Awaited<ReturnType<Cart['getAvailablePaymentSystems']>>)
+
+  const paymentMethods: PaymentMethodOption[] = curatePaymentMethods(
+    methods,
+    config
+  ).map((m) => ({
+    id: m.id,
+    name: m.name,
+    group: m.group,
+    requiresAuthentication: m.requiresAuthentication,
+  }))
+
+  // No configured methods (or nothing matched the allowlist) — let the LLM
+  // handle it rather than showing an empty pill row.
+  if (paymentMethods.length === 0) {
+    return null
+  }
+
+  return {
+    reply: 'Alege metoda de plată de mai jos, apoi confirmă comanda.',
+    paymentMethods,
   }
 }
 
@@ -2487,6 +2582,22 @@ export async function chatHandler(ctx: Context) {
       return
     }
 
+    // ── Show curated payment methods (runs BEFORE the LLM). ──
+    // "Mergem la plată" (and free-typed variants) → curated pills, no LLM,
+    // no redundant chips. See tryShowPaymentMethods.
+    const paymentPrompt = await tryShowPaymentMethods(
+      ctx,
+      body,
+      orderFormId,
+      config
+    )
+
+    if (paymentPrompt) {
+      ctx.body = paymentPrompt
+
+      return
+    }
+
     // Call LLM (with tool loop — max 3 rounds)
     // Accumulate products across tool calls (dedup by productId, keep first occurrence)
     const productMap = new Map<string, ProductCardData>()
@@ -2511,8 +2622,21 @@ export async function chatHandler(ctx: Context) {
     let lastAssistantText = ''
 
     // Merge the legacy switch-based CHAT_TOOLS with the new AgentTool
-    // registry definitions (Issue 03). The LLM sees them as one list.
-    const allTools: LLMTool[] = [...CHAT_TOOLS, ...getAgentToolDefinitions()]
+    // registry definitions (Issue 03) — MINUS the checkout tools.
+    //
+    // The widget checkout is 100% deterministic: the customer taps a payment
+    // pill (tryPayNow Phase A → order review) then the Pay-Now button
+    // (Phase B → place → send → authorize). The LLM must NEVER drive
+    // placement here — when it did, weak Haiku called place_order on a plain
+    // "hai la checkout" and placed (or, on a reused orderForm, fake-confirmed)
+    // an order with no Pay-Now click. So we strip every checkout tool from the
+    // model's surface on this (widget-only) path; the MCP/Claude-Desktop path
+    // uses the separate /_v/acg/checkout/* routes, not this handler.
+    const agentDefs = getAgentToolDefinitions().filter(
+      (t) => !WIDGET_LLM_EXCLUDED_TOOLS.has(t.name)
+    )
+
+    const allTools: LLMTool[] = [...CHAT_TOOLS, ...agentDefs]
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const response: LLMResponse = await llm.chat(

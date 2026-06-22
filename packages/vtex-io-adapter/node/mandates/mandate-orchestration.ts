@@ -121,6 +121,36 @@ export async function saveOrderFormState(
 }
 
 /**
+ * Invalidate any signed-mandate / placement state recorded for this
+ * orderForm. Call when the cart is MODIFIED after a mandate was signed or an
+ * order was placed: VTEX may hand the SAME orderFormId back for a new
+ * purchase, and stale cartMandateId / transactionId / orderGroup must not
+ * leak into the next checkout — otherwise place_order's idempotency backstop
+ * treats the NEW cart as "already placed" (fake confirmation, no real order),
+ * or re-uses a mandate signed against the OLD cart hash.
+ *
+ * No-ops (no write) when nothing is recorded.
+ */
+export async function clearOrderFormState(
+  vbase: VBaseClient,
+  orderFormId: string
+): Promise<void> {
+  const existing = await readOrderFormState(vbase, orderFormId).catch(
+    () => ({} as Ap2CustomData)
+  )
+
+  if (
+    !existing.cartMandateId &&
+    !existing.transactionId &&
+    !existing.orderGroup
+  ) {
+    return
+  }
+
+  await saveOrderFormState(vbase, orderFormId, {})
+}
+
+/**
  * Read back the per-orderForm state record. Returns an empty object
  * when nothing is present (so callers can treat "no record yet" as
  * "fresh cart" without 404 handling).

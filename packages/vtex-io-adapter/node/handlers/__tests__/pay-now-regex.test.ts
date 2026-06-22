@@ -16,9 +16,14 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { CONFIRMATION_REGEX, PAY_NOW_REGEX, PILL_REGEX } from '../chat'
+import {
+  CHECKOUT_INTENT_REGEX,
+  CONFIRMATION_REGEX,
+  PAY_NOW_REGEX,
+  PILL_REGEX,
+} from '../chat'
 
-// Count how many of the three regexes match a given string.
+// Count how many of the three routing regexes match a given string.
 function matchCount(s: string): number {
   let n = 0
 
@@ -77,6 +82,38 @@ describe('Pay-Now gate regexes — mutual exclusion', () => {
         `"${s}" does not match PAY_NOW`
       )
       assert.equal(matchCount(s), 1, `"${s}" matches exactly one`)
+    }
+  })
+
+  it('CHECKOUT_INTENT matches "go to payment" turns but NOT pill / Pay-Now / confirmation', () => {
+    // Matches the cart button + free-typed checkout intents.
+    for (const s of [
+      'Mergem la plată',
+      'la plată',
+      'hai la checkout',
+      'checkout',
+      'gata, la plată',
+    ]) {
+      assert.equal(
+        CHECKOUT_INTENT_REGEX.test(s),
+        true,
+        `"${s}" is checkout intent`
+      )
+    }
+
+    // Must NOT collide with the deterministic checkout turns (those are
+    // handled by tryPayNow BEFORE tryShowPaymentMethods runs).
+    for (const s of [
+      'Plătesc cu Cash (id: 47)',
+      'Plătește acum',
+      '__pay_now__',
+      'Da, adaugă',
+    ]) {
+      assert.equal(
+        CHECKOUT_INTENT_REGEX.test(s),
+        false,
+        `"${s}" must NOT be misread as checkout intent`
+      )
     }
   })
 

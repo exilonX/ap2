@@ -21,6 +21,7 @@ import {
   OrderFormSubstitutedError,
   TransientCartError,
 } from '../cart/errors'
+import { clearOrderFormState } from '../mandates/mandate-orchestration'
 import { resolveOrderFormId } from '../utils/session'
 
 /**
@@ -112,6 +113,12 @@ export async function addToCart(ctx: Context) {
 
     const orderFormId = await resolveOrderFormId(ctx, cart)
     const updated = await cart.addItem(orderFormId, sku, quantity)
+
+    // The cart changed — invalidate any placement state left on a reused
+    // orderForm so the next checkout doesn't fake-confirm "already placed".
+    await clearOrderFormState(ctx.clients.vbase, orderFormId).catch(() => {
+      // Soft: stale-state cleanup is best-effort, never blocks the add.
+    })
 
     ctx.body = {
       success: true,
