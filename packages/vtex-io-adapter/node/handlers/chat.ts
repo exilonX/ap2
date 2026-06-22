@@ -1637,14 +1637,29 @@ async function tryConfirmationAutoAdd(
   }
 
   if (!productId) {
+    console.log(
+      `[ACG Chat] confirmation: "${body.message.trim()}" matched but no "SKU referință" anchor in history — deferring to LLM`
+    )
+
     return null
   }
 
   const product = await ctx.clients.search
     .getProductBySku(productId)
-    .catch(() => null)
+    .catch((err) => {
+      console.warn(
+        `[ACG Chat] confirmation: getProductBySku(${productId}) threw:`,
+        err instanceof Error ? err.message : err
+      )
+
+      return null
+    })
 
   if (!product) {
+    console.log(
+      `[ACG Chat] confirmation: getProductBySku(${productId}) returned nothing — deferring to LLM`
+    )
+
     return null
   }
 
@@ -1657,28 +1672,15 @@ async function tryConfirmationAutoAdd(
 
   const cart = new Cart({ checkout: ctx.clients.checkout })
   const ofId = orderFormId || (await resolveOrderFormId(ctx, cart))
-
-  // Already in the cart? Then this "Da" confirms something else (checkout /
-  // shipping), not a re-add. Fall through — never double-add, and never wrongly
-  // claim "unavailable" for an item the customer already owns.
-  const existing = await cart.getCart(ofId).catch(() => null)
-  const variantIds = variants.map((v) => v.itemId)
-
-  if (existing?.items.some((i) => variantIds.includes(i.sku))) {
-    return null
-  }
-
   const productName = product.productName || 'produsul'
 
-  // Multi-variant in stock — needs a size/colour choice. Let the model ask.
-  if (availableItems.length > 1) {
-    return null
-  }
+  console.log(
+    `[ACG Chat] confirmation: productId=${productId} "${productName}" variants=${variants.length} inStock=${availableItems.length}`
+  )
 
   // No buyable variant — fail FAST and honestly instead of letting the model
-  // loop add_to_cart against an unsellable SKU. This is the ROCHITA sku-1 case:
-  // shown in search from a stale index, but VTEX refuses to add it. One clean
-  // reply beats a 4-round loop that ends in a "VTEX has a problem" message.
+  // loop add_to_cart against an unsellable SKU. One clean reply beats a
+  // 4-round loop that ends in a "VTEX has a problem" message.
   if (availableItems.length === 0) {
     console.warn(
       `[ACG Chat] confirmation: "${productName}" (productId ${productId}) has no buyable variant — replying unavailable`
@@ -1690,16 +1692,60 @@ async function tryConfirmationAutoAdd(
     }
   }
 
-  // Exactly one buyable variant, not yet in the cart, customer confirmed → add.
-  const only = availableItems[0]
-  const updated = await cart.addItem(ofId, only.itemId, 1).catch((err) => {
-    console.warn(
-      `[ACG Chat] confirmation auto-add failed for SKU ${only.itemId}:`,
-      err instanceof Error ? err.message : err
+  // The customer confirmed "add it" — so ADD, don't interrogate. For a
+  // MULTI-VARIANT product we default to the first in-stock variant instead of
+  // bouncing to the weak model for a size/colour question (which just loops
+  // "Aștept răspunsul tău" forever). A reliable add beats an endless "which
+  // size?" exchange; precise variant selection is a later refinement.
+  const target = availableItems[0]
+
+  // If that variant is already in the cart, INCREMENT its quantity (VTEX's
+  // POST /items is a silent no-op on re-add, so we update by index instead of
+  // re-adding). Otherwise add it fresh.
+  const rawForm = await ctx.clients.checkout
+    .getOrderForm(ofId)
+    .catch(() => null)
+
+  const existingIndex =
+    rawForm?.items?.findIndex((i) => i.id === target.itemId) ?? -1
+
+  let updated: ReturnType<typeof mapOrderFormToCart> | null
+
+  if (rawForm && existingIndex >= 0) {
+    const currentQty = rawForm.items[existingIndex].quantity ?? 1
+
+    console.log(
+      `[ACG Chat] confirmation: SKU ${
+        target.itemId
+      } already in cart (qty ${currentQty}) → incrementing to ${currentQty + 1}`
     )
 
-    return null
-  })
+    const bumped = await ctx.clients.checkout
+      .updateItems(ofId, [{ index: existingIndex, quantity: currentQty + 1 }])
+      .catch((err) => {
+        console.warn(
+          `[ACG Chat] confirmation increment failed for SKU ${target.itemId}:`,
+          err instanceof Error ? err.message : err
+        )
+
+        return null
+      })
+
+    updated = bumped ? mapOrderFormToCart(bumped) : null
+  } else {
+    console.log(
+      `[ACG Chat] confirmation: adding SKU ${target.itemId} (new line) to cart`
+    )
+
+    updated = await cart.addItem(ofId, target.itemId, 1).catch((err) => {
+      console.warn(
+        `[ACG Chat] confirmation auto-add failed for SKU ${target.itemId}:`,
+        err instanceof Error ? err.message : err
+      )
+
+      return null
+    })
+  }
 
   // VTEX refused the add (no-op / inactive SKU). Fail fast + honest, no loop.
   if (!updated) {
@@ -1709,7 +1755,7 @@ async function tryConfirmationAutoAdd(
     }
   }
 
-  const added = updated.items.find((i) => i.sku === only.itemId)
+  const added = updated.items.find((i) => i.sku === target.itemId)
   const fullName = added?.name ?? productName
   const variantLabel = extractVariantLabel(fullName)
   const shortName = fullName.split(' - ')[0].slice(0, 80)
@@ -1739,7 +1785,7 @@ async function tryConfirmationAutoAdd(
   }
 
   console.log(
-    `[ACG Chat] confirmation auto-add: SKU ${only.itemId} (productId ${productId}) — cart now ${updated.itemCount} items`
+    `[ACG Chat] confirmation auto-add: SKU ${target.itemId} (productId ${productId}) — cart now ${updated.itemCount} items`
   )
 
   return {
