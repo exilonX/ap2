@@ -28,9 +28,15 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 
-import { createMcpServer, createVtexClient, loadConfigFromEnv } from './server'
+import { createMcpServer, createVtexClient } from './server'
+import { loadTenantRegistry } from './tenants'
 
-type Req = IncomingMessage & { body?: unknown }
+// Express populates req.params for the /mcp/:tenant route; we read it through a
+// localized cast so we need no express type dependency (see the node:http note).
+type Req = IncomingMessage & {
+  body?: unknown
+  params?: Record<string, string>
+}
 
 const PORT = Number(process.env.PORT ?? 3000)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -41,14 +47,19 @@ const ALLOWED_HOSTS = (process.env.MCP_ALLOWED_HOSTS ?? '')
   .map((s) => s.trim())
   .filter(Boolean)
 
-const config = loadConfigFromEnv()
+// Multi-tenant: one service, merchant chosen by the URL path (/mcp/<tenant>).
+// `/mcp` (no tenant) maps to "default" — the single-merchant env config.
+const tenants = loadTenantRegistry()
+const tenantIds = tenants.list()
 
-if (!config.acgAuthToken) {
+if (tenantIds.length === 0) {
   console.error(
-    '[ACG] WARNING: ACG_AUTH_TOKEN env var not set. ' +
-      'The adapter will reject all calls with 403 unless its ' +
-      'requireOriginOrSecret middleware is bypassed (it should not be in prod).'
+    '[ACG] WARNING: no tenants configured. Set ACG_TENANTS_FILE / ' +
+      'ACG_TENANTS_JSON, or VTEX_ACCOUNT (+ ACG_AUTH_TOKEN) for a single ' +
+      '"default" tenant. Every /mcp request will 404 until then.'
   )
+} else {
+  console.error(`[ACG] tenants: ${tenantIds.join(', ')}`)
 }
 
 // createMcpExpressApp gives us express.json() + (optional) host-header
@@ -69,47 +80,84 @@ function sessionIdOf(req: Req): string | undefined {
   return typeof id === 'string' ? id : undefined
 }
 
+// Tenant comes from the /mcp/:tenant path param (undefined on plain /mcp →
+// "default" tenant). Express populates req.params for the param route.
+function tenantOf(req: Req): string | undefined {
+  return req.params?.tenant
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(body))
 }
 
+function rpcError(res: ServerResponse, status: number, message: string): void {
+  sendJson(res, status, {
+    jsonrpc: '2.0',
+    error: { code: -32000, message },
+    id: null,
+  })
+}
+
 // Liveness probe for the deploy / load balancer.
 app.get('/healthz', (_req: Req, res: ServerResponse) => {
-  sendJson(res, 200, { ok: true, sessions: transports.size })
+  sendJson(res, 200, {
+    ok: true,
+    sessions: transports.size,
+    tenants: tenantIds,
+  })
 })
 
 // Client → server (JSON-RPC requests + notifications). The first call is an
-// `initialize` with no session id; we mint a session, build a fresh server +
-// VtexClient for it, and the transport returns the new id in the response.
-app.post('/mcp', async (req: Req, res: ServerResponse) => {
+// `initialize` with no session id; we resolve the tenant from the path, mint a
+// session, and build a fresh server + VtexClient BOUND TO THAT TENANT.
+// Subsequent requests route purely by session id — the transport is already
+// bound to the right merchant, so the path tenant is not re-checked.
+async function postMcp(req: Req, res: ServerResponse): Promise<void> {
   const sessionId = sessionIdOf(req)
   let transport = sessionId ? transports.get(sessionId) : undefined
 
   if (!transport) {
     // No session yet: this MUST be an initialize request, with no stale id.
     if (sessionId || !isInitializeRequest(req.body)) {
-      sendJson(res, 400, {
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message:
-            'Bad Request: no valid Mcp-Session-Id. Send an initialize request first.',
-        },
-        id: null,
-      })
+      rpcError(
+        res,
+        400,
+        'Bad Request: no valid Mcp-Session-Id. Send an initialize request first.'
+      )
 
       return
     }
 
-    // Fresh, isolated state for this session — its own cart (orderFormId).
-    const server = createMcpServer(createVtexClient(config))
+    // Resolve the merchant for this connection from the URL path.
+    const tenant = tenantOf(req)
+    const tenantConfig = tenants.get(tenant)
+
+    if (!tenantConfig) {
+      rpcError(
+        res,
+        404,
+        `Unknown tenant "${tenant ?? 'default'}". Configured: ${
+          tenantIds.join(', ') || '(none)'
+        }.`
+      )
+
+      return
+    }
+
+    // Fresh, isolated state for this session — this merchant's account/secret
+    // and its own cart (orderFormId). No cross-tenant or cross-user leakage.
+    const server = createMcpServer(createVtexClient(tenantConfig))
 
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
         transports.set(id, transport as StreamableHTTPServerTransport)
-        console.error(`[ACG HTTP] session initialized: ${id}`)
+        console.error(
+          `[ACG HTTP] session initialized: ${id} (tenant=${
+            tenant ?? 'default'
+          })`
+        )
       },
     })
 
@@ -126,7 +174,7 @@ app.post('/mcp', async (req: Req, res: ServerResponse) => {
   }
 
   await transport.handleRequest(req, res, req.body)
-})
+}
 
 // Server → client SSE stream (GET) and explicit session teardown (DELETE).
 // Both require an existing session id and just delegate to its transport.
@@ -147,8 +195,14 @@ async function handleExistingSession(
   await transport.handleRequest(req, res)
 }
 
+// Same handlers on the plain (`/mcp` → default) and tenant (`/mcp/:tenant`)
+// paths. Each merchant points their Claude connector at their own /mcp/<id>.
+app.post('/mcp', postMcp)
+app.post('/mcp/:tenant', postMcp)
 app.get('/mcp', handleExistingSession)
+app.get('/mcp/:tenant', handleExistingSession)
 app.delete('/mcp', handleExistingSession)
+app.delete('/mcp/:tenant', handleExistingSession)
 
 app.listen(PORT, HOST, () => {
   console.error(

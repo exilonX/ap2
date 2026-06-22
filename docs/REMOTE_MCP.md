@@ -180,15 +180,32 @@ Don't hand-roll the AS. Options, easiest first:
 - **Reverse-proxy auth** (Cloudflare Access / oauth2-proxy) in front of `/mcp` as
   a stopgap, mapping the proxy identity to a tenant.
 
-### Phase 3 — Multi-tenant account resolution (only if >1 merchant)
+### Phase 3 — Multi-tenant account resolution — ✅ PATH-BASED IMPLEMENTED
 
-Today `VTEX_ACCOUNT` is a single env var. For multiple merchants, resolve the
-account per session from one of:
-- an **OAuth claim** (e.g. `org`/`account` in the JWT) → cleanest;
-- a **path/subdomain** (`/mcp/vtexeurope`, `vtexeurope.mcp.yourdomain.com`);
-- a connector **config field**.
+One service serves many merchants; the merchant is chosen by the **URL path**:
+each merchant points their Claude connector at `mcp.host/mcp/<tenant>`. The
+session's `VtexClient` is built from that tenant's config, so merchants stay
+fully isolated (own cart, own secret) — see `src/tenants.ts` + `src/http.ts`.
 
-For the demo (single merchant `vtexeurope`) keep it fixed and skip this phase.
+Configure the registry (JSON keyed by tenant id):
+
+```jsonc
+// ACG_TENANTS_FILE=/etc/acg/tenants.json   (or ACG_TENANTS_JSON inline)
+{
+  "vtexeurope": { "account": "vtexeurope", "workspace": "master", "acgAuthToken": "…" },
+  "clientb":    { "account": "clientb",    "workspace": "master", "acgAuthToken": "…" }
+}
+```
+
+`/mcp` (no tenant) maps to `"default"`, which falls back to the single-merchant
+env config (`VTEX_ACCOUNT` / `ACG_AUTH_TOKEN`), so an existing single-tenant
+deploy keeps working unchanged. Unknown tenant → 404. `GET /healthz` lists the
+configured tenants. Smoke-tested: `/mcp/vtexeurope` and `/mcp/clientb` mint
+sessions bound to their own account; `/mcp/unknown` 404s.
+
+Still **path-based only**. Phase 2 upgrades this so the tenant comes from an
+**OAuth claim** instead of an unguessable URL — same per-session binding, just
+a different (authenticated) source for the tenant id.
 
 ---
 
