@@ -211,9 +211,17 @@ export default new Service({
       POST: [...guarded.chat, chatHandler],
     }),
 
-    // Client config (brand, strings, starter chips, etc.)
+    // Client config (brand, strings, starter chips, etc.) — PUBLIC read.
+    //
+    // The widget fetches this on mount, same-origin, with GET. Browsers OMIT
+    // the `Origin` header on same-origin GETs, so requireOriginOrSecret (which
+    // needs an allowlisted Origin OR a secret) would 403 it — while the
+    // same-origin chat POST passes, because browsers DO send Origin on POST.
+    // The payload is non-sensitive public branding (greeting / starters /
+    // strings / colors), already `Cache-Control: public`, so it belongs on the
+    // publicRead tier (IP rate-limit only) like the AP2 verification surface.
     acgConfig: method({
-      GET: [...guarded.read, getConfig],
+      GET: [...guarded.publicRead, getConfig],
     }),
 
     // RAG status (bulk sync runs via scripts/sync-catalog/, not this endpoint)
