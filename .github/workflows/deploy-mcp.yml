@@ -1,0 +1,153 @@
+name: deploy-mcp
+
+# Continuous deployment for the ACG MCP server (packages/mcp-server) to the
+# Hetzner box. Builds the runtime in CI, ships ONLY the artifact over SSH into a
+# timestamped release dir, atomically swaps the /opt/acg/current symlink,
+# restarts the systemd unit, and gates on a REVISION-asserting health check —
+# rolling the symlink back on failure. See docs/DEPLOY.md.
+#
+# Design chosen + adversarially vetted (see docs/DEPLOY.md "Why this shape"):
+# the box never compiles (cannot OOM-kill the co-resident Typesense), ships no
+# secrets, and rollback is a symlink flip with no rebuild and no network.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only the MCP server (and its build-time type dep @acg/core) matters.
+      # A push touching only the vtex-io-adapter or the widget matches nothing
+      # here, so the MCP server is NOT redeployed.
+      - 'packages/mcp-server/**'
+      - 'packages/core/**'
+      - '.github/workflows/deploy-mcp.yml'
+  workflow_dispatch: {} # manual redeploy / rollback runs
+
+concurrency:
+  # Never let two deploys race for the symlink swap.
+  group: deploy-mcp-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SSH_HOST: bookmap-search.duckdns.org
+  SSH_USER: deploy
+  # Unique, sortable release id: <run_number>-<sha>.
+  REL: ${{ github.run_number }}-${{ github.sha }}
+  REV: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # audit + optional manual-approval gate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # @acg/core is a build-time TYPE dependency of the mcp-server (the
+      # compiled dist requires nothing from it), so it must be built first for
+      # its .d.ts, and its 68 AP2 tests gate the deploy.
+      - name: Build & test @acg/core
+        working-directory: packages/core
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      # tsc here is the real build gate — a type error fails the job pre-deploy.
+      - name: Build @acg/mcp-server
+        working-directory: packages/mcp-server
+        run: |
+          npm ci
+          npm run build            # tsc + copy:apps (checkout.html)
+
+      # Strip to production deps from the COMMITTED lockfile (no npm install /
+      # version drift). The compiled dist requires only @modelcontextprotocol/
+      # sdk + axios + zod + express(transitive) + Node builtins.
+      - name: Prune to production node_modules
+        working-directory: packages/mcp-server
+        run: npm ci --omit=dev
+
+      # Self-contained runtime tree. @acg/core resolves to a file: symlink that
+      # would dangle on the box, but dist never requires it, so we just drop it.
+      - name: Assemble artifact
+        run: |
+          set -euo pipefail
+          ART="$GITHUB_WORKSPACE/artifact"
+          rm -rf "$ART" && mkdir -p "$ART"
+          cp -R packages/mcp-server/dist           "$ART/dist"
+          cp    packages/mcp-server/package.json    "$ART/package.json"
+          cp -R packages/mcp-server/node_modules    "$ART/node_modules"
+          rm -rf "$ART/node_modules/@acg"          # dangling file: link, unused at runtime
+          printf '%s' "$REV" > "$ART/REVISION"     # surfaced on /healthz; the deploy gate asserts it
+          test -f "$ART/dist/http.js"
+
+      - name: Configure SSH (key + pinned host key)
+        env:
+          SSH_KEY: ${{ secrets.MCP_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.MCP_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY"     > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts   # no ssh-keyscan TOFU window
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Rsync artifact to a fresh release dir
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
+            --rsync-path="mkdir -p /opt/acg/releases/$REL && rsync" \
+            artifact/ "$SSH_USER@$SSH_HOST:/opt/acg/releases/$REL/"
+
+      - name: Activate (atomic swap + restart + health gate + rollback)
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST" \
+            "REL='$REL' REV='$REV' bash -s" <<'REMOTE'
+          set -euo pipefail
+          BASE=/opt/acg
+          NEW="$BASE/releases/$REL"
+          LINK="$BASE/current"
+          test -f "$NEW/dist/http.js"
+
+          PREV="$(readlink -f "$LINK" 2>/dev/null || true)"
+
+          # Atomic activate: rename(2) over the old symlink (same filesystem).
+          ln -sfn "$NEW" "$BASE/.next"
+          mv -Tf "$BASE/.next" "$LINK"
+
+          # Restart ONLY the mcp unit (Typesense:8108 and Caddy are untouched).
+          sudo /usr/bin/systemctl restart acg-mcp
+
+          # Health gate: assert the RUNNING revision == the just-deployed sha,
+          # not merely that the port is bound (defeats a crash-loop passing).
+          ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 2 -H 'Host: bookmap-search.duckdns.org' \
+                 http://127.0.0.1:3000/healthz 2>/dev/null | grep -q "\"revision\":\"$REV\""; then
+              ok=1; break
+            fi
+            sleep 0.5
+          done
+
+          if [ "$ok" != 1 ]; then
+            echo "HEALTHCHECK FAILED (revision != $REV) — rolling back to $PREV"
+            if [ -n "$PREV" ] && [ -d "$PREV" ]; then
+              ln -sfn "$PREV" "$BASE/.next"
+              mv -Tf "$BASE/.next" "$LINK"
+              sudo /usr/bin/systemctl restart acg-mcp
+            fi
+            exit 1
+          fi
+
+          # Keep the 5 newest releases; prune the rest.
+          ls -1dt "$BASE"/releases/*/ | tail -n +6 | xargs -r rm -rf
+          echo "DEPLOYED $REL (revision $REV)"
+          REMOTE

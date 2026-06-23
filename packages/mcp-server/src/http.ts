@@ -22,7 +22,9 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { join } from 'node:path'
 
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -37,6 +39,33 @@ type Req = IncomingMessage & {
   body?: unknown
   params?: Record<string, string>
 }
+
+// Build revision (git sha), written as a REVISION file at the release root by
+// the deploy pipeline (.github/workflows/deploy-mcp.yml). Surfaced on /healthz
+// so the deploy gate can assert the RUNNING revision == the just-deployed sha
+// — a real correctness gate, not just "the port is bound" (a crash-looping or
+// stale build would otherwise pass during a momentary bind). "unknown" locally.
+function readRevision(): string {
+  const env = process.env.ACG_REVISION
+
+  if (env && env.trim()) return env.trim()
+
+  // http.js lives in <release>/dist, REVISION at <release>/REVISION.
+  for (const p of [
+    join(__dirname, '..', 'REVISION'),
+    join(process.cwd(), 'REVISION'),
+  ]) {
+    try {
+      return readFileSync(p, 'utf8').trim()
+    } catch {
+      // try the next candidate path
+    }
+  }
+
+  return 'unknown'
+}
+
+const REVISION = readRevision()
 
 const PORT = Number(process.env.PORT ?? 3000)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -103,6 +132,7 @@ function rpcError(res: ServerResponse, status: number, message: string): void {
 app.get('/healthz', (_req: Req, res: ServerResponse) => {
   sendJson(res, 200, {
     ok: true,
+    revision: REVISION,
     sessions: transports.size,
     tenants: tenantIds,
   })
