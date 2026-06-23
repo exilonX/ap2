@@ -19,6 +19,7 @@ on:
       # here, so the MCP server is NOT redeployed.
       - 'packages/mcp-server/**'
       - 'packages/core/**'
+      - 'packages/shared/**'
       - '.github/workflows/deploy-mcp.yml'
   workflow_dispatch: {} # manual redeploy / rollback runs
 
@@ -48,15 +49,23 @@ jobs:
         with:
           node-version: '20'
 
-      # @acg/core is a build-time TYPE dependency of the mcp-server (the
-      # compiled dist requires nothing from it), so it must be built first for
-      # its .d.ts, and its 68 AP2 tests gate the deploy.
+      # @acg/shared and @acg/core are build-time TYPE dependencies of the
+      # mcp-server (the compiled dist requires NOTHING from either — both are
+      # `import type` only). They must be built first so tsc can resolve them:
+      # @acg/shared via the tsconfig paths mapping to ../shared/dist/types/*,
+      # @acg/core via its file: link's .d.ts.
+      - name: Build @acg/shared
+        working-directory: packages/shared
+        run: |
+          npm ci
+          npm run build           # tsc -> dist/types/*.d.ts (cart, product, ...)
+
       - name: Build & test @acg/core
         working-directory: packages/core
         run: |
           npm ci
           npm run build
-          npm test
+          npm test                # 68 AP2 tests gate the deploy
 
       # tsc here is the real build gate — a type error fails the job pre-deploy.
       - name: Build @acg/mcp-server
