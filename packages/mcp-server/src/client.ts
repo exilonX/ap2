@@ -25,11 +25,22 @@ interface VtexConfig {
   acgAuthToken?: string;
 }
 
+// Process-wide counter so every VtexClient instance has a short, stable tag in
+// the logs. Two different tags appearing for one conversation = two sessions =
+// the cart-splitting bug.
+let vtexClientSeq = 0;
+
 export class VtexClient {
   private client: AxiosInstance;
   private orderFormId: string | null = null;
+  private readonly tag: string;
 
   constructor(config: VtexConfig) {
+    this.tag = `vc${++vtexClientSeq}`;
+    // eslint-disable-next-line no-console
+    console.error(
+      `[VtexClient ${this.tag}] created (account=${config.vtexAccount} ws=${config.vtexWorkspace})`
+    );
     const baseURL = `https://${config.vtexWorkspace}--${config.vtexAccount}.myvtex.com/_v/acg`;
 
     const headers: Record<string, string> = {
@@ -57,6 +68,12 @@ export class VtexClient {
       if (this.orderFormId) {
         reqConfig.headers['X-ACG-Order-Form-Id'] = this.orderFormId;
       }
+      // eslint-disable-next-line no-console
+      console.error(
+        `[VtexClient ${this.tag}] → ${(reqConfig.method ?? 'get').toUpperCase()} ${
+          reqConfig.url
+        } ofid=${this.orderFormId ?? '<none>'}`
+      );
       return reqConfig;
     });
 
@@ -71,22 +88,29 @@ export class VtexClient {
    * Capture orderFormId from response body if present.
    */
   private captureOrderFormId(data: unknown): void {
+    const before = this.orderFormId;
+
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
       if (typeof obj.orderFormId === 'string') {
         this.orderFormId = obj.orderFormId;
-        return;
-      }
-      // Nested in cart (e.g. { cart: { id: "..." } }) or top-level { id: "..." }
-      if (obj.cart && typeof obj.cart === 'object') {
+      } else if (obj.cart && typeof obj.cart === 'object') {
+        // Nested in cart (e.g. { cart: { id: "..." } }).
         const cart = obj.cart as Record<string, unknown>;
         if (typeof cart.id === 'string') {
           this.orderFormId = cart.id;
         }
       } else if (typeof obj.id === 'string' && 'items' in obj) {
-        // Direct SimpleCart response (getCart returns cart directly)
+        // Direct SimpleCart response (getCart returns cart directly).
         this.orderFormId = obj.id as string;
       }
+    }
+
+    if (this.orderFormId !== before) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[VtexClient ${this.tag}] captured ofid ${before ?? '<none>'} -> ${this.orderFormId}`
+      );
     }
   }
 

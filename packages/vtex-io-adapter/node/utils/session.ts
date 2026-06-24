@@ -30,19 +30,28 @@ export function getOrderFormIdFromRequest(ctx: Context): string | null {
   // 1. Check header (from MCP server)
   const headerValue = ctx.get(ORDER_FORM_HEADER)
 
+  // 2. Check cookie (from browser)
+  const cookieRaw = ctx.cookies.get(ORDER_FORM_COOKIE)
+  const cookieValue = cookieRaw?.match(/__ofid=([^;]+)/)?.[1] ?? null
+
+  const resolved = headerValue || cookieValue || null
+
+  // DIAGNOSTIC — trace which cart EVERY adapter call resolves to, and where
+  // the id came from. If addToCart and getCart print different `resolved`
+  // ids, the MCP client isn't threading the orderFormId between calls.
+  // eslint-disable-next-line no-console -- demo orderFormId tracing (issue 0005)
+  console.log(
+    `[ACG ofid] ${ctx.method} ${ctx.path} → resolved=${
+      resolved ?? '<none>'
+    } (header=${headerValue || '-'} cookie=${cookieValue || '-'})`
+  )
+
   if (headerValue) {
     return headerValue
   }
 
-  // 2. Check cookie (from browser)
-  const cookieValue = ctx.cookies.get(ORDER_FORM_COOKIE)
-
   if (cookieValue) {
-    const match = cookieValue.match(/__ofid=([^;]+)/)
-
-    if (match) {
-      return match[1]
-    }
+    return cookieValue
   }
 
   return null
@@ -82,6 +91,14 @@ export async function resolveOrderFormId(
   const newCart = await cart.createCart()
 
   setOrderFormCookie(ctx, newCart.id)
+
+  // DIAGNOSTIC — a brand-new cart was minted because NO header/cookie was
+  // present. If this fires on getCart right after addToCart, the previous
+  // call's orderFormId never came back to the client → the new cart is empty.
+  // eslint-disable-next-line no-console -- demo orderFormId tracing (issue 0005)
+  console.log(
+    `[ACG ofid] ${ctx.method} ${ctx.path} → CREATED new cart ${newCart.id} (no header/cookie present)`
+  )
 
   return newCart.id
 }

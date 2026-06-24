@@ -160,6 +160,14 @@ async function postMcp(req: Req, res: ServerResponse): Promise<void> {
   const sessionId = sessionIdOf(req)
   let transport = sessionId ? transports.get(sessionId) : undefined
 
+  // DIAGNOSTIC — which session is this POST bound to? Two distinct session
+  // ids alternating for one conversation = the cart-splitting bug.
+  console.error(
+    `[ACG HTTP] POST tenant=${tenantOf(req) ?? 'default'} session=${
+      sessionId ?? '<none/init>'
+    } known=${sessionId ? transports.has(sessionId) : false} live=${transports.size}`
+  )
+
   if (!transport) {
     // No session yet: this MUST be an initialize request, with no stale id.
     if (sessionId || !isInitializeRequest(req.body)) {
@@ -230,6 +238,13 @@ async function handleExistingSession(
 ): Promise<void> {
   const sessionId = sessionIdOf(req)
   const transport = sessionId ? transports.get(sessionId) : undefined
+
+  // DIAGNOSTIC — GET (SSE stream) / DELETE (teardown) by session.
+  console.error(
+    `[ACG HTTP] ${req.method} session=${sessionId ?? '<none>'} known=${
+      sessionId ? transports.has(sessionId) : false
+    } live=${transports.size}`
+  )
 
   if (!transport) {
     res.writeHead(400, { 'Content-Type': 'text/plain' })
