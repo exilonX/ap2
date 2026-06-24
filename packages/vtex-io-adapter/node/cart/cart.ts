@@ -34,8 +34,23 @@ import {
   ItemNotAddedError,
   ItemNotInCartError,
   OrderFormSubstitutedError,
+  ProfileNotPersistedError,
   TransientCartError,
 } from './errors'
+
+/**
+ * Join VTEX's orderForm `messages` (validation reasons) into a single human
+ * string. VTEX surfaces *why* an attachment was rejected here even though the
+ * HTTP status is 200.
+ */
+function vtexMessages(orderForm: VTEXOrderForm): string {
+  const msgs = (orderForm as { messages?: Array<{ text?: string }> }).messages
+
+  return (msgs ?? [])
+    .map((m) => m?.text)
+    .filter((t): t is string => Boolean(t))
+    .join('; ')
+}
 
 export interface Logger {
   warn?: (msg: string, ...rest: unknown[]) => void
@@ -422,6 +437,33 @@ export class Cart {
     )
 
     this.assertSameCart(orderFormId, updated)
+
+    // DIAGNOSTIC — console.log (not the injected logger, which handlers don't
+    // wire up) so it lands in `vtex logs` next to the [ACG place_order] lines.
+    // Compare echo.orderFormId here against place_order's orderFormId, and
+    // echo.email against what place_order reads, to tell apart: never-persisted
+    // (echo.email=<none>) vs wiped-later (echo.email set here, gone at placement).
+    // eslint-disable-next-line no-console -- demo-quality stdout instrumentation (issue 0005)
+    console.log(
+      `[ACG setCustomerProfile] orderFormId=${orderFormId} echo.orderFormId=${
+        updated.orderFormId
+      } echo.email=${updated.clientProfileData?.email ?? '<none>'} document=${
+        updated.clientProfileData?.document ?? '<none>'
+      } messages=${JSON.stringify(
+        (updated as { messages?: unknown }).messages ?? []
+      )}`
+    )
+
+    // VTEX returns HTTP 200 for the clientProfileData attachment even when it
+    // silently rejects the profile (a required field — typically `document`
+    // on stores that mandate it — fails validation). Trusting the 200 lets a
+    // phantom "profile set" sail through until placeOrder fails four steps
+    // later with the opaque "customer profile missing". Verify off the POST
+    // echo — never a follow-up GET (see reference_vtex_api_memoization) — so
+    // the failure surfaces HERE, carrying VTEX's own reason.
+    if (!updated.clientProfileData?.email) {
+      throw new ProfileNotPersistedError(vtexMessages(updated))
+    }
 
     return mapOrderFormToCart(updated)
   }

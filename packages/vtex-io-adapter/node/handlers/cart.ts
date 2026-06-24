@@ -19,6 +19,7 @@ import {
   ItemNotAddedError,
   ItemNotInCartError,
   OrderFormSubstitutedError,
+  ProfileNotPersistedError,
   TransientCartError,
 } from '../cart/errors'
 import { clearOrderFormState } from '../mandates/mandate-orchestration'
@@ -65,6 +66,16 @@ function handleCartError(ctx: Context, err: unknown): void {
   if (err instanceof TransientCartError) {
     ctx.status = 503
     ctx.body = { success: false, error: err.message, code: err.code }
+
+    return
+  }
+
+  if (err instanceof ProfileNotPersistedError) {
+    // 422: the request was well-formed but VTEX refused to persist the
+    // profile. Surface the message in `error` so the MCP/widget caller (and
+    // the agent) sees the real reason instead of a generic failure.
+    ctx.status = 422
+    ctx.body = { success: false, error: err.message }
 
     return
   }

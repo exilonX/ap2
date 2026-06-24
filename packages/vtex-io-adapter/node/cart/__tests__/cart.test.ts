@@ -18,6 +18,7 @@ import {
   ItemNotAddedError,
   ItemNotInCartError,
   OrderFormSubstitutedError,
+  ProfileNotPersistedError,
   TransientCartError,
 } from '../errors'
 import {
@@ -394,6 +395,30 @@ describe('Cart.setCustomerProfile', () => {
     const stored = await fake.getOrderForm(orderFormId)
 
     assert.equal(stored.clientProfileData?.documentType, 'cnp')
+  })
+
+  it('throws ProfileNotPersistedError when VTEX 200s but drops the profile', async () => {
+    const { fake, cart, orderFormId } = setupCart()
+
+    // VTEX accepts the POST but silently rejects the profile (echo has no
+    // clientProfileData) — the bug that surfaced only at placeOrder before.
+    fake.dropsNextClientProfile('Missing required field: document')
+
+    await assert.rejects(
+      () =>
+        cart.setCustomerProfile(orderFormId, {
+          email: 'x@example.com',
+          firstName: 'X',
+          lastName: 'Y',
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ProfileNotPersistedError)
+        // VTEX's own reason is surfaced, not swallowed.
+        assert.match(err.message, /Missing required field: document/)
+
+        return true
+      }
+    )
   })
 })
 

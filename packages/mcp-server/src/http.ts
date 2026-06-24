@@ -103,6 +103,19 @@ const app = createMcpExpressApp(
 // closing it (DELETE /mcp, or transport close) evicts it here.
 const transports = new Map<string, StreamableHTTPServerTransport>()
 
+// Last-activity timestamp per session, for idle eviction. The MCP server is a
+// long-lived process; a client that disconnects ungracefully (no DELETE)
+// would otherwise leave its session — and its in-memory cart's orderFormId —
+// alive forever, slowly leaking memory and lingering a stale cart that a later
+// request could re-bind to. See docs/REMOTE_MCP.md.
+const lastSeen = new Map<string, number>()
+const SESSION_IDLE_MS = Number(process.env.MCP_SESSION_IDLE_MS ?? 30 * 60 * 1000)
+const SESSION_SWEEP_MS = 5 * 60 * 1000
+
+function touchSession(id: string | undefined): void {
+  if (id) lastSeen.set(id, Date.now())
+}
+
 function sessionIdOf(req: Req): string | undefined {
   const id = req.headers['mcp-session-id']
 
@@ -183,6 +196,7 @@ async function postMcp(req: Req, res: ServerResponse): Promise<void> {
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
         transports.set(id, transport as StreamableHTTPServerTransport)
+        touchSession(id)
         console.error(
           `[ACG HTTP] session initialized: ${id} (tenant=${
             tenant ?? 'default'
@@ -196,6 +210,7 @@ async function postMcp(req: Req, res: ServerResponse): Promise<void> {
 
       if (id && transports.has(id)) {
         transports.delete(id)
+        lastSeen.delete(id)
         console.error(`[ACG HTTP] session closed: ${id}`)
       }
     }
@@ -203,6 +218,7 @@ async function postMcp(req: Req, res: ServerResponse): Promise<void> {
     await server.connect(transport)
   }
 
+  touchSession(sessionId)
   await transport.handleRequest(req, res, req.body)
 }
 
@@ -222,6 +238,7 @@ async function handleExistingSession(
     return
   }
 
+  touchSession(sessionId)
   await transport.handleRequest(req, res)
 }
 
@@ -233,6 +250,29 @@ app.get('/mcp', handleExistingSession)
 app.get('/mcp/:tenant', handleExistingSession)
 app.delete('/mcp', handleExistingSession)
 app.delete('/mcp/:tenant', handleExistingSession)
+
+// Idle-session reaper: close + evict any session not seen in SESSION_IDLE_MS,
+// freeing its McpServer + VtexClient (and its cart's orderFormId). Deleting
+// from `transports` before close() keeps the onclose handler a no-op.
+const sessionSweep = setInterval(() => {
+  const now = Date.now()
+
+  for (const [id, transport] of transports) {
+    if (now - (lastSeen.get(id) ?? 0) > SESSION_IDLE_MS) {
+      transports.delete(id)
+      lastSeen.delete(id)
+      try {
+        void transport.close()
+      } catch {
+        // best-effort teardown
+      }
+      console.error(`[ACG HTTP] evicted idle session: ${id}`)
+    }
+  }
+}, SESSION_SWEEP_MS)
+
+// Don't let the reaper keep the process alive on its own.
+sessionSweep.unref()
 
 app.listen(PORT, HOST, () => {
   console.error(

@@ -166,7 +166,8 @@ const CHECKOUT_APP_URI = 'ui://acg-checkout/index.html'
  * the user clicks Pay Now, which calls placeOrder via JSON-RPC.
  */
 function buildSetPaymentMethodIframePayload(
-  response: ToolEffectResponse
+  response: ToolEffectResponse,
+  orderFormId: string | null
 ): unknown {
   const cart = response.cartPreview
   if (!cart) return response
@@ -181,6 +182,10 @@ function buildSetPaymentMethodIframePayload(
       total: cart.total,
       currency: cart.currency,
     },
+    // Which cart this iframe drives. Echoed back by the iframe's Pay Now
+    // chain so placement targets THIS cart, not whatever the session's
+    // in-memory orderFormId happens to hold. See VtexClient.setOrderFormId.
+    orderFormId: orderFormId ?? undefined,
     selectedPayment: response.selectedPayment ?? null,
     shippingAddress: response.shippingAddress,
     customerProfile: response.customerProfile,
@@ -203,7 +208,10 @@ function buildSetPaymentMethodIframePayload(
  * rewriting the iframe — the iframe is the demo's visual punchline and
  * stays as-is across the headless migration.
  */
-function buildIframePayload(response: ToolEffectResponse): unknown {
+function buildIframePayload(
+  response: ToolEffectResponse,
+  orderFormId: string | null
+): unknown {
   const cart = response.cartPreview
   const m = response.mandate
 
@@ -219,6 +227,8 @@ function buildIframePayload(response: ToolEffectResponse): unknown {
       total: cart.total,
       currency: cart.currency,
     },
+    // Which cart this iframe drives (see buildSetPaymentMethodIframePayload).
+    orderFormId: orderFormId ?? undefined,
     mandate: {
       id: m.mandateId,
       merchantDid: m.signedBy,
@@ -316,6 +326,17 @@ function formatPaymentMethods(response: ToolEffectResponse): string {
     `Reply with the number or method name; I'll call setPaymentMethod with the id, then placeOrder → sendPaymentInfo → authorizeTransaction to finalize.`,
   ].join('\n')
 }
+
+// Internal arg the checkout iframe passes on every Pay Now chain call so the
+// request re-anchors to the cart the iframe is showing (the iframe is the
+// authority on WHICH cart), independent of the session's in-memory id. Not
+// meant for chat-driven calls — the description steers the model away.
+const ORDER_FORM_ID_ARG = z
+  .string()
+  .optional()
+  .describe(
+    'Internal: the cart id this checkout iframe is driving. Passed automatically by the iframe so placement targets the displayed cart — do NOT set this from chat.'
+  )
 
 export function registerHeadlessCheckoutTools(
   server: McpServer,
@@ -425,7 +446,10 @@ export function registerHeadlessCheckoutTools(
         if (result.cartPreview) {
           result.cartPreview = await embedCartPreviewImages(result.cartPreview)
         }
-        const iframePayload = buildSetPaymentMethodIframePayload(result)
+        const iframePayload = buildSetPaymentMethodIframePayload(
+          result,
+          client.getOrderFormId()
+        )
 
         return {
           content: [
@@ -480,17 +504,25 @@ export function registerHeadlessCheckoutTools(
         .number()
         .optional()
         .describe('Number of installments. Defaults to 1.'),
+      orderFormId: ORDER_FORM_ID_ARG,
     },
     async (params) => {
+      // Iframe-driven: re-anchor to the cart it's showing before mutating.
+      if (params.orderFormId) client.setOrderFormId(params.orderFormId)
       try {
         const result = await client.post<ToolEffectResponse>(
           '/checkout/set-payment-method',
-          params
+          // Don't forward the internal id to the adapter body — it travels
+          // as the X-ACG-Order-Form-Id header via the re-anchor above.
+          { paymentSystemId: params.paymentSystemId, installments: params.installments }
         )
         if (result.cartPreview) {
           result.cartPreview = await embedCartPreviewImages(result.cartPreview)
         }
-        const iframePayload = buildSetPaymentMethodIframePayload(result)
+        const iframePayload = buildSetPaymentMethodIframePayload(
+          result,
+          client.getOrderFormId()
+        )
 
         return {
           content: [
@@ -526,16 +558,30 @@ export function registerHeadlessCheckoutTools(
   server.tool(
     'placeOrder',
     'Create a real VTEX order: signs the AP2 CartMandate over the current cart AND posts the transaction to VTEX OMS in one call. This tool is normally driven BY THE CHECKOUT IFRAME (when the user clicks Pay Now). Do NOT call directly after setPaymentMethod unless the user types an explicit verbal "yes place it now"/"confirmă plasarea" — the iframe drives the chain on click. If you DO call it directly, follow with sendPaymentInfo then authorizeTransaction to finalize.',
-    {},
-    async () => {
+    { orderFormId: ORDER_FORM_ID_ARG },
+    async (params) => {
+      // Iframe-driven: re-anchor to the cart the panel is showing so we place
+      // THIS order, not whatever the session's in-memory id drifted to.
+      if (params.orderFormId) client.setOrderFormId(params.orderFormId)
       try {
         const result = await client.post<ToolEffectResponse>(
           '/checkout/place-order'
         )
+        // Terminal failure = the cart pointer is dead (VTEX reset it / none
+        // active). Clear so the next attempt provisions a fresh cart. A
+        // RECOVERABLE failure (missing profile/shipping/payment, empty cart)
+        // is deliberately left alone so the user can fix it and retry on the
+        // SAME cart without losing their items.
+        if (
+          typeof result.result === 'string' &&
+          /cart session was reset|no active cart/i.test(result.result)
+        ) {
+          client.clearOrderFormId()
+        }
         if (result.cartPreview) {
           result.cartPreview = await embedCartPreviewImages(result.cartPreview)
         }
-        const iframePayload = buildIframePayload(result)
+        const iframePayload = buildIframePayload(result, client.getOrderFormId())
 
         return {
           content: [
@@ -565,8 +611,9 @@ export function registerHeadlessCheckoutTools(
   server.tool(
     'sendPaymentInfo',
     'Forward payment details to the VTEX payment gateway for the open transaction. Normally called BY THE CHECKOUT IFRAME after placeOrder succeeds. Do NOT call from chat unless you explicitly drove placeOrder yourself in this turn.',
-    {},
-    async () => {
+    { orderFormId: ORDER_FORM_ID_ARG },
+    async (params) => {
+      if (params.orderFormId) client.setOrderFormId(params.orderFormId)
       try {
         const result = await client.post<ToolEffectResponse>(
           '/checkout/send-payment-info'
@@ -594,8 +641,9 @@ export function registerHeadlessCheckoutTools(
   server.tool(
     'authorizeTransaction',
     'Authorize the open transaction with the gateway. Returns the final order status. Normally called BY THE CHECKOUT IFRAME at the end of the Pay Now chain. Do NOT call from chat unless you explicitly drove placeOrder + sendPaymentInfo yourself in this turn. For Cash / promissory the status is immediate; for card / redirect methods the customer continues with the provider and VTEX finalizes asynchronously.',
-    {},
-    async () => {
+    { orderFormId: ORDER_FORM_ID_ARG },
+    async (params) => {
+      if (params.orderFormId) client.setOrderFormId(params.orderFormId)
       try {
         const result = await client.post<ToolEffectResponse>(
           '/checkout/authorize'

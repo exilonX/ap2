@@ -63,11 +63,17 @@ sudo tee /etc/acg/tenants.json >/dev/null <<'JSON'
   "vtexeurope": { "account": "vtexeurope", "workspace": "acg", "acgAuthToken": "PUT-ADAPTER-acgAuthToken-HERE" }
 }
 JSON
-sudo chown root:acgsvc /etc/acg/tenants.json
-sudo chmod 640 /etc/acg/tenants.json
+sudo chown root:acgsvc /etc/acg /etc/acg/tenants.json
 sudo chmod 750 /etc/acg
+sudo chmod 640 /etc/acg/tenants.json
+
+# Verify the SERVICE user can actually read it (else the registry loads empty
+# with an EACCES in the log, and every /mcp request 404s):
+sudo -u acgsvc cat /etc/acg/tenants.json
 ```
 > `workspace` = where the ACG adapter is linked (logs showed `acg--vtexeurope`, so `acg`). `acgAuthToken` must match the adapter's `acgAuthToken` app setting in VTEX Admin.
+>
+> **Full tenant config reference, the ownership/permission model, and troubleshooting (`EACCES`, `Unknown tenant`, …): [TENANTS.md](TENANTS.md).**
 
 ### systemd unit
 `ExecStart` points at the **symlink**, so a release swap + restart picks up new
@@ -196,7 +202,7 @@ journalctl -u acg-mcp -n 100 --no-pager
 
 **Adding a merchant** — edit `/etc/acg/tenants.json` on the box (`sudo`), then
 `sudo systemctl restart acg-mcp`. No redeploy needed; their connector URL is
-`https://bookmap-search.duckdns.org/mcp/<id>`.
+`https://bookmap-search.duckdns.org/mcp/<id>`. See [TENANTS.md](TENANTS.md).
 
 ---
 

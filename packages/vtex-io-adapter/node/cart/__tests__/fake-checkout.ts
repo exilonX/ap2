@@ -230,6 +230,10 @@ export class FakeCheckoutClient {
   private nextFailures: Map<FakeMethod, Error> = new Map()
   private nextSubstitutedId: string | null = null
   private couponRules: Map<string, number> = new Map() // code -> discount cents
+  // One-shot: the next addClientProfileData returns 200 but does NOT apply the
+  // profile (clientProfileData stays null), optionally with a VTEX message —
+  // modelling VTEX's silent rejection of an incomplete profile.
+  private dropNextProfile: { reason?: string } | null = null
   // Opt-in model of @vtex/api's per-request GET /orderForm memoization. null
   // = OFF (default — getOrderForm reads live store, as all existing tests
   // expect). When enabled, getOrderForm serves the FIRST snapshot it saw per
@@ -271,6 +275,15 @@ export class FakeCheckoutClient {
    */
   public addCouponRule(code: string, discountCents: number): void {
     this.couponRules.set(code, discountCents)
+  }
+
+  /**
+   * The next `addClientProfileData` returns HTTP-200-equivalent but leaves
+   * `clientProfileData` null (optionally adding `reason` to `messages`) —
+   * VTEX's silent rejection of an incomplete profile. One-shot.
+   */
+  public dropsNextClientProfile(reason?: string): void {
+    this.dropNextProfile = { reason }
   }
 
   /**
@@ -432,6 +445,24 @@ export class FakeCheckoutClient {
   ): Promise<VTEXOrderForm> {
     this.tripFailure('addClientProfileData')
     const of = this.requireOrderForm(orderFormId)
+
+    // Simulate VTEX silently rejecting an incomplete profile: 200 echo, but
+    // clientProfileData stays null and the reason lands in `messages`.
+    if (this.dropNextProfile) {
+      const { reason } = this.dropNextProfile
+
+      this.dropNextProfile = null
+      of.clientProfileData = null
+
+      if (reason) {
+        of.messages = [
+          ...(of.messages ?? []),
+          { code: 'clientProfileData', text: reason, status: 'error' },
+        ]
+      }
+
+      return this.maybeSubstituteId(clone(of))
+    }
 
     of.clientProfileData = {
       email: data.email ?? null,

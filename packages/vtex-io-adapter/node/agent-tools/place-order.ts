@@ -121,7 +121,13 @@ async function execute(
   }
 
   if (!orderForm.clientProfileData?.email) {
-    console.log(`${TAG} EXIT: clientProfileData missing`)
+    console.log(
+      `${TAG} EXIT: clientProfileData missing — clientProfileData=${JSON.stringify(
+        orderForm.clientProfileData ?? null
+      )} messages=${JSON.stringify(
+        (orderForm as { messages?: unknown }).messages ?? []
+      )}`
+    )
 
     return {
       result:

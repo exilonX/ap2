@@ -655,8 +655,19 @@
   var currentPaymentId = null;
   var currentMethodKind = 'direct';
   var authResolver = null;
+  // The cart THIS iframe is driving (stamped into every payload by the MCP
+  // server). Echoed back on every Pay Now chain call so the server places
+  // THIS cart, immune to a drifted/stale session orderFormId.
+  var currentOrderFormId = null;
 
   function sendToHost(msg) { window.parent.postMessage(msg, '*'); }
+
+  // Merge the cart id into a tool-call arguments object (no-op if unknown).
+  function withOfid(args) {
+    var a = args || {};
+    if (currentOrderFormId) a.orderFormId = currentOrderFormId;
+    return a;
+  }
 
   function rpcRequest(method, params) {
     return new Promise(function(resolve, reject) {
@@ -707,6 +718,8 @@
   }
 
   function populateCheckout(data) {
+    // Remember which cart this iframe drives (sent on every chain call).
+    if (data && data.orderFormId) currentOrderFormId = data.orderFormId;
     var cart = data.cart;
     if (!cart || !cart.items) {
       // No cart in the payload — typically a tool error (e.g.
@@ -1055,7 +1068,7 @@
     selectEl.disabled = true;
     rpcRequest('tools/call', {
       name: 'updatePaymentMethod',
-      arguments: { paymentSystemId: newId },
+      arguments: withOfid({ paymentSystemId: newId }),
     })
       .then(function(res) {
         var payload = parseToolResult(res) || {};
@@ -1109,7 +1122,7 @@
     var ensureSelection = currentPaymentId
       ? rpcRequest('tools/call', {
           name: 'updatePaymentMethod',
-          arguments: { paymentSystemId: currentPaymentId },
+          arguments: withOfid({ paymentSystemId: currentPaymentId }),
         })
       : Promise.resolve(null);
 
@@ -1117,7 +1130,7 @@
 
     ensureSelection
       .then(function() {
-        return rpcRequest('tools/call', { name: 'placeOrder', arguments: {} });
+        return rpcRequest('tools/call', { name: 'placeOrder', arguments: withOfid({}) });
       })
       .then(function(placeResult) {
         var placePayload = parseToolResult(placeResult) || {};
@@ -1225,11 +1238,11 @@
 
         btn.textContent = 'Forwarding payment to gateway…';
         notifySize();
-        return rpcRequest('tools/call', { name: 'sendPaymentInfo', arguments: {} })
+        return rpcRequest('tools/call', { name: 'sendPaymentInfo', arguments: withOfid({}) })
           .then(function() {
             btn.textContent = 'Authorizing transaction…';
             notifySize();
-            return rpcRequest('tools/call', { name: 'authorizeTransaction', arguments: {} });
+            return rpcRequest('tools/call', { name: 'authorizeTransaction', arguments: withOfid({}) });
           })
           .then(function(authResult) {
             var authPayload = parseToolResult(authResult) || {};

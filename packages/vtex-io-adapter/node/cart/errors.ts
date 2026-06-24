@@ -44,3 +44,23 @@ export class OrderFormSubstitutedError extends Error {
     this.name = 'OrderFormSubstitutedError'
   }
 }
+
+/**
+ * VTEX accepted the clientProfileData attachment (HTTP 200) but did not
+ * actually persist it — the echo came back with an empty profile. The usual
+ * cause is a required field failing validation (most commonly `document` /
+ * national ID on stores that mandate it). Thrown so the failure surfaces at
+ * the set-profile step with VTEX's own reason, instead of silently sailing
+ * through to placeOrder's opaque "customer profile missing" four steps later.
+ */
+export class ProfileNotPersistedError extends Error {
+  constructor(public reason: string) {
+    super(
+      `VTEX accepted the request but did not persist the customer profile${
+        reason ? ` — ${reason}` : ''
+      }. A required field is likely missing (most commonly the national ID / ` +
+        `document, e.g. CNP in Romania). Collect it and retry before checkout.`
+    )
+    this.name = 'ProfileNotPersistedError'
+  }
+}

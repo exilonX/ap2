@@ -180,6 +180,22 @@ export class VtexClient {
   }
 
   /**
+   * Re-anchor the session to an explicit orderFormId.
+   *
+   * The checkout iframe is the authority on WHICH cart it is showing — it
+   * was populated with a concrete cart id. When it drives the Pay Now chain
+   * (placeOrder → sendPaymentInfo → authorizeTransaction) it passes that id
+   * back, and the tools call this so the request carries the right cart in
+   * the X-ACG-Order-Form-Id header — even if this client's in-memory id had
+   * drifted to a stale cart (e.g. a different MCP session). Idempotent.
+   */
+  setOrderFormId(id: string): void {
+    if (id) {
+      this.orderFormId = id;
+    }
+  }
+
+  /**
    * Returns the currently cached orderFormId, or null if none cached.
    * Useful for tools that want to display "starting a new cart" feedback.
    */
