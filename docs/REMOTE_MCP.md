@@ -146,6 +146,46 @@ Deliverables:
 - Smoke test with the MCP Inspector (`npx @modelcontextprotocol/inspector`) and
   `mcp-remote` before touching auth.
 
+### Phase 0.5 — interim per-user identity (URL path token) — ✅ IMPLEMENTED
+
+Phase 0 gave each MCP **session** its own `VtexClient` + in-memory `orderFormId`.
+That is too fine-grained: Claude Desktop opens **two sessions per user** (two
+`initialize`s ~2s apart), so per-session state splits one user's cart in two
+(`addToCart` on session A, `getCart` reads empty session B). Keying by **tenant**
+instead (an earlier band-aid) over-corrects — every user of a merchant shares one
+cart.
+
+The cart pointer is now keyed **per user**: `sharedOrderFormByUser` in
+`src/client.ts`, key `${account}/${workspace}:${userKey}`. Until OAuth lands,
+`userKey` is a **capability token in the connector URL path**:
+
+```
+https://mcp.host/mcp/<tenant>/<token>     # each user gets their own <token>
+```
+
+- Both of a user's sessions are opened against the **same** configured URL, so
+  both carry the same `<token>` → both resolve the same key → **one cart**.
+- Two users get different tokens → **isolated carts**, even on one tenant.
+- **Issuance is OPEN** — any non-empty token is accepted (unknown *tenant* still
+  404s). Bounded by the adapter's rate-limit + session-cost-cap middleware.
+- Tokenless legacy URLs (`/mcp`, `/mcp/:tenant`) and stdio → `userKey="_shared"`,
+  i.e. the old tenant-shared behavior, so nothing breaks.
+
+**Single point of identity:** `userKeyOf(req)` in `src/http.ts` is the ONLY
+producer of `userKey`. **Phase 2 swaps its body** from "URL path token" to the
+validated `jwt.sub` — no other code changes.
+
+**Constraints (in-memory pointer):**
+- **Single node only** (or token/path-sticky LB). The map is per-process; a
+  user's two sessions hitting two nodes would split the cart again. The durable
+  fix keys by `jwt.sub` and backs the pointer with VBase/Redis.
+- **Process restart wipes the map** → a mid-cart user gets a fresh cart on their
+  next message. Accepted for now (the empty-cart copy reads gracefully).
+- The map is intentionally **not** tied to session lifecycle (the cart must
+  outlive a session and survive idle-eviction); entries leak slowly. Deferred
+  cleanup: a parallel `lastTouched` map swept on a TTL **longer** than
+  `MCP_SESSION_IDLE_MS` — never coupled to `onclose`.
+
 ### Phase 1 — Public deployment + TLS
 
 The user "has a public server". Requirements:
@@ -247,10 +287,14 @@ demo Phase 0/1 on Desktop, but **claude.ai web needs real OAuth** (Phase 2).
   maturing. *Mitigation:* the text + AP2 flow works on every surface; treat the
   iframe as Desktop-enhanced and validate web rendering before relying on it for
   the web demo.
-- **Cross-instance state if scaled past one node.** The per-session map is
-  in-process. A single node is fine for the demo; horizontal scaling needs either
-  sticky sessions or an external session store (and the SDK's `eventStore` for
-  resumable streams). Note the adapter side already has the analogous
+- **Cross-instance state if scaled past one node.** Both the per-session
+  `transports` map AND the per-user `sharedOrderFormByUser` cart-pointer map are
+  in-process. A single node is fine for the demo; horizontal scaling needs sticky
+  routing (by `Mcp-Session-Id` for transports, by `userKey`/token for the cart
+  map) or an external store (and the SDK's `eventStore` for resumable streams).
+  The cart pointer specifically must move to VBase/Redis keyed by `jwt.sub`
+  before going multi-node, or a user's two sessions on different nodes split the
+  cart again. Note the adapter side already has the analogous
   `[[reference_vtex_api_memoization]]` / per-replica caveat.
 - **Token audience & account binding** in multi-tenant — design the claim shape
   before onboarding a second merchant.

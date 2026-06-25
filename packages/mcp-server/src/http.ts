@@ -128,6 +128,26 @@ function tenantOf(req: Req): string | undefined {
   return req.params?.tenant
 }
 
+// The single per-user identity point. Two MCP sessions for one user must share
+// ONE cart while two users on the same tenant must NOT — that requires a key
+// that's identical across a user's sessions yet distinct between users. Tenant
+// (shared by all of a merchant's users) and Mcp-Session-Id (unique per session)
+// both fail; the per-user URL path token does both, because Claude opens both
+// sessions against the SAME connector URL.
+//
+// INTERIM: the capability token from `/mcp/<tenant>/<token>`, captured once at
+// `initialize` (later requests route by session id — no token needed then).
+// Issuance is OPEN: any non-empty token is accepted (unknown TENANT still 404s).
+// Tokenless legacy URLs (`/mcp`, `/mcp/:tenant`) → `_shared` (old tenant-shared).
+//
+// PHASE-2 OAUTH SWAP POINT: replace the body with the validated `jwt.sub` from
+// the Authorization header (401 on invalid). Nothing else changes.
+function userKeyOf(req: Req): string {
+  const token = req.params?.token
+
+  return token && token.trim() ? token.trim() : '_shared'
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(body))
@@ -197,8 +217,11 @@ async function postMcp(req: Req, res: ServerResponse): Promise<void> {
     }
 
     // Fresh, isolated state for this session — this merchant's account/secret
-    // and its own cart (orderFormId). No cross-tenant or cross-user leakage.
-    const server = createMcpServer(createVtexClient(tenantConfig))
+    // and a cart (orderFormId) scoped to THIS user (the URL path token). No
+    // cross-tenant or cross-user leakage; the user's other session resolves the
+    // same userKey and so shares the same cart.
+    const userKey = userKeyOf(req)
+    const server = createMcpServer(createVtexClient(tenantConfig, userKey))
 
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
@@ -208,7 +231,7 @@ async function postMcp(req: Req, res: ServerResponse): Promise<void> {
         console.error(
           `[ACG HTTP] session initialized: ${id} (tenant=${
             tenant ?? 'default'
-          })`
+          } userKey=${userKey})`
         )
       },
     })
@@ -257,14 +280,22 @@ async function handleExistingSession(
   await transport.handleRequest(req, res)
 }
 
-// Same handlers on the plain (`/mcp` → default) and tenant (`/mcp/:tenant`)
-// paths. Each merchant points their Claude connector at their own /mcp/<id>.
+// Same handlers on the plain (`/mcp` → default tenant, `_shared` user), tenant
+// (`/mcp/:tenant`, `_shared` user) and per-user (`/mcp/:tenant/:token`) paths.
+// Each merchant points their Claude connector at their own /mcp/<tenant>, and
+// each user gets a distinct /mcp/<tenant>/<token> URL for an isolated cart.
+// The token segment only matters on the POST that initializes the session;
+// GET (SSE) / DELETE route purely by Mcp-Session-Id, but the routes must exist
+// so those verbs don't 404 on the 3-segment URL.
 app.post('/mcp', postMcp)
 app.post('/mcp/:tenant', postMcp)
+app.post('/mcp/:tenant/:token', postMcp)
 app.get('/mcp', handleExistingSession)
 app.get('/mcp/:tenant', handleExistingSession)
+app.get('/mcp/:tenant/:token', handleExistingSession)
 app.delete('/mcp', handleExistingSession)
 app.delete('/mcp/:tenant', handleExistingSession)
+app.delete('/mcp/:tenant/:token', handleExistingSession)
 
 // Idle-session reaper: close + evict any session not seen in SESSION_IDLE_MS,
 // freeing its McpServer + VtexClient (and its cart's orderFormId). Deleting

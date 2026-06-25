@@ -23,6 +23,14 @@ interface VtexConfig {
    * the adapter's requireOriginOrSecret middleware (issue 0010 item 5).
    */
   acgAuthToken?: string;
+  /**
+   * Per-USER identity that scopes the cart pointer (see `sharedOrderFormByUser`).
+   * INTERIM: the capability token from the connector URL path
+   * (`/mcp/<tenant>/<token>`); PHASE-2 OAuth will pass the validated `jwt.sub`
+   * here instead — same plumbing, different source. Absent (stdio, tokenless
+   * legacy URLs) → `_shared`, which reproduces the old per-tenant behavior.
+   */
+  userKey?: string;
 }
 
 // Process-wide counter so every VtexClient instance has a short, stable tag in
@@ -30,16 +38,51 @@ interface VtexConfig {
 // the cart-splitting bug.
 let vtexClientSeq = 0;
 
+// Per-USER cart pointer, keyed by `${account}/${workspace}:${userKey}` (see the
+// ctor). Claude Desktop opens TWO MCP sessions per connection (observed: two
+// `initialize`s ~2s apart — one for the request POSTs, one for the SSE stream),
+// each with its OWN VtexClient. Keyed by session they'd split the cart in two:
+// addToCart lands on session A's cart, getCart reads session B's empty cart.
+//
+// Both of a user's sessions are opened against the SAME connector URL, so both
+// carry the SAME userKey (the URL path token) and converge on ONE cart — while
+// two DIFFERENT users on the same tenant get DIFFERENT userKeys and stay
+// isolated. That is the whole fix.
+//
+// Module-level on purpose: the pointer must outlive any single MCP session (and
+// survive idle-session eviction) so the cart persists across a conversation.
+// CONSTRAINT: in-memory ⇒ correct on a SINGLE node only (or token-sticky LB) and
+// wiped on process restart. The durable version keys this by OAuth `sub` and
+// backs it with VBase/Redis — see docs/REMOTE_MCP.md.
+const sharedOrderFormByUser = new Map<string, string | null>();
+
 export class VtexClient {
   private client: AxiosInstance;
-  private orderFormId: string | null = null;
   private readonly tag: string;
+  private readonly userScopedKey: string;
+
+  /**
+   * The cart pointer lives per-user (shared across that user's sessions), not on
+   * the instance — see `sharedOrderFormByUser`. These accessors let the rest of
+   * the class (request interceptor, capture, clear/set) read and write it
+   * transparently, so a user's two MCP sessions see the same cart.
+   */
+  private get orderFormId(): string | null {
+    return sharedOrderFormByUser.get(this.userScopedKey) ?? null;
+  }
+
+  private set orderFormId(value: string | null) {
+    sharedOrderFormByUser.set(this.userScopedKey, value);
+  }
 
   constructor(config: VtexConfig) {
     this.tag = `vc${++vtexClientSeq}`;
+    const userKey =
+      config.userKey && config.userKey.trim() ? config.userKey.trim() : '_shared';
+    this.userScopedKey = `${config.vtexAccount}/${config.vtexWorkspace}:${userKey}`;
     // eslint-disable-next-line no-console
     console.error(
-      `[VtexClient ${this.tag}] created (account=${config.vtexAccount} ws=${config.vtexWorkspace})`
+      `[VtexClient ${this.tag}] created (account=${config.vtexAccount} ws=${config.vtexWorkspace} userKey=${userKey})`
     );
     const baseURL = `https://${config.vtexWorkspace}--${config.vtexAccount}.myvtex.com/_v/acg`;
 

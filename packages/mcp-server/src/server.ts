@@ -28,6 +28,12 @@ export interface AcgMcpConfig {
   vtexAppToken?: string
   /** Shared secret matching the adapter's `acgAuthToken` app setting. */
   acgAuthToken?: string
+  /**
+   * Per-user identity that scopes the cart pointer (URL path token now,
+   * `jwt.sub` after OAuth). Absent → `_shared` (tenant-shared, legacy). Set
+   * per-session in src/http.ts via `createVtexClient(config, userKey)`.
+   */
+  userKey?: string
 }
 
 /**
@@ -74,7 +80,14 @@ export function createMcpServer(vtexClient: VtexClient): McpServer {
   return server
 }
 
-/** Build a fresh VtexClient for a session from the env config. */
-export function createVtexClient(config: AcgMcpConfig): VtexClient {
-  return new VtexClient(config)
+/**
+ * Build a fresh VtexClient for a session from the (tenant) config, scoped to a
+ * per-user identity. `userKey` is the connector URL path token (HTTP transport,
+ * src/http.ts) — omitted on stdio, where it defaults to `_shared`.
+ */
+export function createVtexClient(
+  config: AcgMcpConfig,
+  userKey?: string
+): VtexClient {
+  return new VtexClient({ ...config, userKey })
 }
