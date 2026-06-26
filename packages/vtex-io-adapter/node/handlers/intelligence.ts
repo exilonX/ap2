@@ -14,6 +14,10 @@ import type { DealSuggestion } from '../types/shared'
  * Analyze cart and suggest deals
  */
 export async function proposeDeal(ctx: Context) {
+  // Per-cart result (deals depend on the caller's orderFormId in the header) —
+  // must not be edge-cached, or one user's deal analysis leaks to another.
+  ctx.set('Cache-Control', 'no-store')
+
   try {
     const orderFormId = getOrderFormIdFromRequest(ctx)
 

@@ -110,6 +110,21 @@ export class VtexClient {
     this.client.interceptors.request.use((reqConfig) => {
       if (this.orderFormId) {
         reqConfig.headers['X-ACG-Order-Form-Id'] = this.orderFormId;
+        // ALSO duplicate the id into the query string on reads. A `public`
+        // GET route on VTEX IO is edge-cached BY URL, and the header above
+        // does NOT vary the CDN cache key — so two concurrent users hitting
+        // the same `/cart` URL get served the first one's cached cart. The
+        // query string IS part of the cache key (that's how per-query search
+        // caching works), so `?ofid=<id>` gives each cart its own cache entry
+        // (and busts any stale bare-URL entry). The adapter reads this with
+        // higher priority than the cookie. GET only — POST/PUT/DELETE are
+        // never edge-cached, so they isolate already on the header alone.
+        if ((reqConfig.method ?? 'get').toLowerCase() === 'get') {
+          reqConfig.params = {
+            ...(reqConfig.params ?? {}),
+            ofid: this.orderFormId,
+          };
+        }
       }
       // eslint-disable-next-line no-console
       console.error(

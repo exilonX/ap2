@@ -1,7 +1,7 @@
 {
   "name": "acg-adapter",
   "vendor": "vtexeurope",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "title": "Agent Commerce Gateway Adapter",
   "description": "VTEX IO adapter for AI agent commerce operations",
   "mustUpdateAt": "2025-01-01",

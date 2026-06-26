@@ -15,3 +15,22 @@
     "acgAuthToken": "REPLACE_WITH_fstudioqa_acgAuthToken_from_appSettings"
   }
 }
+
+
+{
+  "vtexeurope": {
+    "account": "vtexeurope",
+    "workspace": "master",
+    "acgAuthToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+  },
+  "iviteb": {
+    "account": "iviteb",
+    "workspace": "master",
+    "acgAuthToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+  },
+  "fstudioqa": {
+    "account": "fstudioqa",
+    "workspace": "master",
+    "acgAuthToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+  }
+}

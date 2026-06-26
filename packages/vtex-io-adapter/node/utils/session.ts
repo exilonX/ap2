@@ -27,14 +27,28 @@ const ORDER_FORM_COOKIE = 'checkout.vtex.com'
  * Returns null if neither is present.
  */
 export function getOrderFormIdFromRequest(ctx: Context): string | null {
-  // 1. Check header (from MCP server)
+  // 1. Check header (from MCP server, server-to-server)
   const headerValue = ctx.get(ORDER_FORM_HEADER)
 
-  // 2. Check cookie (from browser)
+  // 2. Check query param `ofid` — the SAME id as the header, duplicated into
+  //    the URL by the MCP client so the VTEX CDN cache key varies per cart.
+  //    A `public` GET route (e.g. /_v/acg/cart) is edge-cached BY URL, and a
+  //    request HEADER does NOT vary that key — so without this, every
+  //    concurrent user collides onto the first caller's cached cart (writes
+  //    isolate because POSTs aren't cached; reads leak). `?ofid=<id>` makes
+  //    each cart a distinct URL, so the edge can't cross-serve, and it also
+  //    busts any stale entry cached for the bare URL before no-store landed.
+  //    It survives header-stripping too (query is in the URL), so it's the
+  //    primary isolation mechanism; the header stays for backward-compat.
+  const queryRaw = ctx.query?.ofid
+  const queryValue =
+    (Array.isArray(queryRaw) ? queryRaw[0] : queryRaw)?.trim() || null
+
+  // 3. Check cookie (from browser)
   const cookieRaw = ctx.cookies.get(ORDER_FORM_COOKIE)
   const cookieValue = cookieRaw?.match(/__ofid=([^;]+)/)?.[1] ?? null
 
-  const resolved = headerValue || cookieValue || null
+  const resolved = headerValue || queryValue || cookieValue || null
 
   // DIAGNOSTIC — trace which cart EVERY adapter call resolves to, and where
   // the id came from. If addToCart and getCart print different `resolved`
@@ -43,18 +57,12 @@ export function getOrderFormIdFromRequest(ctx: Context): string | null {
   console.log(
     `[ACG ofid] ${ctx.method} ${ctx.path} → resolved=${
       resolved ?? '<none>'
-    } (header=${headerValue || '-'} cookie=${cookieValue || '-'})`
+    } (header=${headerValue || '-'} query=${queryValue || '-'} cookie=${
+      cookieValue || '-'
+    })`
   )
 
-  if (headerValue) {
-    return headerValue
-  }
-
-  if (cookieValue) {
-    return cookieValue
-  }
-
-  return null
+  return resolved
 }
 
 /**

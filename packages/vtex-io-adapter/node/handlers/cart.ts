@@ -93,6 +93,15 @@ function handleCartError(ctx: Context, err: unknown): void {
  * GET /_v/acg/cart
  */
 export async function getCart(ctx: Context) {
+  // CRITICAL: per-user cart state must NEVER be cached at the VTEX edge.
+  // This route is `public` (service.json) and the orderFormId rides in the
+  // X-ACG-Order-Form-Id HEADER, which does NOT vary the CDN cache key
+  // (`/_v/acg/cart` is identical for everyone). Without no-store, the first
+  // caller's cart is cached by URL and served to every other concurrent user
+  // — a cross-cart leak. POSTs aren't edge-cached, which is why writes
+  // isolate but reads collided. See docs/AP2_COMPLIANCE / caching rules.
+  ctx.set('Cache-Control', 'no-store')
+
   const cart = new Cart({ checkout: ctx.clients.checkout })
 
   try {
@@ -302,6 +311,10 @@ export async function setShippingAddress(ctx: Context) {
  * GET /_v/acg/cart/shipping-options
  */
 export async function getShippingOptions(ctx: Context) {
+  // Per-cart state keyed by the orderFormId header — must not be edge-cached
+  // (same cross-user hazard as getCart above).
+  ctx.set('Cache-Control', 'no-store')
+
   const cart = new Cart({ checkout: ctx.clients.checkout })
 
   try {
