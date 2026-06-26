@@ -3,3 +3,7 @@ dist/
 *.log
 .env
 .env.local
+
+# Real tenant registry holds per-tenant secrets — keep only the example.
+tenants.json
+!tenants.example.json

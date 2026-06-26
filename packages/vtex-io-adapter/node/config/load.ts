@@ -6,8 +6,14 @@
 import type { ClientConfig } from './types'
 import { defaultProfile } from './profiles/default'
 import { miniprixProfile } from './profiles/miniprix'
+import { vtexEuropeProfile } from './profiles/vtexeurope'
+import { ivitebProfile } from './profiles/iviteb'
+import { fstudioqaProfile } from './profiles/fstudioqa'
 
 const PROFILES: ClientConfig[] = [
+  vtexEuropeProfile,
+  ivitebProfile,
+  fstudioqaProfile,
   miniprixProfile,
   // Add new client profiles here.
   // The first one whose `accountMatches` includes the account wins.

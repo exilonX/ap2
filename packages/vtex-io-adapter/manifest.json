@@ -1,7 +1,7 @@
 {
   "name": "acg-adapter",
   "vendor": "vtexeurope",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "title": "Agent Commerce Gateway Adapter",
   "description": "VTEX IO adapter for AI agent commerce operations",
   "mustUpdateAt": "2025-01-01",
@@ -200,5 +200,9 @@
       "name": "colossus-write-logs"
     }
   ],
+  "billingOptions": {
+    "free": true,
+    "availableCountries": ["*"]
+  },
   "$schema": "https://raw.githubusercontent.com/vtex/node-vtex-api/master/gen/manifest.schema"
 }

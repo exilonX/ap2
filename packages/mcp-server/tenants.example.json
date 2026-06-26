@@ -1,0 +1,17 @@
+{
+  "vtexeurope": {
+    "account": "vtexeurope",
+    "workspace": "master",
+    "acgAuthToken": "REPLACE_WITH_vtexeurope_acgAuthToken_from_appSettings"
+  },
+  "iviteb": {
+    "account": "iviteb",
+    "workspace": "master",
+    "acgAuthToken": "REPLACE_WITH_iviteb_acgAuthToken_from_appSettings"
+  },
+  "fstudioqa": {
+    "account": "fstudioqa",
+    "workspace": "master",
+    "acgAuthToken": "REPLACE_WITH_fstudioqa_acgAuthToken_from_appSettings"
+  }
+}
