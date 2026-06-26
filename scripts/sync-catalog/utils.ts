@@ -37,8 +37,27 @@ export function createHttpClient(options: HttpClientOptions = {}): AxiosInstance
   })
 
   axiosRetry(client, {
-    retries: options.retries ?? 3,
-    retryDelay: axiosRetry.exponentialDelay,
+    retries: options.retries ?? 5,
+    retryDelay: (retryCount, error) => {
+      // Honor the server's Retry-After (seconds or HTTP-date) when present —
+      // VTEX 429s often send it and want a real cooldown, not a 100ms blip.
+      const retryAfter = (error as AxiosError).response?.headers?.['retry-after'] as
+        | string
+        | undefined
+
+      if (retryAfter) {
+        const secs = Number(retryAfter)
+
+        if (Number.isFinite(secs)) return secs * 1000
+
+        const whenMs = Date.parse(retryAfter)
+
+        if (!Number.isNaN(whenMs)) return Math.max(0, whenMs - Date.now())
+      }
+
+      // No header → exponential backoff with a 1s base (1s, 2s, 4s, 8s, 16s).
+      return axiosRetry.exponentialDelay(retryCount, error, 1000)
+    },
     retryCondition: (error: AxiosError) => {
       // Retry on network errors and on 429 / 5xx
       if (axiosRetry.isNetworkError(error)) return true

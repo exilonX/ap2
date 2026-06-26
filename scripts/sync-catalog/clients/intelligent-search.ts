@@ -217,7 +217,10 @@ export class IntelligentSearchClient {
    */
   async getCategoryTree(account: string, levels = 10): Promise<CategoryTreeNode[]> {
     const url = `https://${account}.vtexcommercestable.com.br/api/catalog_system/pub/category/tree/${levels}`
-    const { data } = await (await import('axios')).default.get<CategoryTreeNode[]>(url)
+    // Route through this.http (retry-enabled). An absolute URL bypasses the
+    // client's baseURL but KEEPS the 429/5xx backoff — a raw axios.get here had
+    // no retry, so a single Catalog API rate-limit killed the whole sync.
+    const { data } = await this.http.get<CategoryTreeNode[]>(url)
 
     return data
   }

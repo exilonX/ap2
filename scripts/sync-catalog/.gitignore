@@ -1,6 +1,9 @@
 node_modules/
-config.json
 .sync-state/
 logs/
 *.log
-config.miniprix.json
+
+# Real per-account configs hold secrets — ignore ALL config*.json,
+# but keep the committed *.example.json templates.
+config*.json
+!config*.example.json
