@@ -38,6 +38,7 @@ export function registerMandateTools(server: McpServer, client: VtexClient) {
    */
   server.tool(
     'getMandate',
+    'Fetch a previously signed AP2 cart mandate by its id and return its contents plus the cryptographic verification result (signature, expiry, cart-hash integrity). Use to show or verify the signed proof of an order.',
     {
       mandateId: z.string().describe('The mandate id returned by checkout'),
     },
@@ -95,7 +96,11 @@ export function registerMandateTools(server: McpServer, client: VtexClient) {
    * `/_v/acg/.well-known/did.json`. Anyone can fetch it and verify
    * any signed mandate against the public key it publishes.
    */
-  server.tool('getMerchantDID', {}, async () => {
+  server.tool(
+    'getMerchantDID',
+    'Return the merchant DID document — the public key anyone can use to verify the merchant signed AP2 mandates. Use when the customer wants to verify the merchant identity or how mandates are validated.',
+    {},
+    async () => {
     try {
       const didDoc = await client.get<unknown>('/.well-known/did.json')
 

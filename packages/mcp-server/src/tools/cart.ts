@@ -65,6 +65,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    */
   const addToCartTool = server.tool(
     'addToCart',
+    'Add a product to the shopping cart by its SKU and return the updated cart (line items, quantities, and totals). Call after the customer chooses a product to buy.',
     {
       sku: z.string().describe('The product SKU to add'),
       quantity: z.number().optional().describe('Quantity to add (default: 1)'),
@@ -137,7 +138,11 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
   /**
    * Get current cart
    */
-  const getCartTool = server.tool('getCart', {}, async () => {
+  const getCartTool = server.tool(
+    'getCart',
+    'Read and return the current shopping cart: its line items, quantities, per-item and total prices, and currency. Call whenever the customer asks what is in their cart or what they have added so far, and before checkout to confirm contents.',
+    {},
+    async () => {
     try {
       const cart = await client.get<SimpleCart>('/cart')
 
@@ -165,6 +170,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    */
   server.tool(
     'removeFromCart',
+    'Remove a product from the cart by its SKU and return the updated cart. Use when the customer wants to take an item out of their cart.',
     {
       sku: z.string().describe('The product SKU to remove'),
     },
@@ -215,6 +221,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    */
   server.tool(
     'updateCartItemQuantity',
+    'Change the quantity of a product already in the cart (set quantity to 0 to remove it) and return the re-costed cart. Use when the customer wants more or fewer of an item.',
     {
       sku: z.string().describe('The product SKU to update'),
       quantity: z.number().describe('New quantity (use 0 to remove)'),
@@ -273,6 +280,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    */
   server.tool(
     'setCustomerProfile',
+    'Save the customer identity (email, first and last name, optional phone and national ID / tax document) onto the cart. Required before checkout so the order and payment carry the buyer details.',
     {
       email: z.string().describe('Customer email address'),
       firstName: z.string().describe('Customer first name'),
@@ -328,6 +336,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    */
   server.tool(
     'setShippingAddress',
+    'Set the delivery address on the cart and return the re-costed cart including shipping. Required before listing shipping options or checking out.',
     {
       street: z.string().describe('Street name'),
       number: z.string().describe('Street number'),
@@ -383,7 +392,11 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
   /**
    * Get available shipping options for the current cart
    */
-  server.tool('getShippingOptions', {}, async () => {
+  server.tool(
+    'getShippingOptions',
+    'List the available delivery options (carrier, price, estimated delivery) for the shipping address on the cart. Call after a shipping address has been set so the customer can pick how the order ships.',
+    {},
+    async () => {
     try {
       const result = await client.get<{
         options: Array<{ id: string; name: string; price: number; estimatedDelivery: string }>
@@ -424,6 +437,7 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    */
   server.tool(
     'applyCoupon',
+    'Apply a coupon or promo code (e.g. "VIP15") to the cart and return the updated cart with any discount applied. Use when the customer has a discount or promo code.',
     {
       code: z.string().describe('The coupon or promo code to apply (e.g., "VIP15")'),
     },
@@ -477,7 +491,11 @@ export function registerCartTools(server: McpServer, client: VtexClient) {
    * Get personalized deal suggestions based on the current cart contents.
    * Use this when the user asks about deals, discounts, offers, or savings.
    */
-  server.tool('proposeDeal', {}, async () => {
+  server.tool(
+    'proposeDeal',
+    'Suggest personalized deals, discounts, offers, or savings based on the current cart contents. Use when the customer asks about deals, offers, discounts, or ways to save.',
+    {},
+    async () => {
     try {
       const result = await client.get<IntelligenceResponse>('/intelligence/propose-deal')
 

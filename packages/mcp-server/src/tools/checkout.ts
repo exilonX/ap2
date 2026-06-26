@@ -30,6 +30,7 @@ import { VtexClient } from '../client'
 export function registerCheckoutTools(server: McpServer, client: VtexClient) {
   server.tool(
     'checkOrderStatus',
+    'Look up a placed order by its order ID and return its current status, total, and creation time. Use when the customer asks about the status of an existing order.',
     { orderId: z.string().describe('The order ID to check') },
     async (params) => {
       try {
